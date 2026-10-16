@@ -183,8 +183,6 @@
     <string name="total_count">Nombre total</string>
     <string name="max_count_reached">Le comptage total de la transaction dépasse l\'objectif.</string>
     <string name="no_transaction_found">Aucune transaction trouvée, veuillez commencer le comptage des pilules</string>
-    <string name="rx_already_exists_title">La RX existe déjà</string>
-    <string name="rx_already_exists_message">Cette RX est déjà présente dans vos transactions. Voulez-vous continuer avec elle ?</string>
     <string name="rx_on_hold_title">Transaction en attente</string>
     <string name="rx_on_hold_message">Cette transaction est actuellement en attente. Vous ne pouvez pas continuer avec elle.</string>
     <!-- ================== PROFILE ================== -->
@@ -421,10 +419,7 @@
     <string name="code_name_format">%1$s - %2$s</string>
 
     <string name="verify_rx_details">Vérifier les détails Rx</string>
-    <string name="verify_stock_bottle_details">Vérifier les détails du flacon de stock</string>
-    <string name="hazardous_drug_warning">Médicament dangereux</string>
     <string name="form">Forme</string>
-    <string name="strength">Force</string>
     <!-- ================== HL7 NOTIFICATIONS ================== -->
     <string name="hl7_notification_device_connected_title">Appareil connecté</string>
     <string name="hl7_notification_device_connected_message">Connecté à %1$s avec succès</string>

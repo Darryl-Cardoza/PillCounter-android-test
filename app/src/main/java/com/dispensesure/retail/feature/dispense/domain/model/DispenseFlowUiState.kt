@@ -17,12 +17,14 @@ data class StandaloneRxDraft(
 
 data class DispenseFlowUiState(
     val stage: DispenseStage = DispenseStage.PRE_RX,
-    // True once a resume/HL7 entry has finished resolving its real start stage
+    // True while a resume/HL7 entry is still resolving its real start stage
     // (COUNTING / PRE_NDC / fallback). Until then the screen shows a loading gate
     // instead of the default PRE_RX ("Scan Rx Label") UI, so that stage doesn't
     // flash before the async init jumps to the resumed step. Irrelevant for plain
     // PRE_RX entries, which never wait on it.
-    val initResolved: Boolean = false,
+    val isResolvingEntry: Boolean = false,
+    // Opened from the queue: backing out of an Rx scan returns to the queue.
+    val isFromQueue: Boolean = false,
     val queueItems: List<QueueItem.Dispense> = emptyList(),
     val selectedQueueFilter: KpiFilter? = null,
 
@@ -35,8 +37,8 @@ data class DispenseFlowUiState(
     val selectedBucketId: String = "",
 
     // GS1 lot/exp/serial decoded off the NDC container scan, staged here until the
-    // scan resolves (auto-confirm or after the NDC/equivalence sheet), then written
-    // once as the txn's first bottle entry in [advanceToCountingStage].
+    // scan resolves (auto-confirm or after the equivalence dialog), then written
+    // once as the txn's first bottle entry by DispenseFlowRepository.markContainerVerified.
     val pendingFirstBottle: DispenseBottle? = null,
 
     val ndcScannedValue: String = "",
@@ -44,7 +46,7 @@ data class DispenseFlowUiState(
     val ndcPackageQty: Int? = null,
     val ndcDrugType: String? = null,
     // Strength + dosage form from the NDC drug API (active_ingredients[0].strength
-    // and dosage_form[0]). Surfaced on the NDC verification sheet.
+    // and dosage_form[0]). Surfaced on the Rx sheet and the container step's details bar.
     val ndcStrength: String? = null,
     val ndcDosageForm: String? = null,
 
@@ -57,32 +59,10 @@ data class DispenseFlowUiState(
     // Rx label staged while the verification sheet is up. Nothing is written to
     // dispense_txn until the user taps Proceed, so Cancel / back leaves no row.
     val pendingStandaloneRx: StandaloneRxDraft? = null,
-    val showNdcDetails: Boolean = false,
-    val showInvalidScanDialog: Boolean = false,
-    val showNdcNotFoundDialog: Boolean = false,
     val showNdcEquivalenceDialog: Boolean = false,
 
-    // Transient toast signals — bumped to trigger a one-shot toast in the UI.
-    val scanNdcToastTick: Int = 0,
-    val ndcMismatchToastTick: Int = 0,
-    val txnNotFoundToastTick: Int = 0,
-    // Fired when a standalone Rx label's NDC matches no drug. No sheet is shown.
-    val rxDrugNotFoundToastTick: Int = 0,
-    // Fired during the VIAL step when a scanned vial barcode's RX does not match
-    // the active transaction's RX number.
-    val vialRxMismatchToastTick: Int = 0,
-    // Fired when a scanned RX label's most recent transaction is already COMPLETED /
-    // FORCE_COMPLETED — blocks re-dispensing the same fill instead of creating a duplicate.
-    val rxAlreadyCompletedToastTick: Int = 0,
-    // Fired when an action fails unexpectedly, so the user isn't left with no feedback.
-    val errorToastTick: Int = 0,
-
     val isLoading: Boolean = false,
-    val error: String? = null,
 
-    // HL7/PMS-driven entry: when true the user landed here from a PMS
-    // notification, the txn already exists, and the RX scan stage is skipped.
-    val isFromHl7: Boolean = false,
     // Expected NDC from HL7 (= the drug PMS told us to dispense). Used to
     // detect substitute / mismatch when the user scans the container.
     val hl7ExpectedNdc: String? = null,
@@ -92,11 +72,6 @@ data class DispenseFlowUiState(
 
     val isHazardous: Boolean = false,
 
-    // RX duplicate check: shown when a scanned RX already has a PARTIAL txn in the DB.
-    val showContinueRxDialog: Boolean = false,
     // RX on-hold check: shown when the found txn is in ON_HOLD status.
     val showOnHoldDialog: Boolean = false,
-
-    // One-shot signal: set true when a transaction completes and the queue is empty.
-    val navigateToDashboard: Boolean = false,
 )

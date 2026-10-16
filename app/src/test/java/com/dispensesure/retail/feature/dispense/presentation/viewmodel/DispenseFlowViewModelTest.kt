@@ -1,24 +1,29 @@
 package com.dispensesure.retail.feature.dispense.presentation.viewmodel
 
-import android.content.Context
-import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
+import androidx.lifecycle.SavedStateHandle
+import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
-import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
-import com.dispensesure.retail.core.scanning.data.DrugResolver
-import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
-import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
-import com.dispensesure.retail.core.scanning.domain.model.DrugInfo
 import com.dispensesure.retail.core.utils.common.ParsedScanData
 import com.dispensesure.retail.core.utils.common.parseScanData
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
+import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
+import com.dispensesure.retail.feature.dispense.data.ContainerOutcome
+import com.dispensesure.retail.feature.dispense.data.ContainerVerifier
+import com.dispensesure.retail.feature.dispense.data.DispenseFlowRepository
+import com.dispensesure.retail.feature.dispense.data.RxLabelResolver
+import com.dispensesure.retail.feature.dispense.data.RxScanOutcome
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseFlowAction
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseFlowEffect
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseStage
+import com.dispensesure.retail.feature.dispense.domain.model.StandaloneRxDraft
+import com.dispensesure.retail.navigation.Screen
+import com.dispensesure.retail.util.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -26,84 +31,76 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+
+private const val RAW_RX_LABEL = "RX999|NDC123|10|B1"
+private const val GTIN = "00368540100014"
+private const val SERVER_IMAGE_URL = "https://images.example/drug.png"
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DispenseFlowViewModelTest {
 
-    private val testDispatcher = StandardTestDispatcher()
+    @get:Rule
+    val mainDispatcherRule = MainDispatcherRule()
 
-    private lateinit var appContext: Context
-    private lateinit var drugRepository: IDrugRepository
-    private lateinit var drugMasterDao: DrugMasterDao
-    private lateinit var preferenceHelper: PreferenceHelper
-    private lateinit var dispenseTxnDao: DispenseTxnDao
-    private lateinit var drugImageDownloader: DrugImageDownloader
+    private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
+    private val rxLabelResolver: RxLabelResolver = mockk()
+    private val containerVerifier: ContainerVerifier = mockk()
+    private val dispenseFlowRepository: DispenseFlowRepository = mockk(relaxed = true)
+    private val firstBottle = DispenseBottle(lotNumber = "LOT1", expirationDate = "01-31-2030", serialNumber = "SN1")
 
     @Before
-    fun setup() {
-        mockkStatic(android.util.Log::class)
-        every { android.util.Log.d(any(), any()) } returns 0
-        every { android.util.Log.d(any(), any(), any()) } returns 0
-        every { android.util.Log.i(any(), any()) } returns 0
-        every { android.util.Log.i(any(), any(), any()) } returns 0
-        every { android.util.Log.w(any(), any<String>()) } returns 0
-        every { android.util.Log.w(any(), any<String>(), any()) } returns 0
-        every { android.util.Log.w(any(), any<Throwable>()) } returns 0
-        every { android.util.Log.e(any(), any()) } returns 0
-        every { android.util.Log.e(any(), any(), any()) } returns 0
-
-        // Mock the top-level parseScanData function via its generated file-class.
+    fun setUp() {
+        // The vial check calls the top-level parseScanData; mock it via its file class.
         mockkStatic("com.dispensesure.retail.core.utils.common.ParsedScanDataKt")
-
-        Dispatchers.setMain(testDispatcher)
-
-        appContext = mockk(relaxed = true)
-        drugRepository = mockk(relaxed = true)
-        drugMasterDao = mockk(relaxed = true)
-        preferenceHelper = mockk(relaxed = true)
-        dispenseTxnDao = mockk(relaxed = true)
-        drugImageDownloader = mockk(relaxed = true)
-
         every { preferenceHelper.getLocalId() } returns 1L
         every { preferenceHelper.getTxnId() } returns 0L
         every { preferenceHelper.getBarcodeRegex() } returns "{RXNO}|{NDCNO}|{QTY}|{BUCKET}"
-        every { parseScanData(any(), any()) } returns validParsed()
+        coEvery { dispenseFlowRepository.loadTxn(any()) } returns null
+        coEvery { dispenseFlowRepository.loadDrug(any()) } returns null
+        coEvery { dispenseFlowRepository.loadOrderedDrug(any()) } returns null
+        coEvery { dispenseFlowRepository.markContainerVerified(any(), any(), any(), any()) } returns true
+        coEvery { dispenseFlowRepository.createStandaloneTxn(any(), any()) } returns 200L
+        coEvery { dispenseFlowRepository.hasPendingDispenses(any()) } returns false
+        every { dispenseFlowRepository.observeQueue(any()) } returns flowOf(emptyList())
     }
 
     @After
     fun tearDown() {
-        Dispatchers.resetMain()
         unmockkAll()
     }
 
-    private fun createViewModel() = DispenseFlowViewModel(
-        appContext, DrugResolver(drugMasterDao, drugRepository, drugImageDownloader), drugMasterDao,
-        preferenceHelper, dispenseTxnDao,
+    private fun createViewModel(
+        fromHl7: Boolean = false,
+        fromResume: Boolean = false,
+        fromQueue: Boolean = false,
+    ) = DispenseFlowViewModel(
+        savedStateHandle = SavedStateHandle(
+            mapOf(
+                Screen.DispenseFlow.ARG_FROM_HL7 to fromHl7,
+                Screen.DispenseFlow.ARG_FROM_RESUME to fromResume,
+                Screen.DispenseFlow.ARG_FROM_QUEUE to fromQueue,
+            )
+        ),
+        preferenceHelper = preferenceHelper,
+        rxLabelResolver = rxLabelResolver,
+        containerVerifier = containerVerifier,
+        dispenseFlowRepository = dispenseFlowRepository,
     )
-
-    private fun validParsed(
-        ndcNo: String? = "NDC123",
-        qty: String? = "10",
-        rxNo: String? = "RX999",
-        bucket: String? = "B1",
-        refillNo: String? = null,
-    ) = ParsedScanData(rxNo = rxNo, ndcNo = ndcNo, qty = qty, bucket = bucket, refillNo = refillNo)
 
     private fun drug(
         drugId: Long = 10L,
@@ -112,1609 +109,1056 @@ class DispenseFlowViewModelTest {
         packageQty: Int? = 5,
         isHazardous: Boolean = false,
         drugType: String? = "CII",
+        strength: String? = null,
+        dosageForm: String? = null,
+        drugImagePath: String? = null,
     ) = DrugMasterEntity(
-        drugId = drugId,
-        drugName = drugName,
-        ndc = ndc,
-        packageQty = packageQty,
-        isHazardous = isHazardous,
-        drugType = drugType,
+        drugId = drugId, drugName = drugName, ndc = ndc, packageQty = packageQty,
+        isHazardous = isHazardous, drugType = drugType, strength = strength,
+        dosageForm = dosageForm, drugImagePath = drugImagePath,
     )
 
     private fun txn(
-        txnId: Long = 1L,
+        txnId: Long = 7L,
         drugId: Long? = 10L,
-        status: CountStatus = CountStatus.PARTIAL,
         isNdcVerified: Boolean? = false,
         rxNo: String? = "RX999",
         targetCount: Int? = 10,
         bucketId: String? = null,
     ) = DispenseTxnEntity(
-        txnId = txnId,
-        drugId = drugId,
-        status = status,
-        isNdcVerified = isNdcVerified,
-        rxNo = rxNo,
-        targetCount = targetCount,
-        bucketId = bucketId,
+        txnId = txnId, drugId = drugId, status = CountStatus.PARTIAL, isNdcVerified = isNdcVerified,
+        rxNo = rxNo, targetCount = targetCount, bucketId = bucketId,
     )
 
-    // ───────────────────────────── initializeFromHl7Txn ─────────────────────────────
+    private fun label(rxNo: String? = "RX999", qty: String? = "10", bucket: String? = "B1") =
+        ParsedScanData(rxNo = rxNo, ndcNo = "NDC123", qty = qty, bucket = bucket)
 
-    @Test
-    fun `initializeFromHl7Txn returns early when txnId zero`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 0L
-        val vm = createViewModel()
-        vm.initializeFromHl7Txn()
-        advanceUntilIdle()
-        assertFalse(vm.uiState.value.isFromHl7)
+    /** Collects every effect the view model sends from here on. */
+    private fun TestScope.collectEffects(viewModel: DispenseFlowViewModel): List<DispenseFlowEffect> {
+        val effects = mutableListOf<DispenseFlowEffect>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.effects.collect { effect -> effects += effect }
+        }
+        return effects
     }
 
-    @Test
-    fun `initializeFromHl7Txn returns early when txn null`() = runTest(testDispatcher) {
+    /** Txn 7 picked up on the container step, as a resumed dispense lands. */
+    private fun TestScope.containerStepViewModel(orderedDrug: DrugMasterEntity? = drug()): DispenseFlowViewModel {
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns null
-        val vm = createViewModel()
-        vm.initializeFromHl7Txn()
+        coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(isNdcVerified = false)
+        coEvery { dispenseFlowRepository.loadDrug(10L) } returns orderedDrug
+        val viewModel = createViewModel(fromResume = true)
         advanceUntilIdle()
-        assertFalse(vm.uiState.value.isFromHl7)
+        return viewModel
     }
 
-    @Test
-    fun `initializeFromHl7Txn found with drug populates PRE_NDC`() = runTest(testDispatcher) {
+    /** Txn 7 (Rx RX999) counting, as a resumed, container-verified dispense lands. */
+    private fun TestScope.countingViewModel(): DispenseFlowViewModel {
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug(isHazardous = true)
-        val vm = createViewModel()
-        vm.initializeFromHl7Txn()
+        coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(isNdcVerified = true)
+        coEvery { dispenseFlowRepository.loadDrug(10L) } returns drug()
+        val viewModel = createViewModel(fromResume = true)
         advanceUntilIdle()
-        val s = vm.uiState.value
-        assertEquals(DispenseStage.PRE_NDC, s.stage)
-        assertTrue(s.isFromHl7)
-        assertEquals(7L, s.txnId)
-        assertEquals("Aspirin", s.drugName)
-        assertEquals("NDC123", s.hl7ExpectedNdc)
-        assertTrue(s.isHazardous)
+        return viewModel
+    }
+
+    private fun TestScope.scanRxLabel(viewModel: DispenseFlowViewModel, outcome: RxScanOutcome) {
+        coEvery { rxLabelResolver.resolve(any()) } returns outcome
+        viewModel.onAction(DispenseFlowAction.RxLabelScanned(RAW_RX_LABEL))
+        advanceUntilIdle()
+    }
+
+    private fun TestScope.scanContainer(viewModel: DispenseFlowViewModel, outcome: ContainerOutcome) {
+        coEvery { containerVerifier.verify(any(), any()) } returns outcome
+        viewModel.onAction(DispenseFlowAction.ContainerScanned(GTIN, firstBottle))
+        advanceUntilIdle()
+    }
+
+    // ───────────────────────────── entry ─────────────────────────────
+
+    @Test
+    fun `a plain entry starts on the Rx step without waiting`() = runTest {
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.PRE_RX, viewModel.uiState.value.stage)
+        assertFalse(viewModel.uiState.value.isResolvingEntry)
+        assertFalse(viewModel.uiState.value.isFromQueue)
     }
 
     @Test
-    fun `initializeFromHl7Txn with null drugId keeps defaults`() = runTest(testDispatcher) {
+    fun `an HL7 or resume entry waits until its stage is known`() = runTest {
+        assertTrue(createViewModel(fromHl7 = true).uiState.value.isResolvingEntry)
+        assertTrue(createViewModel(fromResume = true).uiState.value.isResolvingEntry)
+    }
+
+    @Test
+    fun `an HL7 entry with no txn id falls back to the Rx step`() = runTest {
+        val viewModel = createViewModel(fromHl7 = true)
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.PRE_RX, viewModel.uiState.value.stage)
+        assertFalse(viewModel.uiState.value.isResolvingEntry)
+    }
+
+    @Test
+    fun `an HL7 entry with a missing txn falls back to the Rx step`() = runTest {
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, drugId = null)
-        val vm = createViewModel()
-        vm.initializeFromHl7Txn()
-        advanceUntilIdle()
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
-        assertNull(vm.uiState.value.hl7ExpectedNdc)
-    }
 
-    // ───────────────────────────── initializeFromResumedTxn ─────────────────────────────
-
-    @Test
-    fun `initializeFromResumedTxn txnId zero returns early`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 0L
-        val vm = createViewModel()
-        vm.initializeFromResumedTxn()
+        val viewModel = createViewModel(fromHl7 = true)
         advanceUntilIdle()
-        assertEquals(0L, vm.uiState.value.txnId)
+
+        assertEquals(DispenseStage.PRE_RX, viewModel.uiState.value.stage)
+        assertFalse(viewModel.uiState.value.isResolvingEntry)
     }
 
     @Test
-    fun `initializeFromResumedTxn txn null returns early`() = runTest(testDispatcher) {
+    fun `an HL7 entry loads the order onto the container step`() = runTest {
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns null
-        val vm = createViewModel()
-        vm.initializeFromResumedTxn()
+        coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(bucketId = "B9")
+        coEvery { dispenseFlowRepository.loadDrug(10L) } returns drug(isHazardous = true, drugImagePath = "/images/aspirin.webp")
+
+        val viewModel = createViewModel(fromHl7 = true)
         advanceUntilIdle()
-        assertEquals(0L, vm.uiState.value.txnId)
+
+        val state = viewModel.uiState.value
+        assertEquals(DispenseStage.PRE_NDC, state.stage)
+        assertFalse(state.isResolvingEntry)
+        assertEquals(7L, state.txnId)
+        assertEquals("Aspirin", state.drugName)
+        assertEquals("NDC123", state.hl7ExpectedNdc)
+        assertEquals("RX999", state.rxNo)
+        assertEquals("10", state.qty)
+        assertEquals("/images/aspirin.webp", state.drugImage)
+        assertEquals("B9", state.selectedBucketId)
+        assertTrue(state.isHazardous)
     }
 
     @Test
-    fun `initializeFromResumedTxn ndc verified jumps to COUNTING`() = runTest(testDispatcher) {
+    fun `an HL7 entry with no drug keeps the drug fields empty`() = runTest {
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = true)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.initializeFromResumedTxn()
+        coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(drugId = null)
+
+        val viewModel = createViewModel(fromHl7 = true)
         advanceUntilIdle()
-        assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
-        coVerify { dispenseTxnDao.updateGlovesPresent(eq(7L), eq(false), any()) }
+
+        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
+        assertNull(viewModel.uiState.value.hl7ExpectedNdc)
+        assertEquals("", viewModel.uiState.value.drugName)
     }
 
     @Test
-    fun `initializeFromResumedTxn ndc not verified lands PRE_NDC`() = runTest(testDispatcher) {
+    fun `a resume entry with no txn id or a missing txn falls back to the Rx step`() = runTest {
+        val noTxnIdViewModel = createViewModel(fromResume = true)
+        advanceUntilIdle()
+        assertEquals(0L, noTxnIdViewModel.uiState.value.txnId)
+        assertFalse(noTxnIdViewModel.uiState.value.isResolvingEntry)
+
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.initializeFromResumedTxn()
+        val missingTxnViewModel = createViewModel(fromResume = true)
         advanceUntilIdle()
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
-        assertEquals("NDC123", vm.uiState.value.hl7ExpectedNdc)
-    }
-
-    // ───────────────────────────── onRxBarcodeRead ─────────────────────────────
-
-    @Test
-    fun `onRxBarcodeRead wrong stage ignored`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.returnToContainerScan() // PRE_NDC
-        advanceUntilIdle()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertFalse(vm.uiState.value.isLoading)
-        coVerify(exactly = 0) { dispenseTxnDao.getActiveByRxNo(any()) }
+        assertEquals(DispenseStage.PRE_RX, missingTxnViewModel.uiState.value.stage)
+        assertFalse(missingTxnViewModel.uiState.value.isResolvingEntry)
     }
 
     @Test
-    fun `onRxBarcodeRead from QUEUE advances and processes`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.enterQueueMode()
-        advanceUntilIdle()
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        // txn not found -> tick bumped
-        assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
+    fun `a resume entry with the container verified goes straight to counting`() = runTest {
+        val viewModel = countingViewModel()
+
+        assertEquals(DispenseStage.COUNTING, viewModel.uiState.value.stage)
+        assertEquals("RX999", viewModel.uiState.value.rxNo)
+        coVerify { dispenseFlowRepository.clearGlovesPresent(7L) }
     }
 
     @Test
-    fun `onRxBarcodeRead blank gtin shows invalid dialog`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("   ", null)
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.showInvalidScanDialog)
+    fun `a resume entry with the container pending lands on the container step`() = runTest {
+        val viewModel = containerStepViewModel()
+
+        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
+        assertEquals("NDC123", viewModel.uiState.value.hl7ExpectedNdc)
+        assertFalse(viewModel.uiState.value.isResolvingEntry)
     }
 
     @Test
-    fun `onRxBarcodeRead parsed null fields shows invalid dialog`() = runTest(testDispatcher) {
-        every { parseScanData(any(), any()) } returns validParsed(ndcNo = null)
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
+    fun `a queue entry opens the queue on the pending tab`() = runTest {
+        val viewModel = createViewModel(fromQueue = true)
         advanceUntilIdle()
-        assertTrue(vm.uiState.value.showInvalidScanDialog)
-        assertFalse(vm.uiState.value.isLoading)
+
+        assertEquals(DispenseStage.QUEUE, viewModel.uiState.value.stage)
+        assertEquals(KpiFilter.DISP_PENDING, viewModel.uiState.value.selectedQueueFilter)
+        assertTrue(viewModel.uiState.value.isFromQueue)
+        assertFalse(viewModel.uiState.value.isResolvingEntry)
     }
 
     @Test
-    fun `onRxBarcodeRead neither standalone nor hl7 keeps not-found behavior`() =
-        runTest(testDispatcher) {
-            // Both preferenceHelper.isStandaloneMode() and isHl7Enabled() default to false
-            // on the relaxed mock, so the txn-creation branch must not run at all.
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-            assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
-            coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) }
-        }
+    fun `a queue entry that resumes a txn skips the queue`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 7L
+        coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(isNdcVerified = false)
+
+        val viewModel = createViewModel(fromResume = true, fromQueue = true)
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
+        assertTrue(viewModel.uiState.value.isFromQueue)
+    }
+
+    // ───────────────────────────── Rx label ─────────────────────────────
 
     @Test
-    fun `onRxBarcodeRead ON_HOLD shows dialog`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns txn(status = CountStatus.ON_HOLD)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
+    fun `an Rx label on the container step is ignored`() = runTest {
+        val viewModel = containerStepViewModel()
+
+        viewModel.onAction(DispenseFlowAction.RxLabelScanned(RAW_RX_LABEL))
         advanceUntilIdle()
-        assertTrue(vm.uiState.value.showOnHoldDialog)
+
+        coVerify(exactly = 0) { rxLabelResolver.resolve(any()) }
     }
 
     @Test
-    fun `onRxBarcodeRead ON_HOLD label ndc mismatch blocks the dialog`() =
-        runTest(testDispatcher) {
-            // A wrong-drug label must not resume someone else's held txn.
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-                txn(status = CountStatus.ON_HOLD)
-            coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "99999-111-22")
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-
-            assertTrue(vm.uiState.value.ndcMismatchToastTick > 0)
-            assertFalse(vm.uiState.value.showOnHoldDialog)
-            assertFalse(vm.uiState.value.isLoading)
-        }
-
-    @Test
-    fun `onRxBarcodeRead PARTIAL auto-resumes to PRE_NDC`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
+    fun `an Rx label on the queue moves to the Rx step and is read`() = runTest {
+        val viewModel = createViewModel(fromQueue = true)
         advanceUntilIdle()
-        assertEquals(DispenseStage.PRE_RX, vm.uiState.value.stage)
-        assertTrue(vm.uiState.value.showRxDetails)
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.pendingRxResumeStage)
-        coVerify { preferenceHelper.saveTxnId(1L) }
+
+        scanRxLabel(viewModel, RxScanOutcome.NotFound)
+
+        assertEquals(DispenseStage.PRE_RX, viewModel.uiState.value.stage)
+        coVerify { rxLabelResolver.resolve(RAW_RX_LABEL) }
     }
 
     @Test
-    fun `onRxBarcodeRead PARTIAL ndc verified resumes to COUNTING`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL, isNdcVerified = true)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
+    fun `a second Rx label while one is loading is dropped`() = runTest {
+        coEvery { rxLabelResolver.resolve(any()) } returns RxScanOutcome.NotFound
+        val viewModel = createViewModel()
+
+        viewModel.onAction(DispenseFlowAction.RxLabelScanned(RAW_RX_LABEL))
+        viewModel.onAction(DispenseFlowAction.RxLabelScanned(RAW_RX_LABEL))
         advanceUntilIdle()
-        assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
+
+        coVerify(exactly = 1) { rxLabelResolver.resolve(any()) }
     }
 
     @Test
-    fun `onRxBarcodeRead PARTIAL label ndc mismatch shows a toast and no sheet`() =
-        runTest(testDispatcher) {
-            // The Rx matched but the label is for a different drug than PMS ordered.
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-                txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-            coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "99999-111-22")
+    fun `an invalid Rx label toasts and reads again at once`() = runTest {
+        val viewModel = createViewModel()
+        val effects = collectEffects(viewModel)
 
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
+        scanRxLabel(viewModel, RxScanOutcome.Invalid)
 
-            assertTrue(vm.uiState.value.ndcMismatchToastTick > 0)
-            assertFalse(vm.uiState.value.showRxDetails)
-            assertNull(vm.uiState.value.pendingRxResumeStage)
-            assertFalse(vm.uiState.value.isLoading)
-            assertEquals(DispenseStage.PRE_RX, vm.uiState.value.stage)
-            // A rejected label must not prep the txn.
-            coVerify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
-        }
-
-    @Test
-    fun `onRxBarcodeRead PARTIAL ndc verified label mismatch also blocks`() =
-        runTest(testDispatcher) {
-            // The container is already verified, but the label still has to match.
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-                txn(status = CountStatus.PARTIAL, isNdcVerified = true)
-            coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "99999-111-22")
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-
-            assertTrue(vm.uiState.value.ndcMismatchToastTick > 0)
-            assertEquals(DispenseStage.PRE_RX, vm.uiState.value.stage)
-        }
-
-    @Test
-    fun `onRxBarcodeRead PARTIAL dashed label ndc matches an undashed txn ndc`() =
-        runTest(testDispatcher) {
-            // Labels print dashed NDCs, so formatting alone must not reject a match.
-            every { parseScanData(any(), any()) } returns validParsed(ndcNo = "12345-678-90")
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-                txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-            coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "1234567890")
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-
-            assertTrue(vm.uiState.value.showRxDetails)
-            assertEquals(0, vm.uiState.value.ndcMismatchToastTick)
-            assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.pendingRxResumeStage)
-        }
-
-    @Test
-    fun `onRxBarcodeRead PARTIAL with no drug on the txn skips the ndc check`() =
-        runTest(testDispatcher) {
-            // PMS can create an order with no drug. Nothing to compare, so no block.
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-                txn(drugId = null, status = CountStatus.PARTIAL, isNdcVerified = false)
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-
-            assertTrue(vm.uiState.value.showRxDetails)
-            assertEquals(0, vm.uiState.value.ndcMismatchToastTick)
-        }
-
-    @Test
-    fun `onRxBarcodeRead PARTIAL with no bucket on the txn falls back to the label's`() =
-        runTest(testDispatcher) {
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-                txn(status = CountStatus.PARTIAL, isNdcVerified = false, bucketId = null)
-            coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-
-            assertEquals("B1", vm.uiState.value.selectedBucketId)
-        }
-
-    @Test
-    fun `onRxBarcodeRead PARTIAL prefers the txn's bucket over the label's`() =
-        runTest(testDispatcher) {
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-                txn(status = CountStatus.PARTIAL, isNdcVerified = false, bucketId = "B9")
-            coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-
-            assertEquals("B9", vm.uiState.value.selectedBucketId)
-        }
-
-    @Test
-    fun `onRxBarcodeRead does not carry the previous scan's drug details into the sheet`() =
-        runTest(testDispatcher) {
-            // First Rx resolves a drug with an image and a strength.
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-                txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-            coEvery { drugMasterDao.getDrugById(10L) } returns
-                drug(ndc = "NDC123").copy(drugImagePath = "/data/drug1.webp", strength = "50 mg")
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-            assertEquals("Aspirin", vm.uiState.value.drugName)
-            assertEquals("/data/drug1.webp", vm.uiState.value.drugImage)
-
-            vm.onRxCancelled()
-            advanceUntilIdle()
-
-            // The second Rx's txn has no drugId, so the sheet must show blanks — not the
-            // first drug's name / NDC / image / bucket.
-            every { parseScanData(any(), any()) } returns validParsed(rxNo = "RX888", bucket = null)
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX888") } returns
-                txn(txnId = 2L, drugId = null, status = CountStatus.PARTIAL, isNdcVerified = false, rxNo = "RX888")
-            vm.onRxBarcodeRead("gtin2", null)
-            advanceUntilIdle()
-
-            assertTrue(vm.uiState.value.showRxDetails)
-            assertEquals("RX888", vm.uiState.value.rxNo)
-            assertEquals("", vm.uiState.value.drugName)
-            assertEquals("", vm.uiState.value.ndc)
-            assertEquals("", vm.uiState.value.drugImage)
-            assertEquals("", vm.uiState.value.selectedBucketId)
-            assertNull(vm.uiState.value.ndcStrength)
-            assertNull(vm.uiState.value.hl7ExpectedNdc)
-        }
-
-    @Test
-    fun `onRxCancelled clears every field the Rx sheet renders`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns
-            drug(ndc = "NDC123", isHazardous = true).copy(drugImagePath = "/data/drug1.webp", strength = "50 mg")
-
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        vm.onRxCancelled()
-        advanceUntilIdle()
-
-        assertFalse(vm.uiState.value.showRxDetails)
-        assertEquals("", vm.uiState.value.drugName)
-        assertEquals("", vm.uiState.value.ndc)
-        assertEquals("", vm.uiState.value.drugImage)
-        assertEquals("", vm.uiState.value.selectedBucketId)
-        assertNull(vm.uiState.value.rxNo)
-        assertNull(vm.uiState.value.qty)
-        assertNull(vm.uiState.value.ndcStrength)
-        assertNull(vm.uiState.value.hl7ExpectedNdc)
-        assertFalse(vm.uiState.value.isHazardous)
-        assertEquals(0L, vm.uiState.value.txnId)
+        assertEquals(listOf(DispenseFlowEffect.ScanRejected(R.string.scan_correct_label, pauseScanning = false)), effects)
+        assertFalse(viewModel.uiState.value.isLoading)
     }
 
     @Test
-    fun `onRxBarcodeRead else status shows not found tick`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns txn(status = CountStatus.COMPLETED)
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
-    }
-
-    @Test
-    fun `onRxBarcodeRead exception sets error`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo(any()) } throws RuntimeException("boom")
-        every { appContext.getString(any()) } returns "generic error"
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertEquals("generic error", vm.uiState.value.error)
-        assertFalse(vm.uiState.value.isLoading)
-    }
-
-    @Test
-    fun `onRxBarcodeRead loading guard prevents second call`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-        val vm = createViewModel()
-        // Set loading by starting one call but not advancing
-        vm.onRxBarcodeRead("gtin", null)
-        // second call while isLoading true (already set synchronously)
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        coVerify(exactly = 1) { dispenseTxnDao.getActiveByRxNo("RX999") }
-    }
-
-    // ───────────────────────────── onRxBarcodeRead: standalone Rx staging ─────────────────────────────
-    // With no PMS/HL7 txn for the scanned RX, standalone mode resolves the drug for the label's
-    // NDC (local DB, then GTIN, then server) and shows the verify-Rx sheet. The txn is NOT created
-    // here — only on Proceed, so Cancel / back leaves no row behind.
-
-    @Test
-    fun `onRxBarcodeRead not standalone keeps not-found behavior`() = runTest(testDispatcher) {
-        // preferenceHelper is relaxed-mocked, so isStandaloneMode() defaults to false.
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
-        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) }
-    }
-
-    @Test
-    fun `onRxBarcodeRead standalone shows the sheet without creating a txn`() = runTest(testDispatcher) {
-        every { preferenceHelper.isStandaloneMode() } returns true
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-        coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
-        coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
-
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-
-        // The point of the fix: the scan writes nothing.
-        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) }
-        coVerify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
-        // All three args explicit — the DAO's `now` param has a default, and a two-arg
-        // verify would only match that exact timestamp.
-        coVerify(exactly = 0) { dispenseTxnDao.updateGlovesPresent(any(), any(), any()) }
-        // Server fallback must be skipped once the drug resolves locally.
-        coVerify(exactly = 0) { drugRepository.getDrugInfoByNdc(any()) }
-
-        assertTrue(vm.uiState.value.showRxDetails)
-        assertNull(vm.uiState.value.pendingRxResumeStage)
-        assertEquals(0L, vm.uiState.value.txnId)
-        assertEquals(DispenseStage.PRE_RX, vm.uiState.value.stage)
-        assertFalse(vm.uiState.value.isLoading)
-        assertEquals("Aspirin", vm.uiState.value.drugName)
-        assertEquals("NDC123", vm.uiState.value.hl7ExpectedNdc)
-        assertEquals("10", vm.uiState.value.qty)
-        assertEquals("B1", vm.uiState.value.selectedBucketId)
-    }
-
-    @Test
-    fun `onRxBarcodeRead standalone falls back to server when drug not found locally`() =
-        runTest(testDispatcher) {
-            every { preferenceHelper.isStandaloneMode() } returns true
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-            coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
-            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
-                brandName = null, genericName = "ServerDrug", ndc = "NDC123",
-                is_drug_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
-            )
-            coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 77L
-            // First call is the local miss; the drug id then comes from upsertPreservingId.
-            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returnsMany listOf(
-                null,
-                drug(drugId = 77L, ndc = "NDC123", drugName = "ServerDrug"),
-            )
-            coEvery { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) } returns 201L
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-
-            coVerify { drugRepository.getDrugInfoByNdc(any()) }
-            assertEquals("ServerDrug", vm.uiState.value.drugName)
-            coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) }
-
-            // The server-resolved drugId must survive into the txn created on Proceed.
-            vm.onRxConfirmed()
-            advanceUntilIdle()
-            coVerify {
-                dispenseTxnDao.upsertPreservingId(match<DispenseTxnEntity> { it.drugId == 77L })
-            }
-        }
-
-    @Test
-    fun `onRxBarcodeRead standalone drug not found shows a toast and no sheet`() =
-        runTest(testDispatcher) {
-            every { preferenceHelper.isStandaloneMode() } returns true
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns null
-            coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
-            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-
-            // Local, then GTIN, then the API — all three are tried first.
-            coVerify { drugMasterDao.getDrugByNdc("NDC123") }
-            coVerify { drugMasterDao.getDrugByGtin("NDC123") }
-            coVerify { drugRepository.getDrugInfoByNdc(any()) }
-
-            assertTrue(vm.uiState.value.rxDrugNotFoundToastTick > 0)
-            assertFalse(vm.uiState.value.showRxDetails)
-            assertNull(vm.uiState.value.pendingStandaloneRx)
-            assertFalse(vm.uiState.value.isLoading)
-            assertEquals(0L, vm.uiState.value.txnId)
-
-            // Nothing staged means Proceed has nothing to insert.
-            vm.onRxConfirmed()
-            advanceUntilIdle()
-            coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) }
-        }
-
-    @Test
-    fun `onRxBarcodeRead standalone drug found via server still opens the sheet`() =
-        runTest(testDispatcher) {
-            every { preferenceHelper.isStandaloneMode() } returns true
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-            coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
-            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
-                brandName = null, genericName = "ServerDrug", ndc = "NDC123",
-                is_drug_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
-            )
-            coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 77L
-            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returnsMany listOf(
-                null,
-                drug(drugId = 77L, ndc = "NDC123", drugName = "ServerDrug"),
-            )
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-
-            assertTrue(vm.uiState.value.showRxDetails)
-            assertEquals(0, vm.uiState.value.rxDrugNotFoundToastTick)
-        }
-
-    @Test
-    fun `onRxBarcodeRead standalone server drug with no name still opens the sheet`() =
-        runTest(testDispatcher) {
-            every { preferenceHelper.isStandaloneMode() } returns true
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns null
-            coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
-            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
-                brandName = null, genericName = null, ndc = "NDC123",
-                is_drug_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
-            )
-            coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 77L
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-
-            assertTrue(vm.uiState.value.showRxDetails)
-            assertEquals(0, vm.uiState.value.rxDrugNotFoundToastTick)
-            assertEquals("", vm.uiState.value.drugName)
-        }
-
-    // ───────────────────────────── onRxBarcodeRead: already-completed Rx guard ─────────────────────────────
-
-    @Test
-    fun `onRxBarcodeRead most recent txn COMPLETED blocks re-dispense`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getMostRecentByRxNo("RX999") } returns
-            txn(status = CountStatus.COMPLETED)
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.rxAlreadyCompletedToastTick > 0)
-        coVerify(exactly = 0) { dispenseTxnDao.getActiveByRxNo(any()) }
-        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) }
-    }
-
-    @Test
-    fun `onRxBarcodeRead most recent txn FORCE_COMPLETED blocks re-dispense`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getMostRecentByRxNo("RX999") } returns
-            txn(status = CountStatus.FORCE_COMPLETED)
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.rxAlreadyCompletedToastTick > 0)
-    }
-
-    @Test
-    fun `onRxBarcodeRead most recent txn PARTIAL does not block`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getMostRecentByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL)
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertEquals(0, vm.uiState.value.rxAlreadyCompletedToastTick)
-        assertTrue(vm.uiState.value.showRxDetails)
-    }
-
-    @Test
-    fun `onRxBarcodeRead label with refillNo checks that specific fill, not the whole rxNo`() =
-        runTest(testDispatcher) {
-            // Same rxNo, but refill 0 already went out — scanning refill 1's label must NOT
-            // be blocked by refill 0's COMPLETED status. getByRxNoAndFillNo keys on both.
-            every { parseScanData(any(), any()) } returns validParsed(refillNo = "1")
-            coEvery { dispenseTxnDao.getByRxNoAndFillNo("RX999", "1") } returns null
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-            assertEquals(0, vm.uiState.value.rxAlreadyCompletedToastTick)
-            coVerify(exactly = 0) { dispenseTxnDao.getMostRecentByRxNo(any()) }
-        }
-
-    @Test
-    fun `onRxBarcodeRead label with refillNo blocks when that specific fill is completed`() =
-        runTest(testDispatcher) {
-            every { parseScanData(any(), any()) } returns validParsed(refillNo = "0")
-            coEvery { dispenseTxnDao.getByRxNoAndFillNo("RX999", "0") } returns
-                txn(status = CountStatus.COMPLETED)
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-            assertTrue(vm.uiState.value.rxAlreadyCompletedToastTick > 0)
-        }
-
-    // ───────────────────────────── onRxBarcodeRead: invalid numeric qty ─────────────────────────────
-
-    @Test
-    fun `onRxBarcodeRead non-numeric qty shows invalid scan dialog`() = runTest(testDispatcher) {
-        every { parseScanData(any(), any()) } returns validParsed(qty = "not-a-number")
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.showInvalidScanDialog)
-        assertFalse(vm.uiState.value.isLoading)
-        coVerify(exactly = 0) { dispenseTxnDao.getActiveByRxNo(any()) }
-    }
-
-    // ───────────────────────────── onNdcBarcodeRead ─────────────────────────────
-
-    // A fresh dispense reaches the container scan through a reset; no stock entry starts there now.
-    private fun TestScope.ndcVm(): DispenseFlowViewModel {
-        val vm = createViewModel()
-        vm.returnToContainerScan()
-        advanceUntilIdle()
-        return vm
-    }
-
-    @Test
-    fun `onNdcBarcodeRead wrong stage ignored`() = runTest(testDispatcher) {
-        val vm = createViewModel() // PRE_RX
-        vm.onNdcBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        coVerify(exactly = 0) { drugMasterDao.getDrugByGtin(any()) }
-    }
-
-    @Test
-    fun `onNdcBarcodeRead blank shows invalid`() = runTest(testDispatcher) {
-        val vm = ndcVm()
-        advanceUntilIdle()
-        vm.onNdcBarcodeRead("  ", null)
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.showInvalidScanDialog)
-    }
-
-    @Test
-    fun `onNdcBarcodeRead server null shows not found`() = runTest(testDispatcher) {
-        val vm = ndcVm()
-        advanceUntilIdle()
-        coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
-        coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
-        coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
-        vm.onNdcBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.showNdcNotFoundDialog)
-    }
-
-    @Test
-    fun `onNdcBarcodeRead substitute shows equivalence dialog`() = runTest(testDispatcher) {
-        val vm = ndcVm()
-        advanceUntilIdle()
-        coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
-        coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
-        coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
-            brandName = "B", genericName = "Generic", ndc = "SRV1",
-            is_drug_equivalent = true, drugType = "CII", qty = 3, isHazardous = false
+    fun `each turned-away Rx label toasts and pauses scanning`() = runTest {
+        val toastByOutcome = mapOf(
+            RxScanOutcome.AlreadyCompleted to R.string.rx_already_completed_message,
+            RxScanOutcome.NotFound to R.string.transaction_not_found_toast,
+            RxScanOutcome.DrugNotFound to R.string.rx_label_drug_not_found_toast,
+            RxScanOutcome.NdcMismatch to R.string.rescan_ndc_does_not_match_toast,
         )
-        vm.onNdcBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.showNdcEquivalenceDialog)
-        assertEquals("SRV1", vm.uiState.value.ndcScannedValue)
+        toastByOutcome.forEach { (outcome, toastText) ->
+            val viewModel = createViewModel()
+            val effects = collectEffects(viewModel)
+
+            scanRxLabel(viewModel, outcome)
+
+            assertEquals(listOf(DispenseFlowEffect.ScanRejected(toastText, pauseScanning = true)), effects)
+            assertFalse(viewModel.uiState.value.isLoading)
+            assertFalse(viewModel.uiState.value.showRxDetails)
+            assertEquals(DispenseStage.PRE_RX, viewModel.uiState.value.stage)
+        }
+        // A rejected label must not prep any txn.
+        verify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
     }
 
     @Test
-    fun `onNdcBarcodeRead hard mismatch shows toast`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        // set expected ndc via hl7 flow path: use resumed txn to set hl7ExpectedNdc
-        every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "EXPECTED")
-        vm.initializeFromResumedTxn() // PRE_NDC, hl7ExpectedNdc = EXPECTED
-        advanceUntilIdle()
-        coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
-        coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
-        coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
-            brandName = null, genericName = "Gen", ndc = "DIFFERENT",
-            is_drug_equivalent = false, drugType = "CII", qty = 1, isHazardous = null
+    fun `an order on hold shows its dialog until dismissed`() = runTest {
+        val viewModel = createViewModel()
+
+        scanRxLabel(viewModel, RxScanOutcome.OnHold)
+        assertTrue(viewModel.uiState.value.showOnHoldDialog)
+        assertFalse(viewModel.uiState.value.isLoading)
+
+        viewModel.onAction(DispenseFlowAction.OnHoldDismissed)
+        assertFalse(viewModel.uiState.value.showOnHoldDialog)
+    }
+
+    @Test
+    fun `a partial order shows the Rx sheet and preps the txn`() = runTest {
+        val viewModel = createViewModel()
+
+        scanRxLabel(viewModel, RxScanOutcome.Resume(txn(txnId = 1L), drug(), label()))
+
+        val state = viewModel.uiState.value
+        assertEquals(DispenseStage.PRE_RX, state.stage)
+        assertTrue(state.showRxDetails)
+        assertEquals(DispenseStage.PRE_NDC, state.pendingRxResumeStage)
+        assertEquals(1L, state.txnId)
+        assertEquals("Aspirin", state.drugName)
+        assertEquals("NDC123", state.hl7ExpectedNdc)
+        assertEquals("10", state.qty)
+        assertFalse(state.isLoading)
+        coVerify { dispenseFlowRepository.clearGlovesPresent(1L) }
+        verify { preferenceHelper.saveTxnId(1L) }
+    }
+
+    @Test
+    fun `a partial order with the container verified goes straight to counting`() = runTest {
+        val viewModel = createViewModel()
+
+        scanRxLabel(viewModel, RxScanOutcome.Resume(txn(txnId = 1L, isNdcVerified = true), drug(), label()))
+
+        assertEquals(DispenseStage.COUNTING, viewModel.uiState.value.stage)
+        assertFalse(viewModel.uiState.value.showRxDetails)
+        assertNull(viewModel.uiState.value.pendingRxResumeStage)
+    }
+
+    @Test
+    fun `a partial order falls back to the label for what it leaves blank`() = runTest {
+        val viewModel = createViewModel()
+
+        scanRxLabel(
+            viewModel,
+            RxScanOutcome.Resume(txn(rxNo = null, targetCount = null, bucketId = null), drug(), label(rxNo = "RX999", qty = "12", bucket = "B1")),
         )
-        vm.onNdcBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.ndcMismatchToastTick > 0)
+
+        assertEquals("RX999", viewModel.uiState.value.rxNo)
+        assertEquals("12", viewModel.uiState.value.qty)
+        assertEquals("B1", viewModel.uiState.value.selectedBucketId)
     }
 
     @Test
-    fun `onNdcBarcodeRead exception sets error`() = runTest(testDispatcher) {
-        val vm = ndcVm()
-        advanceUntilIdle()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } throws RuntimeException("ndcfail")
-        coEvery { drugMasterDao.getDrugByNdc(any()) } throws RuntimeException("ndcfail")
-        every { appContext.getString(any()) } returns "generic error"
-        vm.onNdcBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertEquals("generic error", vm.uiState.value.error)
+    fun `a partial order's own bucket wins over the label's`() = runTest {
+        val viewModel = createViewModel()
+
+        scanRxLabel(viewModel, RxScanOutcome.Resume(txn(bucketId = "B9"), drug(), label(bucket = "B1")))
+
+        assertEquals("B9", viewModel.uiState.value.selectedBucketId)
     }
 
     @Test
-    fun `onNdcBarcodeRead server failure shows error and logs once`() = runTest(testDispatcher) {
-        val vm = ndcVm()
+    fun `a second Rx does not carry the first one's drug details into the sheet`() = runTest {
+        val viewModel = createViewModel()
+        scanRxLabel(
+            viewModel,
+            RxScanOutcome.Resume(txn(txnId = 1L), drug(drugImagePath = "/data/drug1.webp", strength = "50 mg"), label()),
+        )
+        viewModel.onAction(DispenseFlowAction.RxCancelled)
+
+        // The second Rx's txn has no drug, so the sheet must show blanks.
+        scanRxLabel(
+            viewModel,
+            RxScanOutcome.Resume(txn(txnId = 2L, drugId = null, rxNo = "RX888"), null, label(rxNo = "RX888", bucket = null)),
+        )
+
+        val state = viewModel.uiState.value
+        assertTrue(state.showRxDetails)
+        assertEquals("RX888", state.rxNo)
+        assertEquals("", state.drugName)
+        assertEquals("", state.ndc)
+        assertEquals("", state.drugImage)
+        assertEquals("", state.selectedBucketId)
+        assertNull(state.ndcStrength)
+        assertNull(state.hl7ExpectedNdc)
+    }
+
+    @Test
+    fun `a standalone label shows the sheet and writes nothing`() = runTest {
+        val viewModel = createViewModel()
+        val draft = StandaloneRxDraft(drugId = 55L, rxNo = "RX999", refillNo = null, bucket = "B1", targetCount = 10)
+
+        scanRxLabel(viewModel, RxScanOutcome.Standalone(draft, drug(drugId = 55L)))
+
+        val state = viewModel.uiState.value
+        assertTrue(state.showRxDetails)
+        assertEquals(draft, state.pendingStandaloneRx)
+        assertNull(state.pendingRxResumeStage)
+        assertEquals(0L, state.txnId)
+        assertEquals(DispenseStage.PRE_RX, state.stage)
+        assertEquals("Aspirin", state.drugName)
+        assertEquals("NDC123", state.hl7ExpectedNdc)
+        assertEquals("10", state.qty)
+        assertEquals("B1", state.selectedBucketId)
+        coVerify(exactly = 0) { dispenseFlowRepository.createStandaloneTxn(any(), any()) }
+        coVerify(exactly = 0) { dispenseFlowRepository.clearGlovesPresent(any()) }
+        verify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
+    }
+
+    @Test
+    fun `a failed Rx lookup shows its message`() = runTest {
+        coEvery { rxLabelResolver.resolve(any()) } throws RuntimeException("boom")
+        val viewModel = createViewModel()
+        val effects = collectEffects(viewModel)
+
+        viewModel.onAction(DispenseFlowAction.RxLabelScanned(RAW_RX_LABEL))
         advanceUntilIdle()
-        coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
-        coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
-        coEvery { drugRepository.getDrugInfoByNdc(any()) } throws RuntimeException("offline")
-        every { appContext.getString(any()) } returns "generic error"
-        vm.onNdcBarcodeRead("gtin", null)
+
+        assertEquals(listOf(DispenseFlowEffect.GenericError), effects)
+        assertFalse(viewModel.uiState.value.isLoading)
+    }
+
+    @Test
+    fun `a failure with no message shows nothing`() = runTest {
+        coEvery { rxLabelResolver.resolve(any()) } throws RuntimeException()
+        val viewModel = createViewModel()
+        val effects = collectEffects(viewModel)
+
+        viewModel.onAction(DispenseFlowAction.RxLabelScanned(RAW_RX_LABEL))
         advanceUntilIdle()
-        assertEquals("generic error", vm.uiState.value.error)
-        assertFalse(vm.uiState.value.isLoading)
+
+        assertTrue(effects.isEmpty())
+        assertFalse(viewModel.uiState.value.isLoading)
+    }
+
+    // ───────────────────────────── Proceed / Cancel ─────────────────────────────
+
+    @Test
+    fun `Proceed with nothing staged does nothing`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onAction(DispenseFlowAction.RxProceedTapped)
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.PRE_RX, viewModel.uiState.value.stage)
+        coVerify(exactly = 0) { dispenseFlowRepository.createStandaloneTxn(any(), any()) }
+    }
+
+    @Test
+    fun `Proceed on a partial order moves to the container step without a new txn`() = runTest {
+        val viewModel = createViewModel()
+        scanRxLabel(viewModel, RxScanOutcome.Resume(txn(txnId = 1L), drug(), label()))
+
+        // Tapped twice: the second tap finds nothing left to do.
+        viewModel.onAction(DispenseFlowAction.RxProceedTapped)
+        viewModel.onAction(DispenseFlowAction.RxProceedTapped)
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
+        assertEquals(1L, viewModel.uiState.value.txnId)
+        assertFalse(viewModel.uiState.value.showRxDetails)
+        coVerify(exactly = 0) { dispenseFlowRepository.createStandaloneTxn(any(), any()) }
+    }
+
+    @Test
+    fun `Proceed on a standalone label creates exactly one txn and moves to the container step`() = runTest {
+        val viewModel = createViewModel()
+        val draft = StandaloneRxDraft(drugId = 55L, rxNo = "RX999", refillNo = null, bucket = "B1", targetCount = 10)
+        scanRxLabel(viewModel, RxScanOutcome.Standalone(draft, drug(drugId = 55L)))
+
+        // PROCEED has no debounce, so two taps can land before the sheet goes.
+        viewModel.onAction(DispenseFlowAction.RxProceedTapped)
+        viewModel.onAction(DispenseFlowAction.RxProceedTapped)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { dispenseFlowRepository.createStandaloneTxn(draft, 1L) }
+        verify { preferenceHelper.saveTxnId(200L) }
+        assertEquals(200L, viewModel.uiState.value.txnId)
+        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
+        assertFalse(viewModel.uiState.value.showRxDetails)
+        assertNull(viewModel.uiState.value.pendingStandaloneRx)
+    }
+
+    @Test
+    fun `a failed standalone save shows its message`() = runTest {
+        coEvery { dispenseFlowRepository.createStandaloneTxn(any(), any()) } throws IllegalStateException("insert failed")
+        val viewModel = createViewModel()
+        val effects = collectEffects(viewModel)
+        scanRxLabel(
+            viewModel,
+            RxScanOutcome.Standalone(StandaloneRxDraft(55L, "RX999", null, "B1", 10), drug(drugId = 55L)),
+        )
+
+        viewModel.onAction(DispenseFlowAction.RxProceedTapped)
+        advanceUntilIdle()
+
+        assertEquals(listOf(DispenseFlowEffect.GenericError), effects)
+        assertEquals(DispenseStage.PRE_RX, viewModel.uiState.value.stage)
+    }
+
+    @Test
+    fun `Cancel clears every field the Rx sheet renders`() = runTest {
+        val viewModel = createViewModel()
+        scanRxLabel(
+            viewModel,
+            RxScanOutcome.Resume(txn(), drug(isHazardous = true, drugImagePath = "/data/drug1.webp", strength = "50 mg"), label()),
+        )
+
+        viewModel.onAction(DispenseFlowAction.RxCancelled)
+
+        val state = viewModel.uiState.value
+        assertFalse(state.showRxDetails)
+        assertNull(state.pendingRxResumeStage)
+        assertNull(state.pendingStandaloneRx)
+        assertEquals(0L, state.txnId)
+        assertEquals("", state.drugName)
+        assertEquals("", state.ndc)
+        assertEquals("", state.drugImage)
+        assertEquals("", state.selectedBucketId)
+        assertNull(state.rxNo)
+        assertNull(state.qty)
+        assertNull(state.ndcStrength)
+        assertNull(state.hl7ExpectedNdc)
+        assertFalse(state.isHazardous)
+    }
+
+    @Test
+    fun `Cancel after a standalone label leaves no txn behind`() = runTest {
+        val viewModel = createViewModel()
+        scanRxLabel(
+            viewModel,
+            RxScanOutcome.Standalone(StandaloneRxDraft(55L, "RX999", null, "B1", 10), drug(drugId = 55L)),
+        )
+
+        viewModel.onAction(DispenseFlowAction.RxCancelled)
+        viewModel.onAction(DispenseFlowAction.RxProceedTapped)
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { dispenseFlowRepository.createStandaloneTxn(any(), any()) }
+        verify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
+        assertEquals(0L, viewModel.uiState.value.txnId)
+    }
+
+    // ───────────────────────────── container ─────────────────────────────
+
+    @Test
+    fun `a container read on the Rx step is ignored`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onAction(DispenseFlowAction.ContainerScanned(GTIN, firstBottle))
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { containerVerifier.verify(any(), any()) }
+    }
+
+    @Test
+    fun `a blank container read toasts and reads again at once`() = runTest {
+        val viewModel = containerStepViewModel()
+        val effects = collectEffects(viewModel)
+
+        viewModel.onAction(DispenseFlowAction.ContainerScanned("  ", firstBottle))
+
+        assertEquals(listOf(DispenseFlowEffect.ScanRejected(R.string.scan_correct_label, pauseScanning = false)), effects)
+        coVerify(exactly = 0) { containerVerifier.verify(any(), any()) }
+    }
+
+    @Test
+    fun `a second container read while one is loading is dropped`() = runTest {
+        coEvery { containerVerifier.verify(any(), any()) } returns ContainerOutcome.NotFound
+        val viewModel = containerStepViewModel()
+
+        viewModel.onAction(DispenseFlowAction.ContainerScanned(GTIN, firstBottle))
+        viewModel.onAction(DispenseFlowAction.ContainerScanned(GTIN, firstBottle))
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { containerVerifier.verify(any(), any()) }
+    }
+
+    @Test
+    fun `the container is checked against the order's NDC`() = runTest {
+        val viewModel = containerStepViewModel()
+
+        scanContainer(viewModel, ContainerOutcome.NotFound)
+
+        coVerify { containerVerifier.verify(GTIN, "NDC123") }
+    }
+
+    @Test
+    fun `with no drug on the order the container is checked against nothing`() = runTest {
+        val viewModel = containerStepViewModel(orderedDrug = null)
+
+        scanContainer(viewModel, ContainerOutcome.NotFound)
+
+        coVerify { containerVerifier.verify(GTIN, null) }
+    }
+
+    @Test
+    fun `a saved match verifies the container with the first bottle and starts counting`() = runTest {
+        val viewModel = containerStepViewModel()
+
+        scanContainer(viewModel, ContainerOutcome.SavedMatch(drug(packageQty = 30)))
+
+        val state = viewModel.uiState.value
+        assertEquals(DispenseStage.COUNTING, state.stage)
+        assertEquals("NDC123", state.ndcScannedValue)
+        assertEquals("Aspirin", state.ndcDrugName)
+        assertEquals(30, state.ndcPackageQty)
+        assertNull(state.pendingFirstBottle)
+        assertFalse(state.isLoading)
+        coVerify { dispenseFlowRepository.markContainerVerified(7L, false, null, firstBottle) }
+    }
+
+    @Test
+    fun `a server match takes the server's strength, form and image, then starts counting`() = runTest {
+        val viewModel = containerStepViewModel()
+
+        scanContainer(
+            viewModel,
+            ContainerOutcome.ServerMatch(drug(strength = "50 mg", dosageForm = "TABLET"), SERVER_IMAGE_URL),
+        )
+
+        val state = viewModel.uiState.value
+        assertEquals(DispenseStage.COUNTING, state.stage)
+        assertEquals("50 mg", state.ndcStrength)
+        assertEquals("TABLET", state.ndcDosageForm)
+        assertEquals(SERVER_IMAGE_URL, state.drugImage)
+    }
+
+    @Test
+    fun `a server match with no image keeps the current one`() = runTest {
+        val viewModel = containerStepViewModel(orderedDrug = drug(drugImagePath = "/images/aspirin.webp"))
+
+        scanContainer(viewModel, ContainerOutcome.ServerMatch(drug(), imageUrl = null))
+
+        assertEquals("/images/aspirin.webp", viewModel.uiState.value.drugImage)
+    }
+
+    @Test
+    fun `a substitute asks first and verifies nothing yet`() = runTest {
+        val viewModel = containerStepViewModel()
+
+        scanContainer(viewModel, ContainerOutcome.Substitute(drug(ndc = "SUBNDC", drugName = "Generic"), SERVER_IMAGE_URL))
+
+        val state = viewModel.uiState.value
+        assertTrue(state.showNdcEquivalenceDialog)
+        assertEquals("SUBNDC", state.ndcScannedValue)
+        assertEquals("Generic", state.ndcDrugName)
+        assertEquals(SERVER_IMAGE_URL, state.drugImage)
+        assertEquals(DispenseStage.PRE_NDC, state.stage)
+        coVerify(exactly = 0) { dispenseFlowRepository.markContainerVerified(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `a mismatch toasts, pauses scanning and stays on the container step`() = runTest {
+        val viewModel = containerStepViewModel()
+        val effects = collectEffects(viewModel)
+
+        scanContainer(viewModel, ContainerOutcome.Mismatch(drug(ndc = "DIFFERENT")))
+
+        assertEquals(listOf(DispenseFlowEffect.ScanRejected(R.string.rescan_ndc_does_not_match_toast, pauseScanning = true)), effects)
+        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
+        assertFalse(viewModel.uiState.value.isLoading)
+    }
+
+    @Test
+    fun `an unknown container toasts and reads again at once`() = runTest {
+        val viewModel = containerStepViewModel()
+        val effects = collectEffects(viewModel)
+
+        scanContainer(viewModel, ContainerOutcome.NotFound)
+
+        assertEquals(listOf(DispenseFlowEffect.ScanRejected(R.string.the_scanned_ndc_does_not_match, pauseScanning = false)), effects)
+        assertFalse(viewModel.uiState.value.isLoading)
+    }
+
+    @Test
+    fun `a failed container lookup shows its message`() = runTest {
+        coEvery { containerVerifier.verify(any(), any()) } throws RuntimeException("ndcfail")
+        val viewModel = containerStepViewModel()
+        val effects = collectEffects(viewModel)
+
+        viewModel.onAction(DispenseFlowAction.ContainerScanned(GTIN, firstBottle))
+        advanceUntilIdle()
+
+        assertEquals(listOf(DispenseFlowEffect.GenericError), effects)
+        assertFalse(viewModel.uiState.value.isLoading)
+    }
+
+    @Test
+    fun `a container lookup failure shows its message without logging it again`() = runTest {
+        mockkStatic(android.util.Log::class)
+        every { android.util.Log.e(any(), any(), any()) } returns 0
+        val viewModel = containerStepViewModel()
+        val effects = collectEffects(viewModel)
+
+        scanContainer(viewModel, ContainerOutcome.LookupFailed(RuntimeException("offline")))
+
+        assertEquals(listOf(DispenseFlowEffect.GenericError), effects)
+        assertFalse(viewModel.uiState.value.isLoading)
         // DrugResolver logs the failure; the view model must not log it again.
         verify(exactly = 0) { android.util.Log.e(any(), "NDC barcode processing failed", any()) }
     }
 
     @Test
-    fun `onNdcBarcodeRead loading guard`() = runTest(testDispatcher) {
-        val vm = ndcVm()
-        advanceUntilIdle()
-        coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
-        vm.onNdcBarcodeRead("gtin", null)
-        vm.onNdcBarcodeRead("gtin", null) // second blocked by isLoading
-        advanceUntilIdle()
-        coVerify(atMost = 1) { drugMasterDao.getDrugByGtin("gtin") }
-    }
+    fun `a txn gone by the time of the check stays on the container step`() = runTest {
+        coEvery { dispenseFlowRepository.markContainerVerified(any(), any(), any(), any()) } returns false
+        val viewModel = containerStepViewModel()
 
-    // ───────────────────────────── onRxConfirmed / onRxCancelled ─────────────────────────────
+        scanContainer(viewModel, ContainerOutcome.SavedMatch(drug()))
 
-    @Test
-    fun `onRxConfirmed with nothing staged does nothing`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.onRxConfirmed()
-        advanceUntilIdle()
-        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
+        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
     }
 
     @Test
-    fun `onRxConfirmed resumes an existing PARTIAL txn to PRE_NDC`() = runTest(testDispatcher) {
-        // The txn already exists (found by onRxBarcodeRead), so Proceed only advances the
-        // stage — it must not insert anything.
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
+    fun `with no txn nothing is verified`() = runTest {
+        // A reset on a fresh view model lands on the container step with no txn.
+        val viewModel = createViewModel()
+        viewModel.onAction(DispenseFlowAction.ResetConfirmed { true })
         advanceUntilIdle()
-        vm.onRxConfirmed()
-        advanceUntilIdle()
-        assertEquals(1L, vm.uiState.value.txnId)
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
-        assertFalse(vm.uiState.value.showRxDetails)
-        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) }
+
+        scanContainer(viewModel, ContainerOutcome.SavedMatch(drug()))
+
+        coVerify(exactly = 0) { dispenseFlowRepository.markContainerVerified(any(), any(), any(), any()) }
+        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
     }
 
     @Test
-    fun `onRxCancelled clears fields`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.onRxCancelled()
-        advanceUntilIdle()
-        assertFalse(vm.uiState.value.showRxDetails)
-        assertEquals("", vm.uiState.value.drugName)
-        assertEquals("", vm.uiState.value.ndc)
-        assertNull(vm.uiState.value.rxNo)
-        assertNull(vm.uiState.value.qty)
+    fun `an Rx label on the container step toasts and pauses scanning`() = runTest {
+        val viewModel = containerStepViewModel()
+        val effects = collectEffects(viewModel)
+
+        viewModel.onAction(DispenseFlowAction.RxLabelScannedOnContainerStep)
+
+        assertEquals(listOf(DispenseFlowEffect.ScanRejected(R.string.scan_ndc_toast, pauseScanning = true)), effects)
     }
 
     @Test
-    fun `onRxConfirmed standalone creates the txn and advances to PRE_NDC`() = runTest(testDispatcher) {
-        every { preferenceHelper.isStandaloneMode() } returns true
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-        coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
-        coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
-        coEvery { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) } returns 200L
+    fun `an Rx label flagged for the container step elsewhere does nothing`() = runTest {
+        val viewModel = createViewModel()
+        val effects = collectEffects(viewModel)
 
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        vm.onRxConfirmed()
-        advanceUntilIdle()
+        viewModel.onAction(DispenseFlowAction.RxLabelScannedOnContainerStep)
 
-        coVerify(exactly = 1) {
-            dispenseTxnDao.upsertPreservingId(match<DispenseTxnEntity> {
-                it.drugId == 55L &&
-                    it.rxNo == "RX999" &&
-                    it.bucketId == "B1" &&
-                    it.targetCount == 10 &&
-                    it.isComingFromHL7 == false &&
-                    it.isSynced == false &&
-                    it.isNdcVerified == false &&
-                    it.status == CountStatus.PARTIAL &&
-                    it.transactionOrderId == "RX999"
-            })
-        }
-        coVerify { preferenceHelper.saveTxnId(200L) }
-        assertEquals(200L, vm.uiState.value.txnId)
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
-        assertFalse(vm.uiState.value.showRxDetails)
-        assertNull(vm.uiState.value.pendingStandaloneRx)
+        assertTrue(effects.isEmpty())
     }
 
-    @Test
-    fun `onRxConfirmed standalone with a refill number stamps the composite order id`() =
-        runTest(testDispatcher) {
-            // PMS pulls dispense images by transactionOrderId, so a label with a fill number
-            // must produce the same "RxNo-RefillNo" composite HL7MessageBuilder sends.
-            every { parseScanData(any(), any()) } returns validParsed(refillNo = "1")
-            every { preferenceHelper.isStandaloneMode() } returns true
-            coEvery { dispenseTxnDao.getByRxNoAndFillNo("RX999", "1") } returns null
-            coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
-            coEvery { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) } returns 204L
-
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-            vm.onRxConfirmed()
-            advanceUntilIdle()
-
-            coVerify {
-                dispenseTxnDao.upsertPreservingId(match<DispenseTxnEntity> {
-                    it.refillNo == "1" && it.transactionOrderId == "RX999-1"
-                })
-            }
-        }
+    // ───────────────────────────── substitute ─────────────────────────────
 
     @Test
-    fun `onRxCancelled after a standalone scan leaves no txn behind`() = runTest(testDispatcher) {
-        every { preferenceHelper.isStandaloneMode() } returns true
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-        coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
-
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        vm.onRxCancelled()
-        advanceUntilIdle()
-
-        // The reported bug: cancelling must not leave a PARTIAL dispense in the DB.
-        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) }
-        coVerify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
-        assertFalse(vm.uiState.value.showRxDetails)
-        assertNull(vm.uiState.value.pendingStandaloneRx)
-        assertEquals(0L, vm.uiState.value.txnId)
-    }
-
-    @Test
-    fun `onRxConfirmed standalone double tap creates exactly one txn`() = runTest(testDispatcher) {
-        // PROCEED is a plain Button with no debounce, so two taps can land before the sheet
-        // recomposes away.
-        every { preferenceHelper.isStandaloneMode() } returns true
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
-        coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
-        coEvery { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) } returns 200L
-
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        vm.onRxConfirmed()
-        vm.onRxConfirmed()
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) }
-        assertEquals(200L, vm.uiState.value.txnId)
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
-    }
-
-    @Test
-    fun `onRxConfirmed resume double tap does not create a second txn`() = runTest(testDispatcher) {
-        // Tap 1 consumes pendingRxResumeStage; tap 2 must find nothing to do rather than
-        // falling through into a create path.
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        vm.onRxConfirmed()
-        vm.onRxConfirmed()
-        advanceUntilIdle()
-
-        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) }
-        assertEquals(1L, vm.uiState.value.txnId)
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
-    }
-
-    // ───────────────────────────── confirmSubstitute ─────────────────────────────
-
-    @Test
-    fun `confirmSubstitute sets isSubstituteConfirmed and hides equivalence dialog`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.confirmSubstitute()
-        advanceUntilIdle()
-
-        assertTrue(vm.uiState.value.isSubstituteConfirmed)
-        assertFalse(vm.uiState.value.showNdcEquivalenceDialog)
-    }
-
-    // ───────────────────────────── confirmContinueRx ─────────────────────────────
-
-    @Test
-    fun `confirmContinueRx txn null returns`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getById(0L) } returns null
-        val vm = createViewModel()
-        vm.confirmContinueRx()
-        advanceUntilIdle()
-        assertFalse(vm.uiState.value.stage == DispenseStage.COUNTING)
-    }
-
-    @Test
-    fun `confirmContinueRx verified goes COUNTING`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = true)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        // set txnId in state via resumed init
-        vm.initializeFromResumedTxn()
-        advanceUntilIdle()
-        vm.confirmContinueRx()
-        advanceUntilIdle()
-        assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
-        assertFalse(vm.uiState.value.showContinueRxDialog)
-    }
-
-    @Test
-    fun `confirmContinueRx not verified goes PRE_NDC`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.initializeFromResumedTxn()
-        advanceUntilIdle()
-        vm.confirmContinueRx()
-        advanceUntilIdle()
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
-    }
-
-    // ───────────────────────────── dismiss helpers ─────────────────────────────
-
-    @Test
-    fun `dismissContinueRxDialog resets`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.dismissContinueRxDialog()
-        advanceUntilIdle()
-        assertFalse(vm.uiState.value.showContinueRxDialog)
-        assertEquals(0L, vm.uiState.value.txnId)
-    }
-
-    @Test
-    fun `dismissOnHoldDialog`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.dismissOnHoldDialog()
-        advanceUntilIdle()
-        assertFalse(vm.uiState.value.showOnHoldDialog)
-    }
-
-    @Test
-    fun `dismissNdcEquivalenceDialog clears`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.dismissNdcEquivalenceDialog()
-        advanceUntilIdle()
-        assertFalse(vm.uiState.value.showNdcEquivalenceDialog)
-        assertEquals("", vm.uiState.value.ndcScannedValue)
-        assertEquals("", vm.uiState.value.ndcDrugName)
-        assertNull(vm.uiState.value.ndcPackageQty)
-        assertNull(vm.uiState.value.ndcDrugType)
-    }
-
-    @Test
-    fun `dismissInvalidScanDialog`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.dismissInvalidScanDialog()
-        advanceUntilIdle()
-        assertFalse(vm.uiState.value.showInvalidScanDialog)
-    }
-
-    @Test
-    fun `dismissNdcNotFoundDialog`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.dismissNdcNotFoundDialog()
-        advanceUntilIdle()
-        assertFalse(vm.uiState.value.showNdcNotFoundDialog)
-    }
-
-    // ───────────────────────────── onNdcConfirmed ─────────────────────────────
-
-    @Test
-    fun `onNdcConfirmed with no txn returns`() = runTest(testDispatcher) {
-        val vm = createViewModel() // no txn
-        vm.onNdcConfirmed()
-        advanceUntilIdle()
-        coVerify(exactly = 0) { dispenseTxnDao.update(any()) }
-    }
-
-    @Test
-    fun `onNdcConfirmed existing txn substitute true`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 12L
-        val vm = createViewModel()
-        vm.initializeFromResumedTxn() // sets txnId 7, stage PRE_NDC
-        advanceUntilIdle()
-        // mark substitute via confirmSubstitute path: txn !=0 so needsSheet false -> advances.
-        // Instead set substitute via reflection-free: simulate equivalence then confirm.
-        // Use onNdcBarcodeRead substitute to set isSubstituteConfirmed? That sets dialog only.
-        // confirmSubstitute sets isSubstituteConfirmed=true; txnId!=0 -> needsSheet false -> advanceToCountingStage runs.
-        // To test onNdcConfirmed substitute path explicitly, set ndcScannedValue first.
-        vm.confirmSubstitute()
-        advanceUntilIdle()
-        // After confirmSubstitute (FIXED, txn!=0) it advanced to COUNTING via advanceToCountingStage substitute branch
-        coVerify { dispenseTxnDao.update(any()) }
-    }
-
-    @Test
-    fun `onNdcConfirmed existing txn substitute with scanned value persists substitute drug`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "EXPECTED")
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns null
-        coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
-        coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 12L
-        coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
-            brandName = null, genericName = "Gen", ndc = "SUBNDC",
-            is_drug_equivalent = true, drugType = "X", qty = 7, isHazardous = false
+    fun `confirming a substitute saves it with the txn and starts counting`() = runTest {
+        val viewModel = containerStepViewModel()
+        scanContainer(
+            viewModel,
+            ContainerOutcome.Substitute(
+                drug(ndc = "SUBNDC", drugName = "Generic", drugType = "X", packageQty = 7, strength = "10 mg", dosageForm = "TABLET"),
+                SERVER_IMAGE_URL,
+            ),
         )
-        val vm = createViewModel()
-        vm.initializeFromResumedTxn() // txnId 7 (FIXED), PRE_NDC
-        advanceUntilIdle()
-        vm.onNdcBarcodeRead("gtin", null) // server substitute -> sets ndcScannedValue + equivalence dialog
-        advanceUntilIdle()
-        vm.confirmSubstitute() // FIXED txn!=0 -> needsSheet false -> advanceToCountingStage substitute branch
-        advanceUntilIdle()
-        assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
-        coVerify { dispenseTxnDao.update(any()) }
-    }
 
-    @Test
-    fun `a nameless substitute is saved with no name, not the ordered drug's`() =
-        runTest(testDispatcher) {
-            every { preferenceHelper.getTxnId() } returns 7L
-            coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = false)
-            coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "EXPECTED")
-            coEvery { drugMasterDao.getDrugByGtin(any()) } returns null
-            coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
-            coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 12L
-            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
-                brandName = null, genericName = null, ndc = "SUBNDC",
-                is_drug_equivalent = true, drugType = "X", qty = 7, isHazardous = false,
-            )
-            val vm = createViewModel()
-            vm.initializeFromResumedTxn()
-            advanceUntilIdle()
-            vm.onNdcBarcodeRead("gtin", null)
-            advanceUntilIdle()
-            vm.confirmSubstitute()
-            advanceUntilIdle()
-
-            assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
-            assertEquals("", vm.uiState.value.ndcDrugName)
-            coVerify { drugMasterDao.upsertPreservingId(match<DrugMasterEntity> { it.ndc == "SUBNDC" }) }
-            coVerify(exactly = 0) {
-                drugMasterDao.upsertPreservingId(match<DrugMasterEntity> { it.ndc == "SUBNDC" && it.drugName != null })
-            }
-        }
-
-    @Test
-    fun `onNdcConfirmed existing txn null returns`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returnsMany listOf(
-            txn(txnId = 7L, isNdcVerified = false), // for resume init
-            null // for onNdcConfirmed
-        )
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.initializeFromResumedTxn()
-        advanceUntilIdle()
-        vm.onNdcConfirmed()
-        advanceUntilIdle()
-        // stage remains PRE_NDC since txn null in confirm
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
-    }
-
-    @Test
-    fun `onNdcConfirmed existing txn no substitute goes COUNTING`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.initializeFromResumedTxn()
-        advanceUntilIdle()
-        vm.onNdcConfirmed()
-        advanceUntilIdle()
-        assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
-        coVerify { dispenseTxnDao.update(any()) }
-    }
-
-    // ───────────────────────────── onNdcCancelled ─────────────────────────────
-
-    @Test
-    fun `onNdcCancelled clears`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.onNdcCancelled()
-        advanceUntilIdle()
-        assertFalse(vm.uiState.value.showNdcDetails)
-        assertEquals("", vm.uiState.value.ndcScannedValue)
-        assertEquals("", vm.uiState.value.ndcDrugName)
-        assertFalse(vm.uiState.value.isSubstituteConfirmed)
-    }
-
-    // ───────────────────────────── onRxScannedInNdcStage ─────────────────────────────
-
-    @Test
-    fun `onRxScannedInNdcStage wrong stage ignored`() = runTest(testDispatcher) {
-        val vm = createViewModel() // PRE_RX
-        vm.onRxScannedInNdcStage()
-        advanceUntilIdle()
-        assertEquals(0, vm.uiState.value.scanNdcToastTick)
-    }
-
-    @Test
-    fun `onRxScannedInNdcStage in PRE_NDC bumps tick`() = runTest(testDispatcher) {
-        val vm = ndcVm()
-        advanceUntilIdle()
-        vm.onRxScannedInNdcStage()
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.scanNdcToastTick > 0)
-    }
-
-    // ───────────────────────────── misc setters ─────────────────────────────
-
-    @Test
-    fun `clearError`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.clearError()
-        advanceUntilIdle()
-        assertNull(vm.uiState.value.error)
-    }
-
-    // ───────────────────────────── queue mode ─────────────────────────────
-
-    @Test
-    fun `enterQueueMode sets QUEUE stage and default filter`() = runTest(testDispatcher) {
-        every { preferenceHelper.getLocalId() } returns 1L
-        every {
-            dispenseTxnDao.observePartialDispenses(any(), any(), any())
-        } returns flowOf(emptyList())
-        val vm = createViewModel()
-        vm.enterQueueMode()
-        advanceUntilIdle()
-        assertEquals(DispenseStage.QUEUE, vm.uiState.value.stage)
-        assertEquals(KpiFilter.DISP_PENDING, vm.uiState.value.selectedQueueFilter)
-        assertEquals(true, vm.uiState.value.initResolved)
-    }
-
-    @Test
-    fun `resetToQueue sets QUEUE stage`() = runTest(testDispatcher) {
-        every {
-            dispenseTxnDao.observePartialDispenses(any(), any(), any())
-        } returns flowOf(emptyList())
-        val vm = createViewModel()
-        vm.resetToQueue()
-        advanceUntilIdle()
-        assertEquals(DispenseStage.QUEUE, vm.uiState.value.stage)
-        assertEquals(true, vm.uiState.value.initResolved)
-    }
-
-    @Test
-    fun `observeDispenseQueue maps txns to queue items`() = runTest(testDispatcher) {
-        val dto = DispenseTxnWithDrug(
-            txnId = 1L, drugName = "D", ndc = "N", drugType = "CII", bucketId = "b",
-            createdAt = 1L, targetCount = 5, bottlesJson = null, totalPillCount = 0,
-            isComingFromHL7 = false, isNdcVerified = false,
-            priority = TxnPriority.High, isHazardous = true,
-        )
-        every {
-            dispenseTxnDao.observePartialDispenses(any(), any(), any())
-        } returns flowOf(listOf(dto))
-        val vm = createViewModel()
-        vm.enterQueueMode()
-        advanceUntilIdle()
-        // queue runs on Dispatchers.IO so may complete asynchronously; allow either outcome
-        val items = vm.uiState.value.queueItems
-        if (items.isNotEmpty()) {
-            assertEquals(true, items[0].isHazardous)
-            assertEquals(true, items[0].isHighPriority)
-            assertEquals(true, items[0].isControlled) // CII is controlled
-        }
-    }
-
-    @Test
-    fun `resetToQueueOrNavigateDashboard with pending resets queue`() = runTest(testDispatcher) {
-        coEvery {
-            dispenseTxnDao.countPartialDispenses(any(), any())
-        } returns 2
-        every {
-            dispenseTxnDao.observePartialDispenses(any(), any(), any())
-        } returns flowOf(emptyList())
-        val vm = createViewModel()
-        vm.resetToQueueOrNavigateDashboard()
-        advanceUntilIdle()
-        assertEquals(DispenseStage.QUEUE, vm.uiState.value.stage)
-    }
-
-    @Test
-    fun `resetToQueueOrNavigateDashboard no pending navigates dashboard`() = runTest(testDispatcher) {
-        coEvery {
-            dispenseTxnDao.countPartialDispenses(any(), any())
-        } returns 0
-        val vm = createViewModel()
-        vm.resetToQueueOrNavigateDashboard()
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.navigateToDashboard)
-    }
-
-    @Test
-    fun `clearNavigateToDashboard`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.clearNavigateToDashboard()
-        advanceUntilIdle()
-        assertFalse(vm.uiState.value.navigateToDashboard)
-    }
-
-    @Test
-    fun `setQueueFilter non-null updates`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.setQueueFilter(KpiFilter.DISP_HAZARDOUS)
-        advanceUntilIdle()
-        assertEquals(KpiFilter.DISP_HAZARDOUS, vm.uiState.value.selectedQueueFilter)
-    }
-
-    @Test
-    fun `setQueueFilter null ignored`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.setQueueFilter(KpiFilter.DISP_PENDING)
-        advanceUntilIdle()
-        vm.setQueueFilter(null)
-        advanceUntilIdle()
-        assertEquals(KpiFilter.DISP_PENDING, vm.uiState.value.selectedQueueFilter)
-    }
-
-    // ───────────────────────────── resumeFromQueue ─────────────────────────────
-
-    @Test
-    fun `resumeFromQueue txn null returns`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getById(5L) } returns null
-        val vm = createViewModel()
-        vm.resumeFromQueue(5L)
-        advanceUntilIdle()
-        coVerify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
-    }
-
-    @Test
-    fun `resumeFromQueue verified goes COUNTING`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getById(5L) } returns txn(txnId = 5L, isNdcVerified = true)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.resumeFromQueue(5L)
-        advanceUntilIdle()
-        assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
-        assertEquals(5L, vm.uiState.value.txnId)
-    }
-
-    @Test
-    fun `resumeFromQueue not verified goes PRE_NDC`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getById(5L) } returns txn(txnId = 5L, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.resumeFromQueue(5L)
-        advanceUntilIdle()
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
-    }
-
-    // ───────────────────────────── isHl7Enabled ─────────────────────────────
-
-    @Test
-    fun `isHl7Enabled delegates to preferenceHelper`() {
-        every { preferenceHelper.isHl7Enabled() } returns true
-        val vm = createViewModel()
-        assertTrue(vm.isHl7Enabled())
-        every { preferenceHelper.isHl7Enabled() } returns false
-        assertFalse(vm.isHl7Enabled())
-    }
-
-    // ───────────────────────────── onVialBarcodeRead ─────────────────────────────
-
-    @Test
-    fun `onVialBarcodeRead blank raw value returns false`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        assertFalse(vm.onVialBarcodeRead("   "))
-    }
-
-    @Test
-    fun `onVialBarcodeRead no expected rx returns false`() = runTest(testDispatcher) {
-        // Fresh VM: state.rxNo is null, so expectedRx is empty.
-        val vm = createViewModel()
-        assertFalse(vm.onVialBarcodeRead("RX999"))
-    }
-
-    @Test
-    fun `onVialBarcodeRead pipe-delimited match returns true`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null) // sets state.rxNo = RX999
+        viewModel.onAction(DispenseFlowAction.SubstituteConfirmed)
         advanceUntilIdle()
 
-        every { parseScanData(any(), "RX999|NDC123|10|B1") } returns validParsed(rxNo = "RX999")
-        val matched = vm.onVialBarcodeRead("RX999|NDC123|10|B1")
-        assertTrue(matched)
-        assertEquals(0, vm.uiState.value.vialRxMismatchToastTick)
-    }
-
-    @Test
-    fun `onVialBarcodeRead bare value match returns true`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null) // sets state.rxNo = RX999
-        advanceUntilIdle()
-
-        val matched = vm.onVialBarcodeRead("rx999") // case-insensitive, no pipe
-        assertTrue(matched)
-    }
-
-    @Test
-    fun `onVialBarcodeRead mismatch bumps debounced toast`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-
-        val matched = vm.onVialBarcodeRead("WRONGRX")
-        assertFalse(matched)
-        assertTrue(vm.uiState.value.vialRxMismatchToastTick > 0)
-    }
-
-    @Test
-    fun `onVialBarcodeRead debounces repeated mismatch toasts`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-
-        vm.onVialBarcodeRead("WRONGRX")
-        val firstTick = vm.uiState.value.vialRxMismatchToastTick
-        vm.onVialBarcodeRead("WRONGRX") // immediate repeat, within cooldown
-        assertEquals(firstTick, vm.uiState.value.vialRxMismatchToastTick)
-    }
-
-    @Test
-    fun `onVialBarcodeRead pipe-delimited parses to blank rx returns false`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns
-            txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-
-        every { parseScanData(any(), "garbage|data") } returns validParsed(rxNo = null)
-        assertFalse(vm.onVialBarcodeRead("garbage|data"))
-    }
-
-    // ───────────── advanceToCountingStage: pendingFirstBottle stamping ─────────────
-
-    @Test
-    fun `advanceToCountingStage stamps pendingFirstBottle on dispense txn with no existing bottles`() =
-        runTest(testDispatcher) {
-            every { preferenceHelper.getTxnId() } returns 7L
-            coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = false)
-            coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "EXPECTED")
-            val vm = createViewModel()
-            vm.initializeFromResumedTxn() // txnId 7, PRE_NDC, hl7ExpectedNdc = EXPECTED
-            advanceUntilIdle()
-
-            coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "EXPECTED")
-            val firstBottle = DispenseBottle(lotNumber = "LOT1", expirationDate = "2030-01", serialNumber = "SN1")
-            vm.onNdcBarcodeRead("gtin", null, firstBottle = firstBottle) // trustLocal, needsSheet false -> advance
-            advanceUntilIdle()
-
-            coVerify {
-                dispenseTxnDao.update(match {
-                    it.txnId == 7L &&
-                        DispenseBottleJson.decode(it.bottlesJson) == listOf(firstBottle.copy(txnId = 7L))
-                })
-            }
-            assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
-        }
-
-    // ───────────── advanceToCountingStage: substitute carries forward cached image path ─────────────
-
-    @Test
-    fun `advanceToCountingStage substitute reuses cached drug image path`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "EXPECTED")
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns null
-        coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
-        coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 12L
-        coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
-            brandName = null, genericName = "Gen", ndc = "SUBNDC",
-            is_drug_equivalent = true, drugType = "X", qty = 7, isHazardous = false,
-        )
-        val vm = createViewModel()
-        vm.initializeFromResumedTxn() // txnId 7 (FIXED), PRE_NDC
-        advanceUntilIdle()
-        vm.onNdcBarcodeRead("gtin", null) // server substitute -> ndcScannedValue = SUBNDC
-        advanceUntilIdle()
-
-        // Substitute drug was already cached during the NDC scan with an image path;
-        // advanceToCountingStage must look it up and carry it forward.
-        coEvery { drugMasterDao.getDrugByNdc("SUBNDC") } returns
-            drug(ndc = "SUBNDC").copy(drugImagePath = "/cached/image.png")
-
-        vm.confirmSubstitute()
-        advanceUntilIdle()
-
+        assertTrue(viewModel.uiState.value.isSubstituteConfirmed)
+        assertFalse(viewModel.uiState.value.showNdcEquivalenceDialog)
+        assertEquals(DispenseStage.COUNTING, viewModel.uiState.value.stage)
         coVerify {
-            drugMasterDao.upsertPreservingId(match<DrugMasterEntity> {
-                it.ndc == "SUBNDC" && it.drugImagePath == "/cached/image.png"
-            })
+            dispenseFlowRepository.markContainerVerified(
+                7L,
+                true,
+                match { substituteDrug ->
+                    substituteDrug.ndc == "SUBNDC" && substituteDrug.drugName == "Generic" &&
+                        substituteDrug.drugType == "X" && substituteDrug.packageQty == 7 &&
+                        substituteDrug.strength == "10 mg" && substituteDrug.dosageForm == "TABLET" &&
+                        substituteDrug.drugImagePath == null
+                },
+                firstBottle,
+            )
         }
     }
 
-    // ───────────── advanceToCountingStage with no txn ─────────────
-
     @Test
-    fun `advanceToCountingStage with no txn returns early`() = runTest(testDispatcher) {
-        // confirmSubstitute with txn0 -> advanceToCountingStage -> early return, no txn created.
-        val vm = createViewModel()
-        vm.confirmSubstitute()
+    fun `a nameless substitute is saved with no name, not the ordered drug's`() = runTest {
+        val viewModel = containerStepViewModel()
+        scanContainer(viewModel, ContainerOutcome.Substitute(drug(ndc = "SUBNDC", drugName = null), SERVER_IMAGE_URL))
+
+        viewModel.onAction(DispenseFlowAction.SubstituteConfirmed)
         advanceUntilIdle()
-        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) }
+
+        assertEquals(DispenseStage.COUNTING, viewModel.uiState.value.stage)
+        assertEquals("", viewModel.uiState.value.ndcDrugName)
+        coVerify {
+            dispenseFlowRepository.markContainerVerified(
+                7L,
+                true,
+                match { substituteDrug -> substituteDrug.ndc == "SUBNDC" && substituteDrug.drugName == null },
+                firstBottle,
+            )
+        }
     }
 
-    // ───────────────────────── returnToContainerScan ─────────────────────────
+    @Test
+    fun `a substitute with no scanned NDC is flagged but saves no drug`() = runTest {
+        val viewModel = containerStepViewModel()
+
+        viewModel.onAction(DispenseFlowAction.SubstituteConfirmed)
+        advanceUntilIdle()
+
+        coVerify { dispenseFlowRepository.markContainerVerified(7L, true, null, null) }
+    }
 
     @Test
-    fun `returnToContainerScan goes back to PRE_NDC and clears the container scan state`() =
-        runTest(testDispatcher) {
-            val vm = createViewModel()
+    fun `dismissing a substitute clears what the scan filled in`() = runTest {
+        val viewModel = containerStepViewModel()
+        scanContainer(viewModel, ContainerOutcome.Substitute(drug(ndc = "SUBNDC", drugType = "X"), SERVER_IMAGE_URL))
 
-            vm.returnToContainerScan()
-            advanceUntilIdle()
+        viewModel.onAction(DispenseFlowAction.SubstituteDismissed)
 
-            val state = vm.uiState.value
-            assertEquals(DispenseStage.PRE_NDC, state.stage)
-            assertEquals("", state.ndcScannedValue)
-            assertEquals("", state.ndcDrugName)
-            assertNull(state.pendingFirstBottle)
-            assertFalse(state.isSubstituteConfirmed)
-        }
+        val state = viewModel.uiState.value
+        assertFalse(state.showNdcEquivalenceDialog)
+        assertEquals("", state.ndcScannedValue)
+        assertEquals("", state.ndcDrugName)
+        assertNull(state.ndcPackageQty)
+        assertNull(state.ndcDrugType)
+        assertEquals("", state.drugImage)
+    }
 
-    @Test
-    fun `returnToContainerScan restores the drug image from the drug row`() =
-        runTest(testDispatcher) {
-            // The container scan leaves the server's image URL in state; the details
-            // bar loads a local file, so reset has to take the drug row's path back.
-            val vm = createViewModel()
-            every { preferenceHelper.getTxnId() } returns 7L
-            coEvery { dispenseTxnDao.getById(any()) } returns DispenseTxnEntity(
-                txnId = 7L, drugId = 42L, status = CountStatus.PARTIAL,
-            )
-            coEvery { drugMasterDao.getDrugById(42L) } returns DrugMasterEntity(
-                drugId = 42L,
-                ndc = "NDC1",
-                drugName = "Drug",
-                drugImagePath = "/local/drug.webp",
-                strength = "20mg",
-            )
-
-            vm.returnToContainerScan()
-            advanceUntilIdle()
-
-            assertEquals("/local/drug.webp", vm.uiState.value.drugImage)
-            assertEquals("20mg", vm.uiState.value.ndcStrength)
-        }
+    // ───────────────────────────── vial label ─────────────────────────────
 
     @Test
-    fun `returnToContainerScan restores the dosage form from the drug row`() =
-        runTest(testDispatcher) {
-            // The SCAN bar falls back to a form icon when there is no local image, so
-            // the dosage form has to come back with the strength and the image path.
-            val vm = createViewModel()
-            every { preferenceHelper.getTxnId() } returns 7L
-            coEvery { dispenseTxnDao.getById(any()) } returns DispenseTxnEntity(
-                txnId = 7L, drugId = 42L, status = CountStatus.PARTIAL,
-            )
-            coEvery { drugMasterDao.getDrugById(42L) } returns DrugMasterEntity(
-                drugId = 42L,
-                ndc = "NDC1",
-                drugName = "Drug",
-                drugImagePath = "/local/drug.webp",
-                strength = "20mg",
-                dosageForm = "CAPSULE",
-            )
+    fun `a blank vial read is read again at once`() = runTest {
+        val viewModel = countingViewModel()
+        val effects = collectEffects(viewModel)
 
-            vm.returnToContainerScan()
-            advanceUntilIdle()
+        viewModel.onAction(DispenseFlowAction.VialLabelScanned("   "))
 
-            assertEquals("CAPSULE", vm.uiState.value.ndcDosageForm)
-        }
+        assertEquals(listOf(DispenseFlowEffect.ScanRejected(null, pauseScanning = false)), effects)
+    }
 
     @Test
-    fun `returnToContainerScan runs the reset prelude before flipping the stage`() =
-        runTest(testDispatcher) {
-            // The screen hands the count delete in as the prelude. It has to finish
-            // before the stage moves, or the SCAN strip composes against dying counts.
-            val vm = createViewModel()
-            var stageDuringPrelude: DispenseStage? = null
+    fun `a vial read with no Rx on the txn is read again at once`() = runTest {
+        val viewModel = createViewModel()
+        val effects = collectEffects(viewModel)
 
-            vm.returnToContainerScan { stageDuringPrelude = vm.uiState.value.stage; true }
-            advanceUntilIdle()
+        viewModel.onAction(DispenseFlowAction.VialLabelScanned("RX999"))
 
-            assertEquals(DispenseStage.PRE_RX, stageDuringPrelude)
-            assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
-        }
+        assertEquals(listOf(DispenseFlowEffect.ScanRejected(null, pauseScanning = false)), effects)
+    }
 
     @Test
-    fun `returnToContainerScan keeps the stage when the reset fails`() =
-        runTest(testDispatcher) {
-            val vm = createViewModel()
-            val before = vm.uiState.value.stage
+    fun `a vial Rx label with the txn's Rx matches`() = runTest {
+        every { parseScanData(any(), RAW_RX_LABEL) } returns label(rxNo = "RX999")
+        val viewModel = countingViewModel()
+        val effects = collectEffects(viewModel)
 
-            vm.returnToContainerScan { false }
-            advanceUntilIdle()
+        viewModel.onAction(DispenseFlowAction.VialLabelScanned(RAW_RX_LABEL))
 
-            assertEquals(before, vm.uiState.value.stage)
-        }
-
-    @Test
-    fun `returnToContainerScan still moves to PRE_NDC when the drug lookup throws`() =
-        runTest(testDispatcher) {
-            // The count is already wiped by then, so a failed display lookup must not strand the stage.
-            val vm = createViewModel()
-            every { preferenceHelper.getTxnId() } returns 7L
-            coEvery { dispenseTxnDao.getById(any()) } throws RuntimeException("db down")
-
-            vm.returnToContainerScan()
-            advanceUntilIdle()
-
-            assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
-        }
+        assertEquals(listOf(DispenseFlowEffect.VialLabelMatched), effects)
+    }
 
     @Test
-    fun `returnToContainerScan shows an error when the reset prelude throws`() =
-        runTest(testDispatcher) {
-            val vm = createViewModel()
-            every { appContext.getString(any()) } returns "generic error"
+    fun `a bare Rx number matches in any case`() = runTest {
+        val viewModel = countingViewModel()
+        val effects = collectEffects(viewModel)
 
-            vm.returnToContainerScan { throw RuntimeException("reset failed") }
-            advanceUntilIdle()
+        viewModel.onAction(DispenseFlowAction.VialLabelScanned("rx999"))
 
-            assertEquals("generic error", vm.uiState.value.error)
-        }
+        assertEquals(listOf(DispenseFlowEffect.VialLabelMatched), effects)
+    }
+
+    @Test
+    fun `a wrong vial toasts once per cooldown`() = runTest {
+        val viewModel = countingViewModel()
+        val effects = collectEffects(viewModel)
+
+        viewModel.onAction(DispenseFlowAction.VialLabelScanned("WRONGRX"))
+        // Immediate repeat, within the cooldown: no second toast.
+        viewModel.onAction(DispenseFlowAction.VialLabelScanned("WRONGRX"))
+
+        assertEquals(
+            listOf(
+                DispenseFlowEffect.ScanRejected(R.string.vial_rx_mismatch_toast, pauseScanning = true),
+                DispenseFlowEffect.ScanRejected(null, pauseScanning = false),
+            ),
+            effects,
+        )
+    }
+
+    @Test
+    fun `a vial label that parses to no Rx is read again at once`() = runTest {
+        every { parseScanData(any(), "garbage|data") } returns label(rxNo = null)
+        val viewModel = countingViewModel()
+        val effects = collectEffects(viewModel)
+
+        viewModel.onAction(DispenseFlowAction.VialLabelScanned("garbage|data"))
+
+        assertEquals(listOf(DispenseFlowEffect.ScanRejected(null, pauseScanning = false)), effects)
+    }
+
+    // ───────────────────────────── queue ─────────────────────────────
+
+    @Test
+    fun `the queue shows the repository's rows`() = runTest {
+        val queueItem = QueueItem.Dispense(
+            txn = DispenseTxnWithDrug(
+                txnId = 1L, drugName = "D", ndc = "N", drugType = "CII", bucketId = "b",
+                createdAt = 1L, targetCount = 5, bottlesJson = null, totalPillCount = 0,
+                isComingFromHL7 = false, isNdcVerified = false,
+                priority = TxnPriority.High, isHazardous = true,
+            ),
+            isHazardous = true,
+            isHighPriority = true,
+            isControlled = true,
+        )
+        every { dispenseFlowRepository.observeQueue(1L) } returns flowOf(listOf(queueItem))
+
+        val viewModel = createViewModel(fromQueue = true)
+        advanceUntilIdle()
+
+        assertEquals(listOf(queueItem), viewModel.uiState.value.queueItems)
+    }
+
+    @Test
+    fun `a queue tab is selected and a null tab is ignored`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onAction(DispenseFlowAction.QueueFilterSelected(KpiFilter.DISP_HAZARDOUS))
+        viewModel.onAction(DispenseFlowAction.QueueFilterSelected(null))
+
+        assertEquals(KpiFilter.DISP_HAZARDOUS, viewModel.uiState.value.selectedQueueFilter)
+    }
+
+    @Test
+    fun `tapping a missing queue row does nothing`() = runTest {
+        val viewModel = createViewModel(fromQueue = true)
+
+        viewModel.onAction(DispenseFlowAction.QueueItemTapped(5L))
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.QUEUE, viewModel.uiState.value.stage)
+        verify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
+    }
+
+    @Test
+    fun `tapping a verified queue row goes to counting`() = runTest {
+        coEvery { dispenseFlowRepository.loadTxn(5L) } returns txn(txnId = 5L, isNdcVerified = true)
+        val viewModel = createViewModel(fromQueue = true)
+
+        viewModel.onAction(DispenseFlowAction.QueueItemTapped(5L))
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.COUNTING, viewModel.uiState.value.stage)
+        assertEquals(5L, viewModel.uiState.value.txnId)
+        verify { preferenceHelper.saveTxnId(5L) }
+        coVerify { dispenseFlowRepository.clearGlovesPresent(5L) }
+    }
+
+    @Test
+    fun `tapping an unverified queue row goes to the container step`() = runTest {
+        coEvery { dispenseFlowRepository.loadTxn(5L) } returns txn(txnId = 5L, isNdcVerified = false)
+        val viewModel = createViewModel(fromQueue = true)
+
+        viewModel.onAction(DispenseFlowAction.QueueItemTapped(5L))
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
+    }
+
+    @Test
+    fun `leaving for the queue resets the flow but keeps where it was opened from`() = runTest {
+        val viewModel = createViewModel(fromQueue = true)
+        scanRxLabel(viewModel, RxScanOutcome.Resume(txn(), drug(), label()))
+
+        viewModel.onAction(DispenseFlowAction.LeavingForQueue)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(DispenseStage.QUEUE, state.stage)
+        assertTrue(state.isFromQueue)
+        assertFalse(state.showRxDetails)
+        assertEquals(0L, state.txnId)
+        assertEquals(KpiFilter.DISP_PENDING, state.selectedQueueFilter)
+    }
+
+    @Test
+    fun `a finished count returns to the queue when dispenses are pending`() = runTest {
+        coEvery { dispenseFlowRepository.hasPendingDispenses(1L) } returns true
+        val viewModel = countingViewModel()
+
+        viewModel.onAction(DispenseFlowAction.CountFinished)
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.QUEUE, viewModel.uiState.value.stage)
+    }
+
+    @Test
+    fun `a finished count with nothing pending leaves for the Dashboard`() = runTest {
+        val viewModel = countingViewModel()
+        val effects = collectEffects(viewModel)
+
+        viewModel.onAction(DispenseFlowAction.CountFinished)
+        advanceUntilIdle()
+
+        assertEquals(listOf(DispenseFlowEffect.LeaveToDashboard), effects)
+    }
+
+    // ───────────────────────────── reset ─────────────────────────────
+
+    @Test
+    fun `a reset goes back to the container step and clears the container scan`() = runTest {
+        val viewModel = containerStepViewModel()
+        scanContainer(viewModel, ContainerOutcome.SavedMatch(drug()))
+
+        viewModel.onAction(DispenseFlowAction.ResetConfirmed { true })
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(DispenseStage.PRE_NDC, state.stage)
+        assertEquals("", state.ndcScannedValue)
+        assertEquals("", state.ndcDrugName)
+        assertNull(state.pendingFirstBottle)
+        assertFalse(state.isSubstituteConfirmed)
+    }
+
+    @Test
+    fun `a reset takes the drug row's image, strength and form back`() = runTest {
+        // The container scan leaves the server's image URL in state; the details
+        // bar loads a local file, so reset has to take the drug row's path back.
+        every { preferenceHelper.getTxnId() } returns 7L
+        coEvery { dispenseFlowRepository.loadOrderedDrug(7L) } returns
+            drug(drugImagePath = "/local/drug.webp", strength = "20mg", dosageForm = "CAPSULE")
+        val viewModel = createViewModel()
+
+        viewModel.onAction(DispenseFlowAction.ResetConfirmed { true })
+        advanceUntilIdle()
+
+        assertEquals("/local/drug.webp", viewModel.uiState.value.drugImage)
+        assertEquals("20mg", viewModel.uiState.value.ndcStrength)
+        assertEquals("CAPSULE", viewModel.uiState.value.ndcDosageForm)
+    }
+
+    @Test
+    fun `a reset runs the count reset before flipping the stage`() = runTest {
+        // The count delete has to finish before the stage moves, or the SCAN strip
+        // composes against dying counts.
+        val viewModel = createViewModel()
+        var stageDuringCountReset: DispenseStage? = null
+
+        viewModel.onAction(DispenseFlowAction.ResetConfirmed { stageDuringCountReset = viewModel.uiState.value.stage; true })
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.PRE_RX, stageDuringCountReset)
+        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
+    }
+
+    @Test
+    fun `a failed count reset keeps the stage`() = runTest {
+        val viewModel = countingViewModel()
+
+        viewModel.onAction(DispenseFlowAction.ResetConfirmed { false })
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.COUNTING, viewModel.uiState.value.stage)
+    }
+
+    @Test
+    fun `a reset still moves to the container step when the drug lookup throws`() = runTest {
+        // The count is already wiped by then, so a failed display lookup must not strand the stage.
+        val viewModel = countingViewModel()
+        coEvery { dispenseFlowRepository.loadOrderedDrug(any()) } throws RuntimeException("db down")
+
+        viewModel.onAction(DispenseFlowAction.ResetConfirmed { true })
+        advanceUntilIdle()
+
+        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
+    }
+
+    @Test
+    fun `a reset shows the generic error when the count reset throws`() = runTest {
+        val viewModel = countingViewModel()
+        val effects = collectEffects(viewModel)
+
+        viewModel.onAction(DispenseFlowAction.ResetConfirmed { throw RuntimeException("reset failed") })
+        advanceUntilIdle()
+
+        assertEquals(listOf(DispenseFlowEffect.GenericError), effects)
+    }
 }
