@@ -5,7 +5,8 @@ import com.dispensesure.retail.core.health.data.remote.dto.HealthCheckData
 import com.dispensesure.retail.core.health.domain.data.IHealthRepository
 import com.dispensesure.retail.core.health.domain.model.HealthState
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import dagger.Lazy
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -41,8 +42,8 @@ class SessionHealthControllerTest {
 
     private lateinit var healthRepository: IHealthRepository
     private lateinit var preferenceHelper: PreferenceHelper
-    private lateinit var hl7Repository: Hl7Repository
-    private lateinit var hl7RepositoryLazy: Lazy<Hl7Repository>
+    private lateinit var dispenseHl7Repository: DispenseHl7Repository
+    private lateinit var stockHl7Repository: StockHl7Repository
 
     @Before
     fun setup() {
@@ -54,8 +55,8 @@ class SessionHealthControllerTest {
 
         healthRepository = mockk()
         preferenceHelper = mockk(relaxed = true)
-        hl7Repository = mockk(relaxed = true)
-        hl7RepositoryLazy = Lazy { hl7Repository }
+        dispenseHl7Repository = mockk(relaxed = true)
+        stockHl7Repository = mockk(relaxed = true)
         every { preferenceHelper.getLastHealthCheckedAt() } returns 0L
         every { preferenceHelper.getOfflineSessionThresholdSeconds() } returns 60L
         every { preferenceHelper.getLoggedInAt() } returns 0L
@@ -67,7 +68,12 @@ class SessionHealthControllerTest {
     }
 
     private fun newController(): SessionHealthController =
-        SessionHealthController(healthRepository, preferenceHelper, hl7RepositoryLazy)
+        SessionHealthController(
+            healthRepository,
+            preferenceHelper,
+            Lazy { dispenseHl7Repository },
+            Lazy { stockHl7Repository },
+        )
 
     // ─────────────────────── checkHealth ───────────────────────
 

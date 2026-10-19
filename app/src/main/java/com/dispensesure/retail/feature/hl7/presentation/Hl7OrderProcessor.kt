@@ -10,7 +10,7 @@ import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.parsing.model.Hl7OrderAction
 import com.dispensesure.retail.feature.hl7.parsing.model.OrderGroup
@@ -31,7 +31,7 @@ class Hl7OrderProcessor @Inject constructor(
     private val preferenceHelper: PreferenceHelper,
     private val drugResolver: DrugResolver,
     private val notifier: Hl7Notifier,
-    private val hl7Repository: Hl7Repository,
+    private val dispenseHl7Repository: DispenseHl7Repository,
 ) {
 
     private val logger = AppLogger("Hl7OrderProcessor")
@@ -127,7 +127,7 @@ class Hl7OrderProcessor @Inject constructor(
             txnId = dispenseTxnDao.upsertPreservingId(txn)
         }
 
-        hl7Repository.insertZinContainerDetails(txnId, message)
+        dispenseHl7Repository.insertZinContainerDetails(txnId, message)
 
         notifier.show(
             title = context.getString(R.string.hl7_notification_new_rx_title),
@@ -222,7 +222,7 @@ class Hl7OrderProcessor @Inject constructor(
             txnId = dispenseTxnDao.upsertPreservingId(txn)
         }
 
-        hl7Repository.insertZinContainerDetails(txnId, message)
+        dispenseHl7Repository.insertZinContainerDetails(txnId, message)
 
         notifier.show(
             title = context.getString(R.string.hl7_notification_new_rx_title),

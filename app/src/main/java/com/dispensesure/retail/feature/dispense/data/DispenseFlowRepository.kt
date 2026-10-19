@@ -67,7 +67,7 @@ class DispenseFlowRepository @Inject constructor(
             isNdcVerified = false,
             rxNo = draft.rxNo,
             refillNo = draft.refillNo,
-            // Same RxNo-RefillNo composite HL7MessageBuilder sends as the order identifier
+            // Same RxNo-RefillNo composite DispenseMessageBuilder sends as the order identifier
             // (Vivid ZUI-4 rxNumber / EyeCon ZUI-11 transactionOrderId) — PMS pulls dispense
             // images via getByTransactionOrderId keyed on that value. Without it, a
             // locally-scanned dispense's images 404 on that pull and, with local storage

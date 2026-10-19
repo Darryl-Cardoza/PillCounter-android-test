@@ -27,7 +27,7 @@ import com.dispensesure.retail.core.utils.common.OverlayUtils
 import com.dispensesure.retail.core.utils.common.deleteFilesQuietly
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +47,7 @@ class DispenseCountRepository @Inject constructor(
     private val dispenseCountDao: DispenseCountDao,
     private val drugMasterDao: DrugMasterDao,
     private val operatorNameProvider: OperatorNameProvider,
-    private val hl7Repository: Hl7Repository,
+    private val dispenseHl7Repository: DispenseHl7Repository,
 ) {
 
     private val logger = AppLogger("DispenseCountRepository")
@@ -352,7 +352,7 @@ class DispenseCountRepository @Inject constructor(
         // re-established, so a pharmacist finishing a count on a stable connection saw
         // nothing arrive at the Companion. Failures are fine — the row stays unsynced and
         // the resend-on-connect sweep retries it.
-        hl7Repository.sendDispenseNow(txnId)
+        dispenseHl7Repository.sendDispenseNow(txnId)
         return status
     }
 }

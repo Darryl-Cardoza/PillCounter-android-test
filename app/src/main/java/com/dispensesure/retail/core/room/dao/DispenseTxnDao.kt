@@ -672,7 +672,7 @@ interface DispenseTxnDao {
 
     /**
      * Observe dispense transactions that are completed but NOT synced with PMS — exists solely
-     * to trigger [Hl7Repository.resendPendingHl7Transactions][com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository.resendPendingHl7Transactions]
+     * to trigger [DispenseHl7Repository.resendPendingDispenses][com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository.resendPendingDispenses]
      * on emission, so its filter must match that query's [getPendingHl7TxnOnce] exactly.
      *
      * Doesn't filter on isComingFromHL7, for the same reason [getPendingHl7TxnOnce]

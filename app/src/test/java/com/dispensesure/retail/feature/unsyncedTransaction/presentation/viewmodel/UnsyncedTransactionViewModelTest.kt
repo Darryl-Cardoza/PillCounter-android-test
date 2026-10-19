@@ -8,7 +8,7 @@ import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -37,7 +37,7 @@ class UnsyncedTransactionViewModelTest {
 
     private lateinit var dispenseTxnDao: DispenseTxnDao
     private lateinit var stockBatchDao: StockBatchDao
-    private lateinit var hl7Repository: Hl7Repository
+    private lateinit var stockHl7Repository: StockHl7Repository
     private lateinit var hl7EventHandler: Hl7EventHandler
 
     private lateinit var connectionState: MutableStateFlow<Boolean>
@@ -55,7 +55,7 @@ class UnsyncedTransactionViewModelTest {
 
         dispenseTxnDao = mockk(relaxed = true)
         stockBatchDao = mockk(relaxed = true)
-        hl7Repository = mockk(relaxed = true)
+        stockHl7Repository = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
 
         connectionState = MutableStateFlow(false)
@@ -75,7 +75,7 @@ class UnsyncedTransactionViewModelTest {
     }
 
     private fun createViewModel(): UnsyncedTransactionViewModel =
-        UnsyncedTransactionViewModel(dispenseTxnDao, stockBatchDao, hl7Repository, hl7EventHandler)
+        UnsyncedTransactionViewModel(dispenseTxnDao, stockBatchDao, stockHl7Repository, hl7EventHandler)
 
     private fun pillCount(
         drugName: String? = "Aspirin",
@@ -219,7 +219,7 @@ class UnsyncedTransactionViewModelTest {
             connectionState.value = true
             advanceUntilIdle()
 
-            verify(exactly = 1) { hl7Repository.resendPendingHl7BatchTransactions() }
+            verify(exactly = 1) { stockHl7Repository.resendPendingBatches() }
             // touch the vm so it is not flagged unused.
             assertTrue(vm.unsyncedTransactionUiState.value.dispenseList.isEmpty())
         }
@@ -230,7 +230,7 @@ class UnsyncedTransactionViewModelTest {
             val vm = createViewModel()
             advanceUntilIdle()
 
-            verify(exactly = 0) { hl7Repository.resendPendingHl7BatchTransactions() }
+            verify(exactly = 0) { stockHl7Repository.resendPendingBatches() }
             assertTrue(vm.unsyncedTransactionUiState.value.batchList.isEmpty())
         }
 }

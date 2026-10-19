@@ -94,7 +94,7 @@ presentation-heavy). Shared infrastructure lives under `core/`.
   to avoid an authenticator ↔ client dependency cycle.
 - **Repositories** are bound interface→impl via `@Provides` in each feature
   module (e.g. `ILoginRepository` → `LoginRepository`). Some classes
-  (`HistoryRepository`, `Hl7Repository`, `PreferenceHelper`, `CredentialsValidator`,
+  (`HistoryRepository`, `DispenseHl7Repository`, `StockHl7Repository`, `PreferenceHelper`, `CredentialsValidator`,
   `BarcodeDecoder`) use **constructor injection** with no explicit module.
 - **15 `@HiltViewModel`s** drive the screens; they are obtained in Compose via
   `hiltViewModel()`.
@@ -166,7 +166,7 @@ User → DispenseFlowScreen → DispenseFlowViewModel
   service** for transferring captured images. `HL7Service` is a foreground
   service (`dataSync|connectedDevice`) declared in the manifest.
 - `feature/hl7` orchestrates: `Hl7ServiceManager`, `Hl7EventHandler`,
-  `Hl7MessageSender`, `Hl7Repository`, `Hl7Notifier`.
+  `Hl7MessageSender`, `DispenseHl7Repository`, `StockHl7Repository`, `Hl7Notifier`.
 
 ---
 

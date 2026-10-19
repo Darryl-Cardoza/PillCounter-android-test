@@ -54,7 +54,7 @@ import org.rite.hl7.model.HL7Message
  * Incoming messages are parsed permissively: the sender's own MSH-12 determines the
  * version used to interpret each message, so any HL7 v2.x sender is accepted. The
  * version from [PreferenceHelper.getHl7Version] is only a fallback for messages that
- * omit MSH-12, and is what [HL7MessageBuilder][com.dispensesure.retail.feature.hl7.util.HL7MessageBuilder]
+ * omit MSH-12, and is what [DispenseMessageBuilder][com.dispensesure.retail.feature.hl7.util.DispenseMessageBuilder]
  * uses to decide trigger events (e.g. RDS^O13 vs RDS^O01) when building outbound messages.
  */
 class HL7Service : Service() {

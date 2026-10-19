@@ -17,7 +17,7 @@ import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.scanning.engine.SavedPhoto
 import com.dispensesure.retail.core.utils.common.HelperFunctions
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
 import io.mockk.coEvery
 import io.mockk.coVerifyOrder
 import io.mockk.every
@@ -50,7 +50,7 @@ class DispenseCountRepositoryTest {
     private lateinit var db: AppDatabase
     private lateinit var repository: DispenseCountRepository
     private val operatorNameProvider: OperatorNameProvider = mockk()
-    private val hl7Repository: Hl7Repository = mockk(relaxed = true)
+    private val dispenseHl7Repository: DispenseHl7Repository = mockk(relaxed = true)
 
     @Before
     fun setUp() = runTest {
@@ -82,7 +82,7 @@ class DispenseCountRepositoryTest {
             dispenseCountDao = dispenseCountDao,
             drugMasterDao = db.drugMasterDao(),
             operatorNameProvider = operatorNameProvider,
-            hl7Repository = hl7Repository,
+            dispenseHl7Repository = dispenseHl7Repository,
         )
 
     private suspend fun insertTxn(
@@ -455,7 +455,7 @@ class DispenseCountRepositoryTest {
         assertEquals(CountStatus.COMPLETED, completedTxn.status)
         assertEquals("Jane", completedTxn.operatorFirstName)
         assertEquals("Doe", completedTxn.operatorLastName)
-        verify { hl7Repository.sendDispenseNow(txnId) }
+        verify { dispenseHl7Repository.sendDispenseNow(txnId) }
     }
 
     @Test
@@ -494,7 +494,7 @@ class DispenseCountRepositoryTest {
 
         assertNull(repository.complete(txnId))
         assertEquals(CountStatus.PARTIAL, db.dispenseTxnDao().getById(txnId)?.status)
-        verify(exactly = 0) { hl7Repository.sendDispenseNow(any()) }
+        verify(exactly = 0) { dispenseHl7Repository.sendDispenseNow(any()) }
     }
 
     @Test
@@ -519,7 +519,7 @@ class DispenseCountRepositoryTest {
         coVerifyOrder {
             dispenseTxnDao.updateOperatorName(44L, "Jane", "Doe", any())
             dispenseTxnDao.updateTxnStatus(44L, CountStatus.COMPLETED, any())
-            hl7Repository.sendDispenseNow(44L)
+            dispenseHl7Repository.sendDispenseNow(44L)
         }
     }
 }

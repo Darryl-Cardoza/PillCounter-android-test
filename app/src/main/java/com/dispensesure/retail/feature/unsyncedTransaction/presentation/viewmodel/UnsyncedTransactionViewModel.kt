@@ -13,7 +13,7 @@ import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.unsyncedTransaction.domain.model.CountItem
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import com.dispensesure.retail.feature.unsyncedTransaction.domain.model.UnsyncedTransactionUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -31,7 +31,7 @@ import javax.inject.Inject
 class UnsyncedTransactionViewModel @Inject constructor(
     private val dispenseTxnDao: DispenseTxnDao,
     private val stockBatchDao: StockBatchDao,
-    private val hl7Repository: Hl7Repository,
+    private val stockHl7Repository: StockHl7Repository,
     private val hl7EventHandler: Hl7EventHandler,
 ) : ViewModel() {
 
@@ -89,7 +89,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
                 .filter { it }
                 .collect {
                     try {
-                        hl7Repository.resendPendingHl7BatchTransactions()
+                        stockHl7Repository.resendPendingBatches()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {

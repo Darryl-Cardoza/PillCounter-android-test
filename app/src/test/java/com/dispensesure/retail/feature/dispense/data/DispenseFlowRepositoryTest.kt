@@ -155,7 +155,7 @@ class DispenseFlowRepositoryTest {
     @Test
     fun `a label with a refill number gets the RxNo-RefillNo order id`() = runTest {
         // PMS pulls dispense images by transactionOrderId, so a label with a fill number
-        // must produce the same "RxNo-RefillNo" composite HL7MessageBuilder sends.
+        // must produce the same "RxNo-RefillNo" composite DispenseMessageBuilder sends.
         val txnId = repository.createStandaloneTxn(draft(refillNo = "1"), userLocalId = 1L)
 
         assertEquals("1", savedTxn(txnId).refillNo)

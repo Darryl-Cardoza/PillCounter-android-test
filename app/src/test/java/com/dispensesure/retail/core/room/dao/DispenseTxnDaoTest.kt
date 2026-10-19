@@ -527,7 +527,7 @@ class DispenseTxnDaoTest {
     @Test
     fun `observePendingHl7Txn emits a locally-scanned dispense that is not from hl7`() = runTest {
         // isComingFromHL7 = false (locally scanned): the flow that triggers the resend sweep
-        // must not be blind to this, since resendPendingHl7Transactions() sends it too.
+        // must not be blind to this, since resendPendingDispenses() sends it too.
         dispenseTxnDao.observePendingHl7Txn().test {
             assertTrue(awaitItem().isEmpty())
 

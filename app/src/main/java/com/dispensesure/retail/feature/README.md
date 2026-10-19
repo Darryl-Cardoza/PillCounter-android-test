@@ -108,6 +108,10 @@ Lives in [`../core/scanning/`](../../core/scanning/).
   Runs with `HL7Service`, a foreground service. See [`/docs/architecture.md`](../../../../../../../docs/architecture.md) §7.
 - A new or edited PMS order's notification opens that order
   (`Hl7Notifier.show(…, dispenseTxnId)`).
+- `DispenseHl7Repository` sends dispenses (`RDS^O13`) and saves PMS orders and
+  edits; `StockHl7Repository` answers inventory requests and sends batches
+  (`INU^U05`). The wire text comes from `DispenseMessageBuilder` and
+  `InventoryMessageBuilder`; both send with `Hl7ConfigProvider.current()`.
 
 ---
 

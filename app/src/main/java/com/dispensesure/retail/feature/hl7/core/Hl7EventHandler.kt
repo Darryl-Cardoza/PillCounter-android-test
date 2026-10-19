@@ -6,7 +6,8 @@ import com.dispensesure.retail.core.hl7.core.Hl7EventListener
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.logger.withoutMessage
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.parsing.Hl7OrderHandler
 import com.dispensesure.retail.feature.hl7.parsing.Hl7Parser
@@ -42,7 +43,8 @@ class Hl7EventHandler @Inject constructor(
     private val hl7Validator: Hl7Validator,
     private val hl7OrderHandler: Hl7OrderHandler,
     private val hl7OrderProcessor: Hl7OrderProcessor,
-    private val hl7Repository: Hl7Repository,
+    private val dispenseHl7Repository: DispenseHl7Repository,
+    private val stockHl7Repository: StockHl7Repository,
     private val notifier: Hl7Notifier,
     private val preferenceHelper: PreferenceHelper,
 ) : Hl7EventListener {
@@ -72,7 +74,7 @@ class Hl7EventHandler @Inject constructor(
             messageCode == "INR" && triggerEvent == "U06"
                     && parsed.segment<ZADSegment>(ZADSegment.NAME) == null -> {
                 // INR^U06 without ZAD — inventory count request; process async
-                scope.launch { hl7Repository.handleInrInventoryRequest(parsed) }
+                scope.launch { stockHl7Repository.handleInrInventoryRequest(parsed) }
                 buildSuccessAck(parsed)
             }
             messageCode == "RDE" -> {
@@ -118,12 +120,12 @@ class Hl7EventHandler @Inject constructor(
         return when {
             // ZUI and ZNI order-packet formats bypass the new RDE parser — handled in repository
             hasZui -> {
-                scope.launch { hl7Repository.handleZuiOrderPacketDispenseRequest(parsed) }
+                scope.launch { dispenseHl7Repository.handleZuiOrderPacketDispenseRequest(parsed) }
                 buildSuccessAck(parsed)
             }
 
             hasZni -> {
-                scope.launch { hl7Repository.handleOrderPacketDispenseRequest(parsed) }
+                scope.launch { dispenseHl7Repository.handleOrderPacketDispenseRequest(parsed) }
                 buildSuccessAck(parsed)
             }
 
@@ -149,7 +151,7 @@ class Hl7EventHandler @Inject constructor(
 
             // ORC|XO (change order) — repository handles the edit logic
             orderControl == "XO" && rxe != null -> {
-                scope.launch { hl7Repository.handleOrderEdit(parsed) }
+                scope.launch { dispenseHl7Repository.handleOrderEdit(parsed) }
                 buildSuccessAck(parsed)
             }
 
@@ -239,8 +241,8 @@ class Hl7EventHandler @Inject constructor(
     override fun onClientConnected(host: String, port: Int) {
         logger.i("HL7 client connected | $host:$port")
         _connectionState.value = true
-        hl7Repository.resendPendingHl7Transactions()
-        hl7Repository.resendPendingHl7BatchTransactions()
+        dispenseHl7Repository.resendPendingDispenses()
+        stockHl7Repository.resendPendingBatches()
         notifier.show(
             title = context.getString(R.string.hl7_notification_device_connected_title),
             message = context.getString(R.string.hl7_notification_device_connected_message, host),

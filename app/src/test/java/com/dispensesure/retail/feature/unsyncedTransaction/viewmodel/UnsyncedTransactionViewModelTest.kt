@@ -3,7 +3,7 @@ package com.dispensesure.retail.feature.unsyncedTransaction.viewmodel
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import com.dispensesure.retail.feature.unsyncedTransaction.presentation.viewmodel.UnsyncedTransactionViewModel
 import com.dispensesure.retail.util.MainDispatcherRule
 import io.mockk.coJustRun
@@ -25,7 +25,7 @@ import org.junit.Test
  * Unit tests for [UnsyncedTransactionViewModel].
  *
  * syncBatchesWhenConnected collects hl7EventHandler.connectionState and calls
- * hl7Repository.resendPendingHl7BatchTransactions() when it transitions to true.
+ * stockHl7Repository.resendPendingBatches() when it transitions to true.
  * The other two init observers use DAO flows that never emit under relaxed mocks,
  * so state stays at defaults.
  */
@@ -37,7 +37,7 @@ class UnsyncedTransactionViewModelTest {
 
     private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
     private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
-    private val hl7Repository: Hl7Repository = mockk(relaxed = true)
+    private val stockHl7Repository: StockHl7Repository = mockk(relaxed = true)
     private val hl7EventHandler: Hl7EventHandler = mockk(relaxed = true)
 
     private val connectionStateFlow = MutableStateFlow(false)
@@ -47,11 +47,11 @@ class UnsyncedTransactionViewModelTest {
     @Before
     fun setup() {
         every { hl7EventHandler.connectionState } returns connectionStateFlow
-        coJustRun { hl7Repository.resendPendingHl7BatchTransactions() }
+        coJustRun { stockHl7Repository.resendPendingBatches() }
         viewModel = UnsyncedTransactionViewModel(
             dispenseTxnDao = dispenseTxnDao,
             stockBatchDao = stockBatchDao,
-            hl7Repository = hl7Repository,
+            stockHl7Repository = stockHl7Repository,
             hl7EventHandler = hl7EventHandler,
         )
     }
@@ -70,25 +70,25 @@ class UnsyncedTransactionViewModelTest {
 
     // UNSYNCED_VM_002
     @Test
-    fun `syncBatchesWhenConnected calls resendPendingHl7BatchTransactions when connectionState becomes true`() = runTest {
+    fun `syncBatchesWhenConnected calls resendPendingBatches when connectionState becomes true`() = runTest {
         connectionStateFlow.value = true
         advanceUntilIdle()
 
-        coVerify(atLeast = 1) { hl7Repository.resendPendingHl7BatchTransactions() }
+        coVerify(atLeast = 1) { stockHl7Repository.resendPendingBatches() }
     }
 
     // UNSYNCED_VM_003
     @Test
-    fun `resendPendingHl7BatchTransactions is not called when connectionState stays false`() = runTest {
+    fun `resendPendingBatches is not called when connectionState stays false`() = runTest {
         // connectionStateFlow starts at false; never set to true
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { hl7Repository.resendPendingHl7BatchTransactions() }
+        coVerify(exactly = 0) { stockHl7Repository.resendPendingBatches() }
     }
 
     // UNSYNCED_VM_004
     @Test
-    fun `resendPendingHl7BatchTransactions is called again on each subsequent true emission`() = runTest {
+    fun `resendPendingBatches is called again on each subsequent true emission`() = runTest {
         connectionStateFlow.value = true
         advanceUntilIdle()
         // Toggle back to false (filter skips), then true again
@@ -97,6 +97,6 @@ class UnsyncedTransactionViewModelTest {
         connectionStateFlow.value = true
         advanceUntilIdle()
 
-        coVerify(atLeast = 2) { hl7Repository.resendPendingHl7BatchTransactions() }
+        coVerify(atLeast = 2) { stockHl7Repository.resendPendingBatches() }
     }
 }

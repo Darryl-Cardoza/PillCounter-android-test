@@ -24,7 +24,7 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.ActiveNdc
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditDrugDetails
@@ -82,7 +82,7 @@ class StockCountViewModel @Inject constructor(
     private val operatorNameProvider: OperatorNameProvider,
     private val scanDecoder: ScanDecoder,
     private val drugResolver: DrugResolver,
-    private val hl7Repository: Hl7Repository,
+    private val stockHl7Repository: StockHl7Repository,
     private val hl7EventHandler: Hl7EventHandler,
 ) : ViewModel() {
 
@@ -106,7 +106,7 @@ class StockCountViewModel @Inject constructor(
     /**
      * Expected NDCs for a PMS-requested (INR^U04) stock count. A PMS batch is
      * pre-populated with one txn per requested drug (see
-     * Hl7Repository.handleInrInventoryRequest), so the set of NDCs already in the
+     * StockHl7Repository.handleInrInventoryRequest), so the set of NDCs already in the
      * batch IS the request's expected list. Non-null only when this batch is
      * PMS-sourced (StockBatchEntity.requestIdFromPMS != null); null means "no
      * restriction" (manually started inventory accepts any valid NDC). Loaded
@@ -967,7 +967,7 @@ class StockCountViewModel @Inject constructor(
                         stockBatchDao.updateNote(batchId, note)
                     }
                     if (hl7EventHandler.connectionState.value) {
-                        hl7Repository.resendPendingHl7BatchTransactions()
+                        stockHl7Repository.resendPendingBatches()
                     }
                 } else {
                     logger.d("INV_SCAN confirmEndCount: no committed NDC — nothing to persist")
