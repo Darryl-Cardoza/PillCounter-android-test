@@ -1128,8 +1128,8 @@ class DispenseTxnDaoTest {
         val canadaUnsynced = dispenseTxnDao.observeUnsyncedDispenses(Region.CA, step = StepState.TARGET_VERIFICATION.name).first()
         assertEquals(listOf("CA drug"), canadaUnsynced.map { it.drugName })
         assertEquals(1, dispenseTxnDao.getTotalCompletedTransactionCount(Region.US).first())
-        // HL7 is US-only: both resend queries skip the Canadian dispense.
-        assertEquals(listOf(usDrugId), dispenseTxnDao.getPendingHl7TxnOnce().map { it.drugId })
-        assertEquals(listOf(usDrugId), dispenseTxnDao.observePendingHl7Txn().first().map { it.drugId })
+        // HL7 resends every region's dispenses.
+        assertEquals(setOf(usDrugId, caDrugId), dispenseTxnDao.getPendingHl7TxnOnce().map { it.drugId }.toSet())
+        assertEquals(setOf(usDrugId, caDrugId), dispenseTxnDao.observePendingHl7Txn().first().map { it.drugId }.toSet())
     }
 }

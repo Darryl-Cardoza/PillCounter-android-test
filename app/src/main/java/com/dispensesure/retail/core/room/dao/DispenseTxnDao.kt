@@ -675,7 +675,6 @@ interface DispenseTxnDao {
      * Observe dispense transactions that are completed but NOT synced with PMS — exists solely
      * to trigger [DispenseHl7Repository.resendPendingDispenses][com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository.resendPendingDispenses]
      * on emission, so its filter must match that query's [getPendingHl7TxnOnce] exactly.
-     * Only US dispenses: HL7 is US-only.
      *
      * Doesn't filter on isComingFromHL7, for the same reason [getPendingHl7TxnOnce]
      * doesn't: gating on isComingFromHL7 = 1 made this Flow blind to a locally-scanned dispense
@@ -695,7 +694,6 @@ interface DispenseTxnDao {
     WHERE isDeleted = 0
       AND status = :completedStatus
       AND (isSynced IS NULL OR isSynced = 0)
-      AND (drugId IS NULL OR drugId IN (SELECT drugId FROM drug_master WHERE region = 'US'))
       AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     ORDER BY updatedAt ASC
     """
@@ -712,7 +710,6 @@ interface DispenseTxnDao {
      * isComingFromHL7 = 1 silently excluded dispenses started by
      * scanning an Rx label on the device — those are 0, so they stayed unsynced forever and
      * the PMS never received them.
-     * Only US dispenses: HL7 is US-only.
      */
     @Query(
         """
@@ -721,7 +718,6 @@ interface DispenseTxnDao {
         WHERE isDeleted = 0
           AND status = :completedStatus
           AND (isSynced IS NULL OR isSynced = 0)
-          AND (drugId IS NULL OR drugId IN (SELECT drugId FROM drug_master WHERE region = 'US'))
           AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = :excludeNdc))
           AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
         ORDER BY updatedAt ASC

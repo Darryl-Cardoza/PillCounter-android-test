@@ -126,6 +126,7 @@ class StockHl7RepositoryTest {
         drugResolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader, regionProvider),
         notifier = notifier,
         hl7ConfigProvider = Hl7ConfigProvider(context, preferenceHelper),
+        regionProvider = regionProvider,
     )
 
     // ─────────────────────────────── message builders ───────────────────────────────
@@ -481,6 +482,22 @@ class StockHl7RepositoryTest {
         // Stock counts now write to stock_txn (StockTxnEntity), not pill_count_txn.
         coVerify(timeout = 3000) { stockTxnDao.upsertPreservingId(any()) }
         verify(timeout = 3000) { notifier.show(any(), any()) }
+    }
+
+    @Test
+    fun `handleInrInventoryRequest stamps the batch with the current region`() = runTest(testDispatcher) {
+        every { regionProvider.current } returns Region.CA
+        val repo = createRepo()
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.CA) } returns
+            DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345", region = Region.CA)
+        val insertedBatch = slot<StockBatchEntity>()
+        coEvery { stockBatchDao.insert(capture(insertedBatch)) } returns 100L
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
+
+        repo.handleInrInventoryRequest(inventoryMessage())
+
+        coVerify(timeout = 3000) { stockBatchDao.insert(any()) }
+        assertEquals(Region.CA, insertedBatch.captured.region)
     }
 
     @Test

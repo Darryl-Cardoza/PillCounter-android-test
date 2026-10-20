@@ -324,7 +324,6 @@ interface StockBatchDao {
       AND b.status = :completedStatus
       AND b.bucketId IS NOT '${TutorialData.BUCKET}'
       AND b.isSynced = 0
-      AND b.region = 'US' -- HL7 is US-only; never send a Canadian batch
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
     """

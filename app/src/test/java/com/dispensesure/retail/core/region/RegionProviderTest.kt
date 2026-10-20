@@ -54,6 +54,16 @@ class RegionProviderTest {
     @Test
     fun `current falls back to US when nothing is stored`() {
         every { preferenceHelper.getRegion() } returns null
+        every { preferenceHelper.getLastRegion() } returns null
         assertEquals(Region.US, RegionProvider(preferenceHelper).current)
+    }
+
+    @Test
+    fun `current falls back to the last logged-in region after logout`() {
+        every { preferenceHelper.getRegion() } returns null
+        every { preferenceHelper.getLastRegion() } returns Region.CA
+        val regionProvider = RegionProvider(preferenceHelper)
+        assertNull(regionProvider.region.value)
+        assertEquals(Region.CA, regionProvider.current)
     }
 }

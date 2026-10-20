@@ -459,8 +459,8 @@ class StockBatchDaoTest {
 
         assertEquals(listOf(2L), stockBatchDao.observeUnsyncedCompletedBatches(Region.CA).first().map { it.batchId })
         assertEquals(1, stockBatchDao.getUnsyncedCompletedBatchCount(Region.US).first())
-        // HL7 is US-only: the resend never picks the Canadian batch.
-        assertEquals(listOf(1L), stockBatchDao.getUnsyncedCompletedBatchesOnce().map { it.batchId })
+        // HL7 resends every region's finished batches.
+        assertEquals(setOf(1L, 2L), stockBatchDao.getUnsyncedCompletedBatchesOnce().map { it.batchId }.toSet())
     }
 
     @Test

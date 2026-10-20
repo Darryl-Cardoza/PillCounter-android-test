@@ -29,6 +29,7 @@ private const val KEY_LOCAL_ID = "local_id"
 private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
 private const val KEY_REMEMBER_ME = "remember_me"
 private const val KEY_REGION = "key_region"
+private const val KEY_LAST_REGION = "key_last_region"
 
 // UI Theme
 private const val KEY_THEME_COLORS = "theme_colors"
@@ -350,11 +351,16 @@ class PreferenceHelper @Inject constructor(
 
     fun setRegion(region: Region) {
         prefs.putString(KEY_REGION, region.name)
+        // Kept through logout: PMS requests that arrive while nobody is logged in use it.
+        prefs.putString(KEY_LAST_REGION, region.name)
         logger.i("Region set to: ${region.name}")
     }
 
     fun getRegion(): Region? =
         prefs.getString(KEY_REGION)?.let { storedRegionName -> Region.fromCountryCode(storedRegionName) }
+
+    fun getLastRegion(): Region? =
+        prefs.getString(KEY_LAST_REGION)?.let { storedRegionName -> Region.fromCountryCode(storedRegionName) }
 
     fun setSoundEnabled(enabled: Boolean) {
         prefs.putBoolean(KEY_SOUND, enabled)

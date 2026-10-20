@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.hl7.data.repository
 import android.content.Context
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
@@ -47,6 +48,7 @@ class StockHl7Repository @Inject constructor(
     private val drugResolver: DrugResolver,
     private val notifier: Hl7Notifier,
     private val hl7ConfigProvider: Hl7ConfigProvider,
+    private val regionProvider: RegionProvider,
 ) {
 
     private val logger = AppLogger.create<StockHl7Repository>()
@@ -233,7 +235,9 @@ class StockHl7Repository @Inject constructor(
             isDeleted = false,
             note = null,
             bucketId = "",
-            requestIdFromPMS = message.header?.messageControlId.orEmpty()
+            requestIdFromPMS = message.header?.messageControlId.orEmpty(),
+            // Same region its drugs were resolved under.
+            region = regionProvider.current,
         )
         val batchId = stockBatchDao.insert(batch)
 

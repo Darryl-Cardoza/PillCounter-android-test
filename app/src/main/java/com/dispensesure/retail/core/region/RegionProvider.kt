@@ -18,8 +18,8 @@ class RegionProvider @Inject constructor(
     /** Null between logout and the next login. */
     val region: StateFlow<Region?> = _region.asStateFlow()
 
-    /** Region for logged-in work; US when nothing is stored. */
-    val current: Region get() = _region.value ?: Region.US
+    /** Region for logged-in work. After logout (PMS requests only): the last logged-in region, else US. */
+    val current: Region get() = _region.value ?: preferenceHelper.getLastRegion() ?: Region.US
 
     // Held as a field: SharedPreferences only keeps a weak reference to listeners.
     private val regionPrefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->

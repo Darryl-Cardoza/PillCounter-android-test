@@ -165,6 +165,13 @@ class PreferenceHelperTest {
     }
 
     @Test
+    fun `clearTokens keeps the last region for PMS requests that arrive after logout`() {
+        helper.setRegion(Region.CA)
+        helper.clearTokens()
+        assertEquals(Region.CA, helper.getLastRegion())
+    }
+
+    @Test
     fun `saveTokens handles empty strings`() {
         helper.saveTokens("", "")
         assertEquals("", helper.getAccessToken())
