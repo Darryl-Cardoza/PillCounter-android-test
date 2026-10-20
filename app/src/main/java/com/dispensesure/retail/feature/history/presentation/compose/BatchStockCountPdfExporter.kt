@@ -8,6 +8,8 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.common.formatDisplayDate
@@ -20,7 +22,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class BatchStockCountPdfExporter(private val context: Context) {
+class BatchStockCountPdfExporter(private val context: Context, private val region: Region) {
 
     private val logger = AppLogger.create<BatchStockCountPdfExporter>()
 
@@ -240,7 +242,7 @@ class BatchStockCountPdfExporter(private val context: Context) {
 
         // Left tile
         val lr = RectF(mH, top, mid - gap / 2f, top + h)
-        tile(lr, context.getString(R.string.total_ndc_count), ndcCount.toString(),
+        tile(lr, context.getString(region.wording(R.string.total_ndc_count)), ndcCount.toString(),
             Paint.Align.LEFT, Paint.Align.LEFT, mH + 14f)
 
         // Right tile
@@ -280,7 +282,7 @@ class BatchStockCountPdfExporter(private val context: Context) {
             top + 24f,
             bp(C_TEXT_DARK, 13f),
         )
-        cv.drawText("${context.getString(R.string.pdf_ndc_label)}: ${group.ndc}", ix, top + 41f, np(C_TEXT_MED, 9.5f))
+        cv.drawText("${context.getString(region.wording(R.string.pdf_ndc_label))}: ${group.ndc}", ix, top + 41f, np(C_TEXT_MED, 9.5f))
         bp(C_GREEN, 24f, Paint.Align.RIGHT).let { cv.drawText(group.totalCount.toString(), irx, top + 34f, it) }
 
         // Divider

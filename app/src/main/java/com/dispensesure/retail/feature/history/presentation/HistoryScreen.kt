@@ -18,6 +18,7 @@ import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.compose.SplitResponsive
 import com.dispensesure.retail.core.utils.compose.HeadlineBar
@@ -51,7 +52,8 @@ fun HistoryScreen(
     var showDeleteConfirmationDialog by remember { mutableStateOf(false) }
     var pendingDeleteFilter by remember { mutableStateOf(HistoryDeleteFilter.ALL) }
 
-    val pdfExporter = remember { HistoryPdfExporter(context) }
+    val loggedInRegion = LocalRegion.current
+    val pdfExporter = remember(loggedInRegion) { HistoryPdfExporter(context, loggedInRegion) }
     val today = LocalDate.now()
     val currentMonth = YearMonth.from(today)
     var showSearch by remember { mutableStateOf(false) }

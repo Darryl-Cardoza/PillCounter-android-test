@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.tourguide.FtueController
@@ -127,7 +128,7 @@ internal fun BoxScope.CountModeTopDetailsBar(
         Column(modifier = Modifier.weight(1f)) {
             if (ndc.isNotBlank()) {
                 Text(
-                    text = stringResource(R.string.ndc_value, ndc),
+                    text = regionStringResource(R.string.ndc_value, ndc),
                     color = Color.White.copy(alpha = 0.7f),
                     fontSize = responsiveSp(8.sp, boostOnPhone = true),
                     maxLines = 1,

@@ -33,6 +33,7 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
@@ -353,7 +354,7 @@ fun DispenseFlowScreen(
         dispenseVm.effects.collect { effect ->
             when (effect) {
                 is DispenseFlowEffect.ScanRejected -> {
-                    effect.toastText?.let { toastText -> showToast(context, toastText) }
+                    effect.toastText?.let { toastText -> showToast(context, loggedInRegion.wording(toastText)) }
                     // Read again after the pause, or now when nothing is in the way.
                     if (effect.pauseScanning) {
                         scanCooldownStarts++

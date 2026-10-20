@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.compose.DrugCountRow
@@ -93,7 +94,7 @@ fun DispenseQueuePanel(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        text = stringResource(tab.labelRes),
+                        text = regionStringResource(tab.labelRes),
                         fontSize = 12.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         color = AppTheme.extendedColors.textColor,

@@ -41,6 +41,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
@@ -92,10 +93,11 @@ private fun String?.trimmedOrNull(): String? = this?.trim()?.takeIf { it.isNotEm
 @Composable
 fun DrugCountRowData.identifierLine(): String {
     val resources = LocalResources.current
+    val loggedInRegion = LocalRegion.current
     return buildIdentifierLine(
-        region = LocalRegion.current,
+        region = loggedInRegion,
         rxLabel = { resources.getString(R.string.rx_value, it) },
-        ndcLabel = { resources.getString(R.string.ndc_value, it) },
+        ndcLabel = { resources.getString(loggedInRegion.wording(R.string.ndc_value), it) },
     )
 }
 

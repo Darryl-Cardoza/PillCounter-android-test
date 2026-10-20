@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toDateString
@@ -69,7 +70,8 @@ fun BatchHistoryDetailScreen(
     val uniqueNdcCount by viewModel.uniqueNdcCount.collectAsStateWithLifecycle()
     val drugGroups by viewModel.drugGroups.collectAsStateWithLifecycle()
 
-    val pdfExporter = remember { BatchStockCountPdfExporter(context) }
+    val loggedInRegion = LocalRegion.current
+    val pdfExporter = remember(loggedInRegion) { BatchStockCountPdfExporter(context, loggedInRegion) }
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var expandedDrugId by remember { mutableStateOf<Long?>(null) }
@@ -144,7 +146,7 @@ fun BatchHistoryDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = stringResource(R.string.total_ndc_count),
+                                text = regionStringResource(R.string.total_ndc_count),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = AppTheme.extendedColors.textColor

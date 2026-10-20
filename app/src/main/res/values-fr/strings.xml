@@ -658,4 +658,32 @@
     <string name="tour_title_stock_count_tap">Démarrer un comptage de stock</string>
     <string name="tour_title_verify_rx_proceed">Confirmer et compter</string>
     <string name="tour_ended_locked">La visite s\'est terminée car la session a été verrouillée.</string>
+
+    <!-- Canada wording (Region.wording) -->
+    <string name="queue_tab_controlled_ca">CONTRÔLÉ / SUBSTANCE CIBLÉE</string>
+    <string name="queue_tab_hazardous_ca">CYTOTOXIQUE</string>
+    <string name="kpi_cont_drugs_ca">Contrôlés / Substances ciblées</string>
+    <string name="kpi_hazardous_ca">Cytotoxiques</string>
+    <string name="tour_desc_kpi_dispense_ca">Compteurs Priorité haute, Contrôlés / Substances ciblées et Cytotoxiques de vos dispensations. Touchez une carte pour filtrer la file.</string>
+    <string name="tour_desc_scan_container_ca">Pointez la caméra vers le code QR ou le code-barres DIN du récipient.</string>
+    <string name="tour_desc_inv_camera_preview_ca">Pointez la caméra vers le code-barres DIN d\'un flacon pour commencer à le compter.</string>
+    <string name="tour_desc_inv_edit_actions_ca">Annulez pour abandonner les modifications, ou enregistrez pour mettre à jour les comptages de ce DIN.</string>
+    <string name="tour_desc_inv_end_count_ca">Touchez Terminer le comptage une fois chaque DIN de ce lot compté. Suivant ouvre l\'écran de note.</string>
+    <string name="ndc_value_ca">DIN %1$s</string>
+    <string name="ndc_ca">DIN</string>
+    <string name="ndc_gtin14_ca">DIN/GTIN14</string>
+    <string name="ndc_number_ca">Numéro DIN</string>
+    <string name="the_scanned_ndc_does_not_match_ca">Le DIN scanné ne correspond pas</string>
+    <string name="scan_ndc_toast_ca">Scanner le DIN</string>
+    <string name="rescan_ndc_does_not_match_toast_ca">Re-scanner — le DIN ne correspond pas</string>
+    <string name="ndcs_label_ca">DIN</string>
+    <string name="total_ndc_count_ca">NOMBRE TOTAL DE DIN</string>
+    <string name="pdf_ndc_label_ca">DIN</string>
+    <string name="batch_stock_count_scanned_drug_details_ca">DÉTAILS DU DIN SCANNÉ</string>
+    <string name="batch_stock_count_label_ndc_ca">Numéro DIN</string>
+    <string name="batch_stock_count_total_ndcs_ca">Total DIN</string>
+    <string name="batch_stock_count_drug_not_found_ca">DIN invalide %1$s</string>
+    <string name="batch_stock_count_ndc_not_in_request_ca">Le DIN %1$s ne fait pas partie de cette demande d\'inventaire</string>
+    <string name="photo_label_requested_ndc_ca">DIN demandé</string>
+    <string name="photo_label_dispensed_ndc_ca">DIN délivré</string>
 </resources>

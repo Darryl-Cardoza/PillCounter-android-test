@@ -22,12 +22,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.utils.compose.cardSelectionShadow
 import com.dispensesure.retail.ui.theme.AppTheme
 
@@ -128,7 +128,7 @@ fun BatchHistoryRow(
                         color = MaterialTheme.colorScheme.secondary
                     )
                     Text(
-                        text = stringResource(R.string.ndcs_label),
+                        text = regionStringResource(R.string.ndcs_label),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Normal,
                         color = AppTheme.extendedColors.textColor.copy(alpha = 0.8f),

@@ -14,6 +14,7 @@ import android.text.TextPaint
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.TrayClass
 import com.dispensesure.retail.core.scanning.logic.TrayDetection
@@ -109,10 +110,10 @@ object OverlayUtils {
     /** Top-strip fields under the drug name; stock counts have a single NDC. */
     internal fun topRowFields(info: PhotoInfo, res: Resources): List<InfoField> = buildList {
         if (info.isStockCount) {
-            add(InfoField(res.getString(R.string.ndc), info.requestedNdc.orDash()))
+            add(InfoField(res.getString(info.region.wording(R.string.ndc)), info.requestedNdc.orDash()))
         } else {
-            add(InfoField(res.getString(R.string.photo_label_requested_ndc), info.requestedNdc.orDash()))
-            add(InfoField(res.getString(R.string.photo_label_dispensed_ndc), info.dispensedNdc.orDash()))
+            add(InfoField(res.getString(info.region.wording(R.string.photo_label_requested_ndc)), info.requestedNdc.orDash()))
+            add(InfoField(res.getString(info.region.wording(R.string.photo_label_dispensed_ndc)), info.dispensedNdc.orDash()))
         }
         add(InfoField(res.getString(R.string.lotNo), info.lotNumber.orDash()))
         add(InfoField(res.getString(R.string.serial_no), info.serialNumber.orDash()))

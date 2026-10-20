@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.drugDisplayName
@@ -135,7 +136,7 @@ internal fun BoxScope.CountModePhonePortraitDetailsBar(
             Column(modifier = Modifier.weight(1f)) {
                 if (ndc.isNotBlank()) {
                     Text(
-                        text = stringResource(R.string.ndc_value, ndc),
+                        text = regionStringResource(R.string.ndc_value, ndc),
                         color = Color.White.copy(alpha = 0.7f),
                         fontSize = responsiveSp(8.sp, boostOnPhone = true),
                         maxLines = 1,

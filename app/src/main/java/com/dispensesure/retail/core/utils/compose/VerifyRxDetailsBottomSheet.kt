@@ -68,6 +68,7 @@ import androidx.compose.ui.window.PopupProperties
 import coil.compose.rememberAsyncImagePainter
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
 import com.dispensesure.retail.core.tourguide.TourGuideState
@@ -735,7 +736,7 @@ private fun TabletHorizontalBody(
                 modifier = Modifier.weight(1f)
             )
             DetailItem(
-                label = stringResource(R.string.ndc_number),
+                label = regionStringResource(R.string.ndc_number),
                 value = ndcNumber,
                 modifier = Modifier.weight(1f)
             )
@@ -900,7 +901,7 @@ private fun TabletVerticalBody(
                     modifier = Modifier.weight(1f)
                 )
                 DetailItem(
-                    label = stringResource(R.string.ndc_number),
+                    label = regionStringResource(R.string.ndc_number),
                     value = ndcNumber,
                     modifier = Modifier.weight(1f)
                 )
@@ -1127,7 +1128,7 @@ private fun DetailsGrid(
             contentAlignment = Alignment.Center,
         ) {
             DetailItem(
-                label = stringResource(R.string.ndc_number),
+                label = regionStringResource(R.string.ndc_number),
                 value = ndcNumber,
                 compact = compact,
                 modifier = Modifier.fillMaxWidth(),

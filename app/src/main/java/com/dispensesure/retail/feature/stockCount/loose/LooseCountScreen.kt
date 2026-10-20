@@ -36,6 +36,8 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
@@ -138,14 +140,14 @@ fun LooseCountScreen(
     LaunchedEffect(Unit) {
         viewModel.effects.collect { effect ->
             when (effect) {
-                is LooseCountEffect.ShowToast -> showToast(message = context.toastText(effect.text, effect.formatArg))
+                is LooseCountEffect.ShowToast -> showToast(message = context.toastText(effect.text, effect.formatArg, loggedInRegion))
                 is LooseCountEffect.ContainerRejected -> {
                     val toastText = effect.toastText
                     if (toastText == null) {
                         // Not a container barcode: read again straight away.
                         barcodeAnalyzer.resume()
                     } else {
-                        showToast(message = context.toastText(toastText, effect.formatArg))
+                        showToast(message = context.toastText(toastText, effect.formatArg, loggedInRegion))
                         scanCooldownActive = true
                     }
                 }
@@ -437,6 +439,8 @@ fun LooseCountScreen(
     }
 }
 
-// A toast's text, with its argument when it has one.
-private fun Context.toastText(@StringRes text: Int, formatArg: String?): String =
-    if (formatArg != null) getString(text, formatArg) else getString(text)
+// A toast's text in the region's wording, with its argument when it has one.
+private fun Context.toastText(@StringRes text: Int, formatArg: String?, region: Region): String {
+    val regionText = region.wording(text)
+    return if (formatArg != null) getString(regionText, formatArg) else getString(regionText)
+}

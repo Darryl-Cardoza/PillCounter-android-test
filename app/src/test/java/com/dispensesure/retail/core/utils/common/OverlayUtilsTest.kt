@@ -52,6 +52,9 @@ class OverlayUtilsTest {
             R.string.photo_label_date_time to "Date & Time",
             R.string.photo_label_operator to "Operator",
             R.string.location to "Location",
+            R.string.ndc_ca to "DIN",
+            R.string.photo_label_requested_ndc_ca to "Requested DIN",
+            R.string.photo_label_dispensed_ndc_ca to "Dispensed DIN",
         )
         every { getString(any()) } answers { labels.getValue(firstArg()) }
     }
@@ -137,6 +140,15 @@ class OverlayUtilsTest {
         val bottom = OverlayUtils.bottomRows(canadaInfo, res).flatten().associate { it.label to it.value }
         // 14 or 15 Nov depending on the machine's time zone.
         assertTrue(bottom.getValue("Date & Time").matches(Regex("""2023-11-1[45] \d\d:\d\d [AaPp][Mm]""")))
+    }
+
+    @Test
+    fun `canada photo strip says DIN`() {
+        val dispenseLabels = OverlayUtils.topRowFields(info().copy(region = Region.CA), res).map { it.label }
+        assertEquals(listOf("Requested DIN", "Dispensed DIN", "Lot No.", "Serial No.", "Expiry"), dispenseLabels)
+
+        val stockLabels = OverlayUtils.topRowFields(info(isStockCount = true).copy(region = Region.CA), res).map { it.label }
+        assertEquals("DIN", stockLabels.first())
     }
 
     @Test

@@ -62,6 +62,7 @@ import coil.request.ImageRequest
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.room.models.dtos.DispenseCountInfo
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.utils.common.formatDisplayDate
@@ -269,7 +270,7 @@ private fun TabletDrugInfoLeftContent(
         KeyValueList(
             rows = listOf(
                 stringResource(R.string.drug_name) to requestedDrugName.ifBlank { drugName },
-                stringResource(R.string.ndc).uppercase() to requestedNdc.ifBlank { ndc },
+                regionStringResource(R.string.ndc).uppercase() to requestedNdc.ifBlank { ndc },
             )
         )
     }
@@ -545,7 +546,7 @@ private fun DispensedDrugDetailsPager(
             KeyValueList(
                 rows = listOf(
                     stringResource(R.string.dispensed_drug) to record.drugName,
-                    stringResource(R.string.ndc).uppercase() to record.ndc,
+                    regionStringResource(R.string.ndc).uppercase() to record.ndc,
                     stringResource(R.string.date_and_time) to
                         "${record.date} ${record.time}".trim(),
                     stringResource(R.string.expiry) to formatDisplayDate(record.expiry, LocalRegion.current.numericDatePattern),

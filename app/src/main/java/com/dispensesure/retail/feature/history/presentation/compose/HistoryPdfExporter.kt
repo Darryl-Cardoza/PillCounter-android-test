@@ -2,6 +2,8 @@ package com.dispensesure.retail.feature.history.presentation.compose
 
 import android.content.Context
 import android.graphics.Canvas
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.wording
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -19,7 +21,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class HistoryPdfExporter(private val context: Context) {
+class HistoryPdfExporter(private val context: Context, private val region: Region) {
 
     private val logger = AppLogger("HistoryPdfExporter")
 
@@ -116,7 +118,7 @@ class HistoryPdfExporter(private val context: Context) {
             val colWidths = floatArrayOf(col1, col2, col3, col4)
             val headers = arrayOf(
                 context.getString(R.string.drugname_two_lines),
-                context.getString(R.string.ndc_gtin14),
+                context.getString(region.wording(R.string.ndc_gtin14)),
                 context.getString(R.string.pills_count),
                 context.getString(R.string.status)
             )
