@@ -40,6 +40,17 @@ class ParsedScanDataTest {
     }
 
     @Test
+    fun parseScanData_canadianTemplateReadsTheDinAsTheDrugCode() {
+        val template = "^(?<rxnumber>[^|]{1,32})\\|(?<refillno>\\d{1,3})\\|(?<din>\\d{8})\\|(?<qty>[\\d.]{1,10})$"
+        val result = parseScanData(template, "RX100426|0|02230714|30")
+
+        Assert.assertEquals("RX100426", result.rxNo)
+        Assert.assertEquals("0", result.refillNo)
+        Assert.assertEquals("02230714", result.ndcNo)
+        Assert.assertEquals("30", result.qty)
+    }
+
+    @Test
     fun parseScanData_noMatch_returnsDefault() {
         // Template requires three pipe-delimited groups; raw has only one value.
         val template = "(?<RxNo>[^|]+)\\|(?<NdcNo>[^|]+)\\|(?<Qty>[^|]+)"

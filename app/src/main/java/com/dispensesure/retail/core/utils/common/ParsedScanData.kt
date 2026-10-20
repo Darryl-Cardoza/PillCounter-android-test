@@ -48,7 +48,8 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
         ParsedScanData(
             rxNo = rawMap["RXNO"] ?: rawMap["RXNUMBER"],
             refillNo = rawMap["REFILLNO"],
-            ndcNo = (rawMap["NDCNO"] ?: rawMap["NDC"])?.let(::toElevenDigitNdc),
+            // A Canadian label names its drug code "din"; a DIN is used as scanned.
+            ndcNo = (rawMap["NDCNO"] ?: rawMap["NDC"])?.let(::toElevenDigitNdc) ?: rawMap["DIN"],
             qty = rawMap["QTY"],
             bucket = rawMap["BUCKET"],
             rawMap = rawMap
