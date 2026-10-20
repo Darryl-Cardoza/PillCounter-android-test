@@ -38,6 +38,12 @@ private val canadaWording: Map<Int, Int> = mapOf(
     R.string.hl7_notification_edit_rx_drug_not_found to R.string.hl7_notification_edit_rx_drug_not_found_ca,
     R.string.hl7_notification_new_rx_ndc_missing to R.string.hl7_notification_new_rx_ndc_missing_ca,
     R.string.hl7_notification_refill_ndc_or_qty_missing to R.string.hl7_notification_refill_ndc_or_qty_missing_ca,
+    R.string.setting_group_hazardous to R.string.setting_group_hazardous_ca,
+    R.string.setting_hazardous_drug to R.string.setting_hazardous_drug_ca,
+    R.string.tray_classification_message to R.string.tray_classification_message_ca,
+    R.string.hazardous_tray_warning to R.string.hazardous_tray_warning_ca,
+    R.string.non_hazardous_tray_warning to R.string.non_hazardous_tray_warning_ca,
+    R.string.clear_tray_color_lists_confirm to R.string.clear_tray_color_lists_confirm_ca,
 )
 
 /** The string to show in this region: the Canada wording when there is one, else the same id. */

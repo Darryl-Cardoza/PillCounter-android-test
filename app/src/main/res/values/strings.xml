@@ -703,4 +703,10 @@
     <string name="hl7_notification_edit_rx_drug_not_found_ca">Rx %1$s update failed: drug DIN %2$s not found.</string>
     <string name="hl7_notification_new_rx_ndc_missing_ca">New order for Rx %1$s ignored — DIN missing in RXE-2</string>
     <string name="hl7_notification_refill_ndc_or_qty_missing_ca">Refill for Rx %1$s ignored — DIN or quantity missing/invalid</string>
+    <string name="setting_group_hazardous_ca">CYTOTOXIC PILL COUNTING</string>
+    <string name="setting_hazardous_drug_ca">Cytotoxic Drug</string>
+    <string name="tray_classification_message_ca">The %s colored tray is not classified. Mark it as a cytotoxic tray?</string>
+    <string name="hazardous_tray_warning_ca">Warning: You are using a cytotoxic tray. Please use a non-cytotoxic tray.</string>
+    <string name="non_hazardous_tray_warning_ca">This is not the cytotoxic tray. Please use the cytotoxic tray.</string>
+    <string name="clear_tray_color_lists_confirm_ca">Are you sure you want to clear the cytotoxic tray color classification?</string>
 </resources>

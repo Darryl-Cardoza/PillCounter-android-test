@@ -691,4 +691,10 @@
     <string name="hl7_notification_edit_rx_drug_not_found_ca">Falló la actualización de Rx %1$s: DIN %2$s del medicamento no encontrado.</string>
     <string name="hl7_notification_new_rx_ndc_missing_ca">Nuevo pedido para Rx %1$s ignorado — falta el DIN en RXE-2</string>
     <string name="hl7_notification_refill_ndc_or_qty_missing_ca">Resurtido de Rx %1$s ignorado — DIN o cantidad faltantes o no válidos</string>
+    <string name="setting_group_hazardous_ca">CONTEO DE PÍLDORAS CITOTÓXICAS</string>
+    <string name="setting_hazardous_drug_ca">Medicamento citotóxico</string>
+    <string name="tray_classification_message_ca">La bandeja de color %s no está clasificada. ¿Marcarla como bandeja citotóxica?</string>
+    <string name="hazardous_tray_warning_ca">Advertencia: Está utilizando una bandeja citotóxica. Utilice una bandeja no citotóxica.</string>
+    <string name="non_hazardous_tray_warning_ca">Esta no es la bandeja citotóxica. Utilice la bandeja citotóxica.</string>
+    <string name="clear_tray_color_lists_confirm_ca">¿Está seguro de que desea borrar la clasificación de color de bandeja citotóxica?</string>
 </resources>

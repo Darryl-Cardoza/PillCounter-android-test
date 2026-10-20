@@ -37,6 +37,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
@@ -217,7 +218,7 @@ fun LooseCountScreen(
     engineState.pendingTrayColor?.let { pendingColor ->
         CommonDialog(
             title = stringResource(R.string.tray_classification_title),
-            message = stringResource(R.string.tray_classification_message, pendingColor.label),
+            message = regionStringResource(R.string.tray_classification_message, pendingColor.label),
             confirmText = stringResource(R.string.yes),
             cancelText = stringResource(R.string.no),
             onConfirm = { viewModel.onAction(LooseCountAction.TrayClassified(pendingColor, isHazardous = true)) },

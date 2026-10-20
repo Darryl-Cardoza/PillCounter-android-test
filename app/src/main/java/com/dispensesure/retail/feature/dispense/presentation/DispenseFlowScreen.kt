@@ -104,6 +104,7 @@ fun DispenseFlowScreen(
     dispenseCountViewModel: DispenseCountViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val loggedInRegion = LocalRegion.current
     val dispenseState by dispenseVm.uiState.collectAsState()
     val dispenseCountState by dispenseCountViewModel.uiState.collectAsState()
     val configuration = LocalConfiguration.current
@@ -161,7 +162,7 @@ fun DispenseFlowScreen(
     LaunchedEffect(Unit) {
         dispenseCountViewModel.effects.collect { effect ->
             when (effect) {
-                is DispenseCountEffect.ShowToast -> showToast(context, effect.text)
+                is DispenseCountEffect.ShowToast -> showToast(context, loggedInRegion.wording(effect.text))
                 DispenseCountEffect.Finished -> {
                     // Do NOT reset workflow steps here — that changes pillStepType
                     // while still on COUNTING stage and triggers unwanted TTS speech.
@@ -219,7 +220,6 @@ fun DispenseFlowScreen(
     val awaitingResume = dispenseState.isResolvingEntry
 
     // Which handler a barcode read goes to, per stage and counting step.
-    val loggedInRegion = LocalRegion.current
     val barcodeRouting = remember { DispenseBarcodeRouting(ScanDecoder(BarcodeDecoder()), loggedInRegion) }
     val readsBarcodes = barcodeRouting.readsBarcodes(
         stage = dispenseState.stage,

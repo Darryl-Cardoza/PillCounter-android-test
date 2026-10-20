@@ -33,6 +33,8 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.ScheduleCode
 import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.regionStringResource
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.utils.common.HistoryRetention
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -209,12 +211,12 @@ fun SettingsScreen(
                 }
 
                 SettingsGroupCard(
-                    titleRes = R.string.setting_group_hazardous,
+                    titleRes = LocalRegion.current.wording(R.string.setting_group_hazardous),
                     expanded = openCard == SettingsCard.HAZARDOUS,
                     onHeaderClick = { onCardClick(SettingsCard.HAZARDOUS) }
                 ) {
                     SettingsRow(
-                        labelRes = R.string.setting_hazardous_drug,
+                        labelRes = LocalRegion.current.wording(R.string.setting_hazardous_drug),
                         checked = isHazardousDrug,
                         onCheckedChange = { viewModel.toggleHazardousDrug(it) },
                         enabled = hl7Enabled,
@@ -273,7 +275,7 @@ fun SettingsScreen(
 
         if (showClearTrayColorListsDialog) {
             CommonDialog(
-                message = stringResource(R.string.clear_tray_color_lists_confirm),
+                message = regionStringResource(R.string.clear_tray_color_lists_confirm),
                 confirmText = stringResource(R.string.ok),
                 cancelText = stringResource(R.string.cancel),
                 onConfirm = {

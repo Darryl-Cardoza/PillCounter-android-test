@@ -25,6 +25,13 @@ class RegionWordingTest {
     }
 
     @Test
+    fun `canada hazardous settings and tray warnings say cytotoxic`() {
+        assertEquals(R.string.setting_hazardous_drug_ca, Region.CA.wording(R.string.setting_hazardous_drug))
+        assertEquals(R.string.hazardous_tray_warning_ca, Region.CA.wording(R.string.hazardous_tray_warning))
+        assertEquals(R.string.hazardous_tray_warning, Region.US.wording(R.string.hazardous_tray_warning))
+    }
+
+    @Test
     fun `canada HL7 notifications say DIN`() {
         assertEquals(R.string.hl7_notification_drug_not_found_no_drug_ca, Region.CA.wording(R.string.hl7_notification_drug_not_found_no_drug))
         assertEquals(R.string.hl7_notification_drug_not_found_no_drug, Region.US.wording(R.string.hl7_notification_drug_not_found_no_drug))
