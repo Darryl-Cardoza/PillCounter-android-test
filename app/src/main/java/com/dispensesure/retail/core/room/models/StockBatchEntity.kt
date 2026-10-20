@@ -60,6 +60,6 @@ data class StockBatchEntity(
     /** Display name of the user who ran the count. */
     val userName: String? = null,
 
-    /** Region of the user who started it; lists only show the logged-in region's batches. PMS batches are US. */
+    /** Region of the user who started it; lists only show the logged-in region's batches. */
     val region: Region = Region.US,
 )
