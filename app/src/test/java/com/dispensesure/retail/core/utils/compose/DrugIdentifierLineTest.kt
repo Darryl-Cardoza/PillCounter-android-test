@@ -61,8 +61,8 @@ class DrugIdentifierLineTest {
 
     @Test
     fun `canada row shows its CDSA schedule`() {
-        val canadaLine = row(rxNo = "1", drugType = "na")
+        val canadaLine = row(rxNo = "1", drugType = "n")
             .buildIdentifierLine(region = Region.CA, rxLabel = { "Rx $it" }, ndcLabel = { "NDC $it" })
-        assertEquals("Rx 1  •  NA", canadaLine)
+        assertEquals("Rx 1  •  N", canadaLine)
     }
 }

@@ -17,8 +17,8 @@ class ScheduleCodeTest {
     }
 
     @Test
-    fun `canada schedules are C, NA and TS in order`() {
-        assertEquals(listOf(ScheduleCode.C, ScheduleCode.NA, ScheduleCode.TS), ScheduleCode.forRegion(Region.CA))
+    fun `canada schedules are C, N and TS in order`() {
+        assertEquals(listOf(ScheduleCode.C, ScheduleCode.N, ScheduleCode.TS), ScheduleCode.forRegion(Region.CA))
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -29,16 +29,17 @@ class ScheduleCodeTest {
     @Test
     fun `US drug types match US schedules only, ignoring case and spaces`() {
         assertTrue(isControlledDrugType(" cii ", Region.US))
-        assertFalse(isControlledDrugType("NA", Region.US))
+        assertFalse(isControlledDrugType("N", Region.US))
         assertFalse(isControlledDrugType("TS", Region.US))
     }
 
     @Test
     fun `canada drug types match canada schedules only`() {
         assertTrue(isControlledDrugType("C", Region.CA))
-        assertTrue(isControlledDrugType("na", Region.CA))
+        assertTrue(isControlledDrugType("n", Region.CA))
         assertTrue(isControlledDrugType("TS", Region.CA))
         assertFalse(isControlledDrugType("CII", Region.CA))
+        assertFalse(isControlledDrugType("NA", Region.CA))
     }
 
     @Test

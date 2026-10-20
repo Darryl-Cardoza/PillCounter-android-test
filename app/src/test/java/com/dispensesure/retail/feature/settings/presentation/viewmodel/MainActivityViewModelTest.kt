@@ -228,15 +228,15 @@ class MainActivityViewModelTest {
     }
 
     @Test
-    fun `canada user gets C, NA and TS seeded under the canada keys`() = runTest(testDispatcher) {
+    fun `canada user gets C, N and TS seeded under the canada keys`() = runTest(testDispatcher) {
         every { regionProvider.current } returns Region.CA
         every { preferenceHelper.isControlDrugTypesInitialized(Region.CA) } returns false
 
         val vm = createViewModel()
         advanceUntilIdle()
 
-        assertEquals(setOf(ScheduleCode.C, ScheduleCode.NA, ScheduleCode.TS), vm.selectedSchedules.value)
-        verify { preferenceHelper.setControlDrugTypes(Region.CA, setOf("C", "NA", "TS")) }
+        assertEquals(setOf(ScheduleCode.C, ScheduleCode.N, ScheduleCode.TS), vm.selectedSchedules.value)
+        verify { preferenceHelper.setControlDrugTypes(Region.CA, setOf("C", "N", "TS")) }
     }
 
     @Test
@@ -258,9 +258,9 @@ class MainActivityViewModelTest {
         every { preferenceHelper.getControlDrugTypes(Region.CA) } returns emptySet()
         val vm = createViewModel()
 
-        vm.updateSchedules(setOf(ScheduleCode.NA))
+        vm.updateSchedules(setOf(ScheduleCode.N))
 
-        verify { preferenceHelper.setControlDrugTypes(Region.CA, setOf("NA")) }
+        verify { preferenceHelper.setControlDrugTypes(Region.CA, setOf("N")) }
     }
 
     @Test

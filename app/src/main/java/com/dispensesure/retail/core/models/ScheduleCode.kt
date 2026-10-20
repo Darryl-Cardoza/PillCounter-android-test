@@ -14,7 +14,7 @@ enum class ScheduleCode(val region: Region) {
     C(Region.CA),
 
     /** Narcotic. */
-    NA(Region.CA),
+    N(Region.CA),
 
     /** Targeted Substance. */
     TS(Region.CA);
