@@ -37,4 +37,10 @@ class RegionTest {
         assertFalse(Region.CA.padsShortBarcodes)
         assertEquals(8..14, Region.CA.plainProductCodeLengths)
     }
+
+    @Test
+    fun `only canada HL7 orders accept a DIN`() {
+        assertFalse(Region.US.hl7OrdersAcceptDin)
+        assertTrue(Region.CA.hl7OrdersAcceptDin)
+    }
 }

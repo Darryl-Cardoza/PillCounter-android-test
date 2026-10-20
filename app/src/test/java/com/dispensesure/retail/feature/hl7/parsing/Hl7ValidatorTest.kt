@@ -1,12 +1,16 @@
 package com.dispensesure.retail.feature.hl7.parsing
 
 import android.util.Log
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.feature.hl7.parsing.model.OrderGroup
 import io.mockk.every
+import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -19,7 +23,8 @@ import org.rite.hl7.parser.HL7Parser
 class Hl7ValidatorTest {
 
     private val hl7Parser = HL7Parser.Builder().build()
-    private val validator = Hl7Validator()
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+    private val validator = Hl7Validator(regionProvider)
 
     @Before
     fun setup() {
@@ -125,5 +130,34 @@ class Hl7ValidatorTest {
     fun `HD hold order is always valid`() {
         val result = validator.validateBusinessRules(orderGroup("HD"))
         assertTrue(result.isValid)
+    }
+
+    // RDE with one RXE whose RXE-2 is [giveCode]; the other required RXE fields are filled in.
+    private fun rdeWithGiveCode(giveCode: String) = parse(buildString {
+        append("MSH|^~\\&|PMS|FAC|APP|STORE|20240101120000||RDE^O11|CTRL-1|P|2.5\r")
+        append("ORC|NW|ORD-001|RX-001\r")
+        append("RXE||$giveCode^LIPITOR 40MG TABLET|30||TAB|||||30|TAB|0|||RX-001\r")
+    })
+
+    private fun invalidNdcIssues(giveCode: String) =
+        validator.validateStructure(rdeWithGiveCode(giveCode)).issues
+            .filter { issue -> issue.errorText.startsWith("Invalid NDC") }
+
+    @Test
+    fun `US rejects an 8-digit DIN as an invalid NDC`() {
+        assertEquals(1, invalidNdcIssues("02230714").size)
+    }
+
+    @Test
+    fun `canada accepts an 8-digit DIN in RXE-2`() {
+        every { regionProvider.current } returns Region.CA
+        assertEquals(emptyList<Any>(), invalidNdcIssues("02230714"))
+    }
+
+    @Test
+    fun `canada still accepts an NDC and still rejects a malformed code`() {
+        every { regionProvider.current } returns Region.CA
+        assertEquals(emptyList<Any>(), invalidNdcIssues("00093005801"))
+        assertEquals(1, invalidNdcIssues("ABC123").size)
     }
 }
