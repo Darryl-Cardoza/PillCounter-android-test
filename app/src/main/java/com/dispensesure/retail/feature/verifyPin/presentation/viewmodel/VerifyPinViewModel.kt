@@ -8,6 +8,7 @@ import com.google.gson.Gson
 import com.dispensesure.retail.BuildConfig
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.ErrorResponse
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.common.NetworkUtils
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
@@ -104,6 +105,14 @@ class VerifyPinViewModel @Inject constructor(
 //                    val isHL7Enabled = data?.user?.isHl7Enabled ?:false
                     val user = data?.user
 
+                    // No US/CA country means no region rules to run under; stop before saving anything.
+                    val loggedInRegion = Region.fromCountryCode(user?.country)
+                    if (loggedInRegion == null) {
+                        logger.w("OTP verification blocked: unsupported country '${user?.country}'")
+                        _uiState.value = VerifyPinUiState.Error(context.getString(R.string.error_unsupported_region))
+                        return@onSuccess
+                    }
+
                     // The API call already succeeded at this point — everything below is local
                     // persistence (SecurePreferences/AndroidKeyStore). A failure here (e.g. a
                     // KeyStore error) must not crash past a successful login uncaught; fall back
@@ -124,6 +133,7 @@ class VerifyPinViewModel @Inject constructor(
                         }
 
                         prefs.setLoggedInEmail(user?.email ?: email)
+                        prefs.setRegion(loggedInRegion)
 
                         // Log user info (safely)
                         user?.let {

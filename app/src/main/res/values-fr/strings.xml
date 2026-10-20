@@ -126,6 +126,7 @@
     <string name="error_email_invalid">Veuillez entrer une adresse e-mail valide.</string>
     <string name="error_unknown">Une erreur est survenue.</string>
     <string name="error_invalid_otp">PIN invalide.</string>
+    <string name="error_unsupported_region">Le pays de votre compte n\'est pas pris en charge par cette application. Veuillez contacter le support.</string>
     <string name="error_phone_invalid">Numéro de téléphone invalide</string>
     <string name="error_name_invalid">Le nom ne peut pas contenir de chiffres</string>
     <string name="error_name_required">Ce champ est obligatoire</string>

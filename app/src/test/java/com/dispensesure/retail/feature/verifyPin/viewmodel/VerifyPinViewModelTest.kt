@@ -5,6 +5,7 @@ import android.util.Log
 import app.cash.turbine.test
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.health.logic.SessionHealthController
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.common.NetworkUtils
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.LoggerConfig
@@ -165,7 +166,7 @@ class VerifyPinViewModelTest {
 
     @Test
     fun `verifyPin success with both tokens and non-null user saves tokens`() = runTest {
-        val user = VerifiedUser(email = email, isVerified = true)
+        val user = VerifiedUser(email = email, isVerified = true, country = "US")
         val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
         coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.success(VerifyPinResponse(status = 200, message = "ok", data = data))
@@ -184,7 +185,7 @@ class VerifyPinViewModelTest {
 
     @Test
     fun `verifyPin success starts a new log session`() = runTest {
-        val user = VerifiedUser(email = email, isVerified = true)
+        val user = VerifiedUser(email = email, isVerified = true, country = "US")
         val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
         coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.success(VerifyPinResponse(status = 200, message = "ok", data = data))
@@ -198,7 +199,7 @@ class VerifyPinViewModelTest {
 
     @Test
     fun `verifyPin success persists the verified email`() = runTest {
-        val user = VerifiedUser(email = email, isVerified = true)
+        val user = VerifiedUser(email = email, isVerified = true, country = "US")
         val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
         coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.success(VerifyPinResponse(status = 200, message = "ok", data = data))
@@ -210,9 +211,9 @@ class VerifyPinViewModelTest {
     }
 
     @Test
-    fun `verifyPin success with missing token and null user does not save tokens`() = runTest {
-        // accessToken null -> warn branch; user null -> warn branch
-        val data = VerifyPinData(accessToken = null, refreshToken = null, user = null)
+    fun `verifyPin success saves the US region`() = runTest {
+        val user = VerifiedUser(email = email, isVerified = true, country = "US")
+        val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
         coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.success(VerifyPinResponse(status = 200, data = data))
 
@@ -220,12 +221,73 @@ class VerifyPinViewModelTest {
         advanceUntilIdle()
 
         assertEquals(VerifyPinUiState.Success, viewModel.uiState.value)
+        verify(exactly = 1) { prefs.setRegion(Region.US) }
+    }
+
+    @Test
+    fun `verifyPin success saves the CA region`() = runTest {
+        val user = VerifiedUser(email = email, isVerified = true, country = "CA")
+        val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
+            Result.success(VerifyPinResponse(status = 200, data = data))
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals(VerifyPinUiState.Success, viewModel.uiState.value)
+        verify(exactly = 1) { prefs.setRegion(Region.CA) }
+    }
+
+    @Test
+    fun `verifyPin with an unsupported country blocks login and saves nothing`() = runTest {
+        val user = VerifiedUser(email = email, isVerified = true, country = "MX")
+        val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
+            Result.success(VerifyPinResponse(status = 200, data = data))
+        every { context.getString(R.string.error_unsupported_region) } returns "unsupported-region"
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals("unsupported-region", (viewModel.uiState.value as VerifyPinUiState.Error).message)
+        coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
+        verify(exactly = 0) { prefs.setLoggedInEmail(any()) }
+        verify(exactly = 0) { prefs.setRegion(any()) }
+    }
+
+    @Test
+    fun `verifyPin with a user missing country blocks login`() = runTest {
+        val user = VerifiedUser(email = email, isVerified = true, country = null)
+        val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
+            Result.success(VerifyPinResponse(status = 200, data = data))
+        every { context.getString(R.string.error_unsupported_region) } returns "unsupported-region"
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals("unsupported-region", (viewModel.uiState.value as VerifyPinUiState.Error).message)
         coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
     }
 
     @Test
+    fun `verifyPin with null user blocks login and saves nothing`() = runTest {
+        val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = null)
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
+            Result.success(VerifyPinResponse(status = 200, data = data))
+        every { context.getString(R.string.error_unsupported_region) } returns "unsupported-region"
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals("unsupported-region", (viewModel.uiState.value as VerifyPinUiState.Error).message)
+        coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
+        verify(exactly = 0) { prefs.setRegion(any()) }
+    }
+
+    @Test
     fun `verifyPin success with blank refresh token hits missing-token branch`() = runTest {
-        val user = VerifiedUser(email = email)
+        val user = VerifiedUser(email = email, country = "US")
         val data = VerifyPinData(accessToken = "access", refreshToken = "", user = user)
         coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.success(VerifyPinResponse(data = data))
@@ -238,14 +300,15 @@ class VerifyPinViewModelTest {
     }
 
     @Test
-    fun `verifyPin success with null data treats tokens and user as missing`() = runTest {
+    fun `verifyPin with null data blocks login`() = runTest {
         coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.success(VerifyPinResponse(status = 200, data = null))
+        every { context.getString(R.string.error_unsupported_region) } returns "unsupported-region"
 
         viewModel.verifyPin(email, otp)
         advanceUntilIdle()
 
-        assertEquals(VerifyPinUiState.Success, viewModel.uiState.value)
+        assertEquals("unsupported-region", (viewModel.uiState.value as VerifyPinUiState.Error).message)
         coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
     }
 
@@ -253,7 +316,7 @@ class VerifyPinViewModelTest {
     fun `verifyPin success with token persistence failure sets Error instead of crashing`() = runTest {
         // SecurePreferences.put* throws on encrypt failure (they don't swallow), so a failed token
         // save must land in Error rather than reaching Success with no token stored.
-        val user = VerifiedUser(email = email, isVerified = true)
+        val user = VerifiedUser(email = email, isVerified = true, country = "US")
         val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
         coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.success(VerifyPinResponse(status = 200, message = "ok", data = data))

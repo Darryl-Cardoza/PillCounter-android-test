@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.utils.preference
 
 import android.content.Context
 import android.util.Log
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
 import com.dispensesure.retail.feature.hl7.util.Hl7Format
 import com.dispensesure.retail.feature.settings.domain.model.ColorSettings
@@ -143,6 +144,24 @@ class PreferenceHelperTest {
         helper.setStandaloneMode(true)
         helper.clearTokens()
         assertFalse(helper.isStandaloneMode())
+    }
+
+    @Test
+    fun `getRegion is null until a region is saved`() {
+        assertNull(helper.getRegion())
+    }
+
+    @Test
+    fun `setRegion persists the region`() {
+        helper.setRegion(Region.CA)
+        assertEquals(Region.CA, helper.getRegion())
+    }
+
+    @Test
+    fun `clearTokens clears the region so the next user doesn't inherit it`() {
+        helper.setRegion(Region.CA)
+        helper.clearTokens()
+        assertNull(helper.getRegion())
     }
 
     @Test

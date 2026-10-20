@@ -47,5 +47,13 @@ data class VerifiedUser(
 
     /** Whether the account runs in standalone mode */
     @Json(name = "is_standalone")
-    val isStandalone: Boolean? = null
+    val isStandalone: Boolean? = null,
+
+    /** ISO country code of the user's pharmacy, e.g. "US", "CA" */
+    @Json(name = "country")
+    val country: String? = null,
+
+    /** State / province code, e.g. "NY", "ON" */
+    @Json(name = "state")
+    val state: String? = null
 )

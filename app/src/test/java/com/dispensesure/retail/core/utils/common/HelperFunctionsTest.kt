@@ -1,5 +1,6 @@
 package com.dispensesure.retail.core.utils.common
 
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.navigation.Screen
@@ -90,9 +91,22 @@ class HelperFunctionsTest {
     }
 
     @Test
+    fun resolve_loggedIn_noRegionStored_clearsSessionAndReturnsAuth() {
+        val pref = mockk<PreferenceHelper>(relaxed = true)
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns null
+        val result = HelperFunctions.resolveStartDestinationAndClearIfExpired(pref)
+        assertEquals(AUTH_GRAPH_ROUTE, result)
+        io.mockk.verify { pref.clearTokens() }
+        io.mockk.verify { pref.setUserLoggedIn(false) }
+        io.mockk.verify { pref.saveLocalId(0) }
+    }
+
+    @Test
     fun resolve_loggedIn_noHealthOrLoginAnchor_returnsDashboard() {
         val pref = mockk<PreferenceHelper>()
         every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
         every { pref.getLastHealthCheckedAt() } returns 0L
         every { pref.getLoggedInAt() } returns 0L
         assertEquals(Screen.Dashboard.route, HelperFunctions.resolveStartDestinationAndClearIfExpired(pref))
@@ -102,6 +116,7 @@ class HelperFunctionsTest {
     fun resolve_loggedIn_healthAnchorWithinThreshold_returnsDashboard() {
         val pref = mockk<PreferenceHelper>()
         every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
         every { pref.getLastHealthCheckedAt() } returns System.currentTimeMillis() - 5_000L
         every { pref.getOfflineSessionThresholdSeconds() } returns 60L
         assertEquals(Screen.Dashboard.route, HelperFunctions.resolveStartDestinationAndClearIfExpired(pref))
@@ -111,6 +126,7 @@ class HelperFunctionsTest {
     fun resolve_loggedIn_healthAnchorBeyondThreshold_clearsTokensAndReturnsAuth() {
         val pref = mockk<PreferenceHelper>(relaxed = true)
         every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
         every { pref.getLastHealthCheckedAt() } returns System.currentTimeMillis() - 120_000L
         every { pref.getOfflineSessionThresholdSeconds() } returns 60L
         val result = HelperFunctions.resolveStartDestinationAndClearIfExpired(pref)
@@ -126,6 +142,7 @@ class HelperFunctionsTest {
     fun resolve_loggedIn_noHealthButLoginAnchorWithinThreshold_returnsDashboard() {
         val pref = mockk<PreferenceHelper>()
         every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
         every { pref.getLastHealthCheckedAt() } returns 0L
         every { pref.getLoggedInAt() } returns System.currentTimeMillis() - 10_000L
         every { pref.getOfflineSessionThresholdSeconds() } returns 60L
@@ -136,6 +153,7 @@ class HelperFunctionsTest {
     fun resolve_loggedIn_noHealthAndLoginAnchorBeyondThreshold_clearsTokensAndReturnsAuth() {
         val pref = mockk<PreferenceHelper>(relaxed = true)
         every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
         every { pref.getLastHealthCheckedAt() } returns 0L
         every { pref.getLoggedInAt() } returns System.currentTimeMillis() - 120_000L
         every { pref.getOfflineSessionThresholdSeconds() } returns 60L

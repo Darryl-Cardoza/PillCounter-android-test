@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.utils.preference
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
@@ -27,6 +28,7 @@ private const val KEY_LOGGED_IN_EMAIL = "logged_in_email"
 private const val KEY_LOCAL_ID = "local_id"
 private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
 private const val KEY_REMEMBER_ME = "remember_me"
+private const val KEY_REGION = "key_region"
 
 // UI Theme
 private const val KEY_THEME_COLORS = "theme_colors"
@@ -122,6 +124,8 @@ class PreferenceHelper @Inject constructor(
         // it here, a user switch or re-login before that fetch lands would leave the
         // next user running under the previous user's standalone flag.
         setStandaloneMode(false)
+        // Region is per-user too; the next login stores the new user's.
+        prefs.remove(KEY_REGION)
         logger.w("Cleared authentication tokens from secure storage.")
     }
 
@@ -343,6 +347,14 @@ class PreferenceHelper @Inject constructor(
         logger.d("Standalone mode: $enabled")
         return enabled
     }
+
+    fun setRegion(region: Region) {
+        prefs.putString(KEY_REGION, region.name)
+        logger.i("Region set to: ${region.name}")
+    }
+
+    fun getRegion(): Region? =
+        prefs.getString(KEY_REGION)?.let { storedRegionName -> Region.fromCountryCode(storedRegionName) }
 
     fun setSoundEnabled(enabled: Boolean) {
         prefs.putBoolean(KEY_SOUND, enabled)
@@ -850,6 +862,8 @@ class PreferenceHelper @Inject constructor(
 
     /** Key used for [KEY_USER_LOGGED_IN] change notifications via [registerOnChangeListener]. */
     val userLoggedInKey: String get() = KEY_USER_LOGGED_IN
+
+    val regionKey: String get() = KEY_REGION
 
     fun registerOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnChangeListener(listener)

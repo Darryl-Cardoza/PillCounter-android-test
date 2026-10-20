@@ -83,6 +83,7 @@ object HelperFunctions {
      * - Clears tokens and returns `AUTH_GRAPH_ROUTE` when the threshold has been exceeded.
      *
      * Side effect: on threshold-exceeded, tokens, login flag, local id and HL7 config are cleared before returning.
+     * A logged-in session with no stored region is cleared the same way.
      *
      * @param preferenceHelper Persistent preference handler.
      * @return Route string — either `Dashboard.route` or `AUTH_GRAPH_ROUTE`.
@@ -92,6 +93,11 @@ object HelperFunctions {
      */
     fun resolveStartDestinationAndClearIfExpired(preferenceHelper: PreferenceHelper): String {
         if (!preferenceHelper.isUserLoggedIn()) return AUTH_GRAPH_ROUTE
+        // Sessions from before region support have none stored; log in again to get it.
+        if (preferenceHelper.getRegion() == null) {
+            clearLocalSession(preferenceHelper)
+            return AUTH_GRAPH_ROUTE
+        }
         val lastHealthAt = preferenceHelper.getLastHealthCheckedAt()
         // Fall back to loggedInAt when no /health has ever succeeded on this install, so the
         // expiry clock still ticks from the session start instead of remaining unbounded.
