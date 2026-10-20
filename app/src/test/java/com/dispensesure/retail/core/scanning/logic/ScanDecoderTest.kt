@@ -68,11 +68,19 @@ class ScanDecoderTest {
     }
 
     @Test
-    fun `canada does not pad a 12-digit UPC`() {
+    fun `canada pads a 12-digit UPC to GTIN-14 like the US`() {
         val scan = decoder.decode("368540100014", Region.CA)
 
-        assertNull(scan.gtin14)
-        assertEquals("368540100014", scan.lookupCode)
+        assertEquals("00368540100014", scan.gtin14)
+        assertEquals("00368540100014", scan.lookupCode)
+    }
+
+    @Test
+    fun `canada pads a 13-digit EAN to GTIN-14 like the US`() {
+        val scan = decoder.decode("0368540100014", Region.CA)
+
+        assertEquals("00368540100014", scan.gtin14)
+        assertEquals("00368540100014", scan.lookupCode)
     }
 
     @Test

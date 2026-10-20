@@ -27,14 +27,14 @@ class RegionTest {
     }
 
     @Test
-    fun `US pads short barcodes and accepts 12 to 14 digit plain codes`() {
-        assertTrue(Region.US.padsShortBarcodes)
+    fun `US has no DINs and accepts 12 to 14 digit plain codes`() {
+        assertFalse(Region.US.eightDigitCodesAreDins)
         assertEquals(12..14, Region.US.plainProductCodeLengths)
     }
 
     @Test
-    fun `canada never pads and accepts 8 to 14 digit plain codes`() {
-        assertFalse(Region.CA.padsShortBarcodes)
+    fun `canada treats 8-digit codes as DINs and accepts 8 to 14 digit plain codes`() {
+        assertTrue(Region.CA.eightDigitCodesAreDins)
         assertEquals(8..14, Region.CA.plainProductCodeLengths)
     }
 

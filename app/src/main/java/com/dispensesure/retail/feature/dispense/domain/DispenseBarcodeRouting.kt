@@ -11,7 +11,7 @@ sealed interface BarcodeRoute {
     data class RxLabel(val rawValue: String) : BarcodeRoute
 
     // firstBottle holds the GS1 lot / expiry / serial, saved as the txn's first bottle.
-    // scannedCode is a GTIN-14, or for Canada a plain code as scanned (e.g. a DIN).
+    // scannedCode is a GTIN-14, or for Canada an 8-digit DIN as scanned.
     data class Container(val scannedCode: String, val firstBottle: DispenseBottle) : BarcodeRoute
 
     data object RxLabelOnContainerStep : BarcodeRoute
