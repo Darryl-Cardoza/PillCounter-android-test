@@ -134,7 +134,7 @@ class DispenseFlowRepository @Inject constructor(
                     txn = txn,
                     isHazardous = txn.isHazardous,
                     isHighPriority = txn.priority == TxnPriority.High,
-                    isControlled = isControlledDrugType(txn.drugType),
+                    isControlled = isControlledDrugType(txn.drugType, regionProvider.current),
                 )
             }
         }

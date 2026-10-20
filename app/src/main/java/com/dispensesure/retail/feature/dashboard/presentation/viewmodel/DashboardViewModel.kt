@@ -276,7 +276,7 @@ class DashboardViewModel @Inject constructor(
             // the Partial Counts resume screen (CountsViewModel) reads, so the
             // queue count now matches the resume screen.
             step = StepState.TARGET_VERIFICATION,
-        ).flowOn(Dispatchers.IO).distinctUntilChanged().map { it.toPendingDispenseItems() }
+        ).flowOn(Dispatchers.IO).distinctUntilChanged().map { pendingDispenses -> pendingDispenses.toPendingDispenseItems(regionProvider.current) }
 
     // Use the summaries query so uniqueNdcCount is populated from the
     // join. getAllInProgress() returns bare StockBatchEntity rows with no
@@ -295,7 +295,9 @@ class DashboardViewModel @Inject constructor(
         ).flowOn(Dispatchers.IO).distinctUntilChanged()
         val completedBatches = stockBatchDao.getBatchSummaries(startDate = 0L, endDate = Long.MAX_VALUE, region = regionProvider.current)
             .flowOn(Dispatchers.IO).distinctUntilChanged()
-        return completedDispenses.combine(completedBatches, ::recentActivityItems)
+        return completedDispenses.combine(completedBatches) { dispenses, batches ->
+            recentActivityItems(dispenses, batches, regionProvider.current)
+        }
     }
 
     /** Collects one source on Default into [queueSources]. A failed [tab] source still ends its loading state. */

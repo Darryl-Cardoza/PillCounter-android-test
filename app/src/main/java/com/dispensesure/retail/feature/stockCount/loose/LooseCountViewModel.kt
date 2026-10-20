@@ -254,8 +254,8 @@ class LooseCountViewModel @Inject constructor(
         val countedDrug = _uiState.value.drug ?: return
         if (_uiState.value.isSaving) return
         _uiState.update { it.copy(showEndCountDialog = false, isSaving = true) }
-        // Controlled drugs (CII–CVI) keep their photos on the saved line; others are deleted.
-        val isControlled = isControlledDrugType(countedDrug.drugType)
+        // Controlled drugs (CII–CVI, or C/NA/TS in Canada) keep their photos on the saved line; others are deleted.
+        val isControlled = isControlledDrugType(countedDrug.drugType, countedDrug.region)
         viewModelScope.launch {
             pendingAddSaves.toList().joinAll()
             val state = _uiState.value

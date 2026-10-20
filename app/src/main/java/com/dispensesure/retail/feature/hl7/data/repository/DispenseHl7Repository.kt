@@ -154,7 +154,7 @@ class DispenseHl7Repository @Inject constructor(
             pharmacistFamilyName = txn.operatorLastName,
             pharmacistGivenName = txn.operatorFirstName,
             location = location,
-            isControlledSubstance = isControlledDrugType(drug.drugType),
+            isControlledSubstance = isControlledDrugType(drug.drugType, drug.region),
             isHazardousDrug = drug.isHazardous,
             config = hl7ConfigProvider.current()
         )

@@ -65,7 +65,7 @@ abstract class DispenseCountViewModelTestBase {
         every { application.getString(any<Int>()) } returns "test error"
         every { application.getString(any<Int>(), any()) } returns "test error"
         coJustRun { performanceLogger.logPerformanceSnapshot(any()) }
-        every { preferenceHelper.getControlDrugTypes() } returns emptySet()
+        every { preferenceHelper.getControlDrugTypes(Region.US) } returns emptySet()
         every { preferenceHelper.isRequireDoubleCountEnabled() } returns false
         every { preferenceHelper.isRequireBackCountEnabled() } returns false
         every { scanDecoder.decode(any(), any()) } returns DecodedScan(isGs1 = false, gtin14 = null, lot = null, expiry = null, serial = null)

@@ -32,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.ScheduleCode
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.utils.common.HistoryRetention
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -70,6 +71,7 @@ fun SettingsScreen(
     var showCLearAllDataConfirmDialog by remember { mutableStateOf(false) }
     var showClearTrayColorListsDialog by remember { mutableStateOf(false) }
     val selectedSchedules by viewModel.selectedSchedules.collectAsState()
+    val regionSchedules = ScheduleCode.forRegion(LocalRegion.current)
     val isSoundOverrideEnable by viewModel.isSoundOverride.collectAsState()
     val isHazardousDrug by viewModel.isHazardousDrug.collectAsState()
     val isUseStaticPmsConnection by viewModel.isUseStaticPmsConnection.collectAsState()
@@ -140,7 +142,7 @@ fun SettingsScreen(
                         onDisabledClick = onHl7DisabledTap,
                         supporting = {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ScheduleCode.entries.forEach { code ->
+                                regionSchedules.forEach { code ->
                                     val codeColor = if (selectedSchedules.contains(code))
                                         MaterialTheme.colorScheme.secondary
                                     else
@@ -331,7 +333,7 @@ fun SettingsScreen(
         }
 
         if (showDoubleCountDialog) {
-            val schedules = ScheduleCode.entries
+            val schedules = regionSchedules
             CommonMultiSelectDialog(
                 title = stringResource(R.string.require_double_count_title),
                 options = schedules.map { it.name },

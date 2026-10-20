@@ -1,5 +1,6 @@
 package com.dispensesure.retail.core.utils.compose
 
+import com.dispensesure.retail.core.region.Region
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -23,7 +24,7 @@ class DrugIdentifierLineTest {
         refillNo = refillNo,
     )
 
-    private fun DrugCountRowData.line() = buildIdentifierLine(rxLabel = { "Rx $it" }, ndcLabel = { "NDC $it" })
+    private fun DrugCountRowData.line() = buildIdentifierLine(region = Region.US, rxLabel = { "Rx $it" }, ndcLabel = { "NDC $it" })
 
     @Test
     fun `rx with refill bucket and schedule`() {
@@ -56,5 +57,12 @@ class DrugIdentifierLineTest {
     @Test
     fun `nothing present gives an empty line`() {
         assertEquals("", row().line())
+    }
+
+    @Test
+    fun `canada row shows its CDSA schedule`() {
+        val canadaLine = row(rxNo = "1", drugType = "na")
+            .buildIdentifierLine(region = Region.CA, rxLabel = { "Rx $it" }, ndcLabel = { "NDC $it" })
+        assertEquals("Rx 1  •  NA", canadaLine)
     }
 }

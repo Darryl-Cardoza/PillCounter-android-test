@@ -48,6 +48,8 @@ private const val KEY_REQUIRE_BACK_COUNT = "key_require_back_count"
 private const val KEY_REQUIRE_DOUBLE_COUNT = "key_require_double_count"
 private const val KEY_CONTROL_DRUG_TYPES="key_control_drug_types"
 private const val KEY_CONTROL_DRUG_TYPES_INITIALIZED = "key_control_drug_types_initialized"
+private const val KEY_CONTROL_DRUG_TYPES_CA = "key_control_drug_types_ca"
+private const val KEY_CONTROL_DRUG_TYPES_INITIALIZED_CA = "key_control_drug_types_initialized_ca"
 private const val KEY_SOUND_OVERRIDE="key_sound_override"
 private const val KEY_FACE_LOCK_TIMEOUT_MINUTES = "key_face_lock_timeout_minutes"
 private const val KEY_HAS_ENABLED_FACE_PROFILE = "key_has_enabled_face_profile"
@@ -407,14 +409,14 @@ class PreferenceHelper @Inject constructor(
     }
 
     // Stored as JSON string — SecurePreferences does not support StringSet
-    fun setControlDrugTypes(controlDrugTypes: Set<String>) {
-        prefs.putString(KEY_CONTROL_DRUG_TYPES, gson.toJson(controlDrugTypes))
-        prefs.putBoolean(KEY_CONTROL_DRUG_TYPES_INITIALIZED, true)
-        logger.i("setControlDrugTypes : ${controlDrugTypes.joinToString(",")}")
+    fun setControlDrugTypes(region: Region, controlDrugTypes: Set<String>) {
+        prefs.putString(controlDrugTypesKey(region), gson.toJson(controlDrugTypes))
+        prefs.putBoolean(controlDrugTypesInitializedKey(region), true)
+        logger.i("setControlDrugTypes ${region.name}: ${controlDrugTypes.joinToString(",")}")
     }
 
-    fun getControlDrugTypes(): Set<String> {
-        val json = prefs.getString(KEY_CONTROL_DRUG_TYPES) ?: return emptySet()
+    fun getControlDrugTypes(region: Region): Set<String> {
+        val json = prefs.getString(controlDrugTypesKey(region)) ?: return emptySet()
         return try {
             gson.fromJson(json, Array<String>::class.java).toSet()
         } catch (e: Exception) {
@@ -423,9 +425,20 @@ class PreferenceHelper @Inject constructor(
         }
     }
 
-    /** Returns true only after [setControlDrugTypes] has been called at least once. */
-    fun isControlDrugTypesInitialized(): Boolean {
-        return prefs.getBoolean(KEY_CONTROL_DRUG_TYPES_INITIALIZED, false)
+    /** Returns true only after [setControlDrugTypes] has been called at least once for [region]. */
+    fun isControlDrugTypesInitialized(region: Region): Boolean {
+        return prefs.getBoolean(controlDrugTypesInitializedKey(region), false)
+    }
+
+    // US keeps the original keys so selections saved before region support survive.
+    private fun controlDrugTypesKey(region: Region): String = when (region) {
+        Region.US -> KEY_CONTROL_DRUG_TYPES
+        Region.CA -> KEY_CONTROL_DRUG_TYPES_CA
+    }
+
+    private fun controlDrugTypesInitializedKey(region: Region): String = when (region) {
+        Region.US -> KEY_CONTROL_DRUG_TYPES_INITIALIZED
+        Region.CA -> KEY_CONTROL_DRUG_TYPES_INITIALIZED_CA
     }
 
     fun setSoundOverride(enabled: Boolean) {

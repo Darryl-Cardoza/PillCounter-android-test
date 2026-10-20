@@ -336,7 +336,7 @@ class DispenseCountViewModel @Inject constructor(
             isTxnLoaded = txnInfo != null,
             drugType = drugInfo?.drugType,
             doubleCountOn = preferenceHelper.isRequireDoubleCountEnabled(),
-            controlDrugTypes = preferenceHelper.getControlDrugTypes(),
+            controlDrugTypes = preferenceHelper.getControlDrugTypes(regionProvider.current),
             backCountOn = preferenceHelper.isRequireBackCountEnabled(),
         )
 
