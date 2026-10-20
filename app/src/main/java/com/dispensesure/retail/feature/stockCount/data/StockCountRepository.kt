@@ -2,6 +2,7 @@ package com.dispensesure.retail.feature.stockCount.data
 
 import androidx.room.withTransaction
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
@@ -24,6 +25,7 @@ class StockCountRepository @Inject constructor(
     private val stockTxnDao: StockTxnDao,
     private val stockBottleInfoDao: StockBottleInfoDao,
     private val operatorNameProvider: OperatorNameProvider,
+    private val regionProvider: RegionProvider,
 ) {
 
     private val logger = AppLogger("StockCountRepository")
@@ -49,7 +51,7 @@ class StockCountRepository @Inject constructor(
         val savedBatchId = if (batchId != 0L) {
             batchId
         } else {
-            stockBatchDao.insertNewInProgressBatch(bucketId = bucketId)
+            stockBatchDao.insertNewInProgressBatch(bucketId = bucketId, region = regionProvider.current)
         }
         val stockTxnId = stockTxnDao.findByDrugInBatch(savedBatchId, drugId)?.txnId
             ?: stockTxnDao.upsertPreservingId(

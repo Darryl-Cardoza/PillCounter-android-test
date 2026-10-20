@@ -1,6 +1,8 @@
 package com.dispensesure.retail.feature.history.data
 
 import app.cash.turbine.test
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
@@ -30,6 +32,8 @@ import java.time.LocalDate
  */
 class HistoryRepositoryTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
     private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
@@ -38,7 +42,7 @@ class HistoryRepositoryTest {
 
     @Before
     fun setup() {
-        repository = HistoryRepository(dispenseTxnDao, stockBatchDao, stockTxnDao)
+        repository = HistoryRepository(dispenseTxnDao, stockBatchDao, stockTxnDao, regionProvider)
     }
 
     @After
@@ -67,7 +71,7 @@ class HistoryRepositoryTest {
             batchId = 10L, createdAt = 5000L, uniqueNdcCount = 3,
             status = "COMPLETED", bucketId = "BCK-01", requestIdFromPMS = "REQ-99"
         )
-        every { stockBatchDao.getBatchSummaries(any(), any()) } returns flowOf(listOf(dto))
+        every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(listOf(dto))
 
         repository.getBatchSummaries(today, today, 1L).test {
             val list = awaitItem()
@@ -90,7 +94,7 @@ class HistoryRepositoryTest {
             batchId = 1L, createdAt = 1000L, uniqueNdcCount = 1,
             status = "INPROGRESS", bucketId = null, requestIdFromPMS = null
         )
-        every { stockBatchDao.getBatchSummaries(any(), any()) } returns flowOf(listOf(dto))
+        every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(listOf(dto))
 
         repository.getBatchSummaries(today, today, 1L).test {
             val summary = awaitItem()[0]
@@ -113,24 +117,24 @@ class HistoryRepositoryTest {
     @Test
     fun `deleteBatchesForDateRange soft-deletes batches and their transactions when batch IDs exist`() = runTest {
         val batchIds = listOf(100L, 200L)
-        coEvery { stockBatchDao.getBatchIdsByDate(any(), any(), any(), any(), any()) } returns batchIds
-        coJustRun { stockBatchDao.softDeleteBatchesByDate(any(), any(), any(), any(), any()) }
+        coEvery { stockBatchDao.getBatchIdsByDate(any(), any(), any(), any(), any(), any()) } returns batchIds
+        coJustRun { stockBatchDao.softDeleteBatchesByDate(any(), any(), any(), any(), any(), any()) }
         coJustRun { stockTxnDao.deleteByBatchIds(any()) }
 
         repository.deleteBatchesForDateRange(today, today, null, 1L)
 
-        coVerify { stockBatchDao.softDeleteBatchesByDate(any(), any(), null, any(), any()) }
+        coVerify { stockBatchDao.softDeleteBatchesByDate(any(), any(), null, any(), any(), any()) }
         coVerify { stockTxnDao.deleteByBatchIds(batchIds) }
     }
 
     // HIST_REPO_007
     @Test
     fun `deleteBatchesForDateRange skips soft-delete when no batch IDs found`() = runTest {
-        coEvery { stockBatchDao.getBatchIdsByDate(any(), any(), any(), any(), any()) } returns emptyList()
+        coEvery { stockBatchDao.getBatchIdsByDate(any(), any(), any(), any(), any(), any()) } returns emptyList()
 
         repository.deleteBatchesForDateRange(today, today, null, 1L)
 
-        coVerify(exactly = 0) { stockBatchDao.softDeleteBatchesByDate(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { stockBatchDao.softDeleteBatchesByDate(any(), any(), any(), any(), any(), any()) }
         coVerify(exactly = 0) { stockTxnDao.deleteByBatchIds(any()) }
     }
 

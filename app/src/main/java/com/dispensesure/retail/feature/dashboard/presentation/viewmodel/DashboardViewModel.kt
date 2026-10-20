@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.di.DefaultDispatcher
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
@@ -89,6 +90,7 @@ class DashboardViewModel @Inject constructor(
     private val sessionHealthController: SessionHealthController,
     sessionLockController: SessionLockController,
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
+    private val regionProvider: RegionProvider,
 ) : ViewModel() {
 
     /** Logger instance for this ViewModel. */
@@ -240,7 +242,7 @@ class DashboardViewModel @Inject constructor(
         ensureTabObserved(DashboardTab.DISPENSE_QUEUE, localId)
         if (inventoryKpiCountsJob?.isActive != true) {
             inventoryKpiCountsJob = collectSource(
-                source = stockBatchDao.observeInProgressBatchKpiCounts().flowOn(Dispatchers.IO).distinctUntilChanged(),
+                source = stockBatchDao.observeInProgressBatchKpiCounts(regionProvider.current).flowOn(Dispatchers.IO).distinctUntilChanged(),
             ) { copy(inventoryKpiCounts = it) }
         }
     }
@@ -280,7 +282,7 @@ class DashboardViewModel @Inject constructor(
     // join. getAllInProgress() returns bare StockBatchEntity rows with no
     // txn join, which left the card stuck at "0 NDCs" even after scans.
     private fun pendingInventoryFlow() =
-        stockBatchDao.observeInProgressBatchSummaries()
+        stockBatchDao.observeInProgressBatchSummaries(regionProvider.current)
             .flowOn(Dispatchers.IO).distinctUntilChanged().map { it.toPendingInventoryItems() }
 
     private fun recentActivityFlow(localId: Long): Flow<List<QueueItem>> {
@@ -291,7 +293,7 @@ class DashboardViewModel @Inject constructor(
             status = CountStatus.COMPLETED,
             userLocalId = localId,
         ).flowOn(Dispatchers.IO).distinctUntilChanged()
-        val completedBatches = stockBatchDao.getBatchSummaries(startDate = 0L, endDate = Long.MAX_VALUE)
+        val completedBatches = stockBatchDao.getBatchSummaries(startDate = 0L, endDate = Long.MAX_VALUE, region = regionProvider.current)
             .flowOn(Dispatchers.IO).distinctUntilChanged()
         return completedDispenses.combine(completedBatches, ::recentActivityItems)
     }

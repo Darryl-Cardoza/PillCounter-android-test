@@ -1,6 +1,8 @@
 package com.dispensesure.retail.feature.hl7.data.repository
 
 import android.content.Context
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
@@ -62,6 +64,8 @@ import org.rite.hl7.model.HL7Message
 @OptIn(ExperimentalCoroutinesApi::class)
 class DispenseHl7RepositoryTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var context: Context
@@ -119,7 +123,7 @@ class DispenseHl7RepositoryTest {
         dispenseCountDao = dispenseCountDao,
         preferenceHelper = preferenceHelper,
         hl7MessageSender = hl7MessageSender,
-        drugResolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader),
+        drugResolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader, regionProvider),
         notifier = notifier,
         hl7ConfigProvider = Hl7ConfigProvider(context, preferenceHelper),
     )
@@ -218,7 +222,7 @@ class DispenseHl7RepositoryTest {
     fun `handleOrderEdit routes edit dispense`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
 
@@ -399,7 +403,7 @@ class DispenseHl7RepositoryTest {
     fun `handleOrderEdit active txn local drug updates`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
 
@@ -416,7 +420,7 @@ class DispenseHl7RepositoryTest {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns null
         coEvery { dispenseTxnDao.getDeletedByRxNo("RX1") } returns txnEntity(txnId = 8L)
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
 
@@ -443,7 +447,7 @@ class DispenseHl7RepositoryTest {
     fun `handleOrderEdit api success when not local`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns serverDrugInfo()
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 9L
 
@@ -456,7 +460,7 @@ class DispenseHl7RepositoryTest {
     fun `handleOrderEdit api no name notifies and returns`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns
             serverDrugInfo(genericName = null)
 
@@ -470,7 +474,7 @@ class DispenseHl7RepositoryTest {
     fun `handleOrderEdit api throws notifies and returns`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } throws
             RuntimeException("api fail")
 
@@ -484,7 +488,7 @@ class DispenseHl7RepositoryTest {
     fun `handleOrderEdit newDrugId null fallback keeps old drugId`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity(drugId = 77L)
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns serverDrugInfo()
         // upsertPreservingId returns... but resolvedDrug is non-null so it WILL call upsert.
         // To exercise the `?: existingTxn.drugId` fallback we need resolvedDrug null, which is
@@ -504,7 +508,7 @@ class DispenseHl7RepositoryTest {
     fun `handleOrderEdit status CA soft deletes and returns`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
 
@@ -519,7 +523,7 @@ class DispenseHl7RepositoryTest {
     fun `handleOrderEdit status CM maps completed`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
 
@@ -532,7 +536,7 @@ class DispenseHl7RepositoryTest {
     fun `handleOrderEdit status HD maps on hold`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
 
@@ -545,7 +549,7 @@ class DispenseHl7RepositoryTest {
     fun `handleOrderEdit to a held or completed order opens no order`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
 
@@ -560,7 +564,7 @@ class DispenseHl7RepositoryTest {
     fun `handleOrderEdit unknown status maps null`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
 

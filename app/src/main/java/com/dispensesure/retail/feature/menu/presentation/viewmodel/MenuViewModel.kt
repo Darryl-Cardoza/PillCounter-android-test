@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.menu.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -35,7 +36,8 @@ class MenuViewModel @Inject constructor(
     private val dispenseTxnDao: DispenseTxnDao,
     private val stockBatchDao: StockBatchDao,
     private val preferenceHelper: PreferenceHelper,
-    private val sessionLockController: SessionLockController
+    private val sessionLockController: SessionLockController,
+    private val regionProvider: RegionProvider,
 ) : ViewModel() {
 
     /** Backing state flow for the Menu UI. */
@@ -72,8 +74,8 @@ class MenuViewModel @Inject constructor(
     private fun observeUnsyncedTransactionCount() {
         viewModelScope.launch {
             combine(
-                dispenseTxnDao.getTotalCompletedTransactionCount(),
-                stockBatchDao.getUnsyncedCompletedBatchCount()
+                dispenseTxnDao.getTotalCompletedTransactionCount(regionProvider.current),
+                stockBatchDao.getUnsyncedCompletedBatchCount(regionProvider.current)
             ) { dispenseCount, batchCount -> dispenseCount + batchCount }
                 .catch { e -> logger.e("Failed to observe unsynced transaction count", e, event = LogEvent.FUNCTIONALITY_ERROR) }
                 .collect { count ->

@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import app.cash.turbine.test
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
@@ -12,6 +13,7 @@ import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.tourguide.TutorialData
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -632,7 +634,7 @@ class DispenseTxnDaoTest {
             DispenseCountEntity(txnId = txnId, pillCount = 5, step = StepState.SCAN.name)
         )
 
-        dispenseTxnDao.observeUnsyncedDispenses(step = StepState.SCAN.name).test {
+        dispenseTxnDao.observeUnsyncedDispenses(Region.US, step = StepState.SCAN.name).test {
             val list = awaitItem()
             assertEquals(1, list.size)
             assertEquals(15, list.first().totalPillCount)
@@ -644,14 +646,14 @@ class DispenseTxnDaoTest {
     fun `observeUnsyncedDispenses excludes synced rows`() = runTest {
         dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, isSynced = true))
 
-        dispenseTxnDao.observeUnsyncedDispenses(step = StepState.SCAN.name).test {
+        dispenseTxnDao.observeUnsyncedDispenses(Region.US, step = StepState.SCAN.name).test {
             assertTrue(awaitItem().isEmpty())
         }
     }
 
     @Test
     fun `getTotalCompletedTransactionCount counts unsynced hl7 completed and force completed rows`() = runTest {
-        dispenseTxnDao.getTotalCompletedTransactionCount().test {
+        dispenseTxnDao.getTotalCompletedTransactionCount(Region.US).test {
             assertEquals(0, awaitItem())
 
             dispenseTxnDao.insertIgnore(
@@ -1111,5 +1113,23 @@ class DispenseTxnDaoTest {
 
         assertEquals(newerId, dispenseTxnDao.getByRxNoAndMessageControlId("RX1", "MSG1")?.txnId)
         assertNull(dispenseTxnDao.getByRxNoAndMessageControlId("RX1", "MSG2"))
+    }
+
+    @Test
+    fun `unsynced dispenses and their count only show the asked region`() = runTest {
+        val usDrugId = db.drugMasterDao().insertIgnore(DrugMasterEntity(ndc = "11111111111", drugName = "US drug", region = Region.US))
+        val caDrugId = db.drugMasterDao().insertIgnore(DrugMasterEntity(ndc = "00013285", drugName = "CA drug", region = Region.CA))
+        listOf(usDrugId, caDrugId).forEach { drugId ->
+            dispenseTxnDao.upsertPreservingId(
+                DispenseTxnEntity(drugId = drugId, status = CountStatus.COMPLETED, isSynced = false, isComingFromHL7 = true)
+            )
+        }
+
+        val canadaUnsynced = dispenseTxnDao.observeUnsyncedDispenses(Region.CA, step = StepState.TARGET_VERIFICATION.name).first()
+        assertEquals(listOf("CA drug"), canadaUnsynced.map { it.drugName })
+        assertEquals(1, dispenseTxnDao.getTotalCompletedTransactionCount(Region.US).first())
+        // HL7 is US-only: both resend queries skip the Canadian dispense.
+        assertEquals(listOf(usDrugId), dispenseTxnDao.getPendingHl7TxnOnce().map { it.drugId })
+        assertEquals(listOf(usDrugId), dispenseTxnDao.observePendingHl7Txn().first().map { it.drugId })
     }
 }

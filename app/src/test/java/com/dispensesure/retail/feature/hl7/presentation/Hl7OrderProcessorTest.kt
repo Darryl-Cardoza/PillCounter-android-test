@@ -1,6 +1,8 @@
 package com.dispensesure.retail.feature.hl7.presentation
 
 import android.content.Context
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
@@ -34,6 +36,8 @@ import org.rite.hl7.parser.HL7Parser
  */
 class Hl7OrderProcessorTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     private val hl7Parser = HL7Parser.Builder().build()
     private val message = parse("MSH|^~\\&|PMS|FAC|APP|STORE|20240101||RDE^O11|$MSG_ID|P|2.5\r")
 
@@ -53,7 +57,7 @@ class Hl7OrderProcessorTest {
         every { context.getString(any()) } returns "x"
         every { context.getString(any(), *anyVararg()) } returns "x"
         every { preferenceHelper.getLocalId() } returns 1L
-        coEvery { drugMasterDao.getDrugByNdc(NDC) } returns DrugMasterEntity(drugId = DRUG_ID, ndc = NDC, drugName = DRUG_NAME)
+        coEvery { drugMasterDao.getDrugByNdc(NDC, Region.US) } returns DrugMasterEntity(drugId = DRUG_ID, ndc = NDC, drugName = DRUG_NAME)
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns DRUG_ID
         coEvery { dispenseTxnDao.upsertPreservingId(any()) } returns NEW_TXN_ID
         // Relaxed lookups would return a fake row; default to "nothing saved yet".
@@ -63,7 +67,7 @@ class Hl7OrderProcessorTest {
 
         processor = Hl7OrderProcessor(
             context, dispenseTxnDao, preferenceHelper,
-            DrugResolver(drugMasterDao, drugRepository, drugImageDownloader), notifier, dispenseHl7Repository,
+            DrugResolver(drugMasterDao, drugRepository, drugImageDownloader, regionProvider), notifier, dispenseHl7Repository,
         )
     }
 
@@ -355,7 +359,7 @@ class Hl7OrderProcessorTest {
 
     private fun verifyIgnoredAsResend() {
         verifyNoTxnWrite()
-        coVerify(exactly = 0) { drugMasterDao.getDrugByNdc(any()) }
+        coVerify(exactly = 0) { drugMasterDao.getDrugByNdc(any(), any()) }
     }
 
     private companion object {

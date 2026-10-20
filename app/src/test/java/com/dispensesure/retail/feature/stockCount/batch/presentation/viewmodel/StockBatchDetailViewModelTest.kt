@@ -2,6 +2,8 @@ package com.dispensesure.retail.feature.stockCount.batch.presentation.viewmodel
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
@@ -34,6 +36,8 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class StockBatchDetailViewModelTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var stockTxnDao: StockTxnDao
@@ -51,7 +55,7 @@ class StockBatchDetailViewModelTest {
 
         // Sensible defaults so the init block does not blow up.
         every { preferenceHelper.getLocalId() } returns 1L
-        coEvery { stockBatchDao.getLatest() } returns null
+        coEvery { stockBatchDao.getLatest(any()) } returns null
         coEvery { stockBatchDao.getById(any()) } returns null
         coEvery { stockTxnDao.getUniqueNdcCountForBatch(any()) } returns 0
         every { stockBottleInfoDao.observeByBatchId(any()) } returns flowOf(emptyList())
@@ -73,6 +77,7 @@ class StockBatchDetailViewModelTest {
             stockBottleInfoDao,
             stockBatchDao,
             preferenceHelper,
+            regionProvider,
         )
     }
 
@@ -105,7 +110,7 @@ class StockBatchDetailViewModelTest {
     @Test
     fun `init with zero batch_id arg falls back to latest batch`() = runTest(testDispatcher) {
         val entity = StockBatchEntity(batchId = 7L, status = BatchStatus.INPROGRESS)
-        coEvery { stockBatchDao.getLatest() } returns entity
+        coEvery { stockBatchDao.getLatest(any()) } returns entity
         coEvery { stockBatchDao.getById(7L) } returns entity
         coEvery { stockTxnDao.getUniqueNdcCountForBatch(7L) } returns 3
 
@@ -130,7 +135,7 @@ class StockBatchDetailViewModelTest {
         assertEquals(9L, vm.displayBatchId.value)
         assertEquals(entity, vm.batchEntity.value)
         assertEquals(5, vm.uniqueNdcCount.value)
-        coVerify(exactly = 0) { stockBatchDao.getLatest() }
+        coVerify(exactly = 0) { stockBatchDao.getLatest(any()) }
     }
 
     @Test

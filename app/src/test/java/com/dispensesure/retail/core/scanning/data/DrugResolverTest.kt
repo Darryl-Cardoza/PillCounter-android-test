@@ -1,5 +1,7 @@
 package com.dispensesure.retail.core.scanning.data
 
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
@@ -8,6 +10,7 @@ import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
 import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.test.runTest
@@ -23,12 +26,14 @@ class DrugResolverTest {
     private val drugMasterDao: DrugMasterDao = mockk()
     private val drugRepository: IDrugRepository = mockk()
     private val drugImageDownloader: DrugImageDownloader = mockk()
-    private val resolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader)
+    private val regionProvider: RegionProvider = mockk()
+    private val resolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader, regionProvider)
 
     @Before
     fun setup() {
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns null
-        coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
+        every { regionProvider.current } returns Region.US
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns null
+        coEvery { drugMasterDao.getDrugByNdc(any(), any()) } returns null
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns SAVED_ID
         coEvery { drugImageDownloader.downloadAndSave(any(), any()) } returns IMAGE_PATH
     }
@@ -36,7 +41,7 @@ class DrugResolverTest {
     @Test
     fun `saved drug found by GTIN is used without asking the server`() = runTest {
         val saved = savedDrug(ndc = NDC)
-        coEvery { drugMasterDao.getDrugByGtin(GTIN) } returns saved
+        coEvery { drugMasterDao.getDrugByGtin(GTIN, Region.US) } returns saved
 
         val result = resolver.resolve(GTIN)
 
@@ -47,14 +52,14 @@ class DrugResolverTest {
     @Test
     fun `saved drug found by NDC is used`() = runTest {
         val saved = savedDrug(ndc = NDC)
-        coEvery { drugMasterDao.getDrugByNdc(NDC) } returns saved
+        coEvery { drugMasterDao.getDrugByNdc(NDC, Region.US) } returns saved
 
         assertEquals(DrugLookup.Found(saved, fromServer = false), resolver.resolve(NDC))
     }
 
     @Test
     fun `saved drug with a blank name is fetched again`() = runTest {
-        coEvery { drugMasterDao.getDrugByNdc(NDC) } returns savedDrug(ndc = NDC, name = "")
+        coEvery { drugMasterDao.getDrugByNdc(NDC, Region.US) } returns savedDrug(ndc = NDC, name = "")
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns serverInfo()
 
         val result = resolver.resolve(NDC)
@@ -65,7 +70,7 @@ class DrugResolverTest {
     @Test
     fun `rescan of a saved nameless drug with allowNoName is found without asking the server`() = runTest {
         val saved = savedDrug(ndc = NDC, name = null)
-        coEvery { drugMasterDao.getDrugByGtin(GTIN) } returns saved
+        coEvery { drugMasterDao.getDrugByGtin(GTIN, Region.US) } returns saved
 
         val result = resolver.resolve(GTIN, allowNoName = true, scannedGtin = GTIN)
 
@@ -76,7 +81,7 @@ class DrugResolverTest {
 
     @Test
     fun `saved drug that is not the expected one goes to the server with the expected NDC`() = runTest {
-        coEvery { drugMasterDao.getDrugByGtin(GTIN) } returns savedDrug(ndc = "OTHER")
+        coEvery { drugMasterDao.getDrugByGtin(GTIN, Region.US) } returns savedDrug(ndc = "OTHER")
         val request = slot<GetNdcRequestModel>()
         coEvery { drugRepository.getDrugInfoByNdc(capture(request)) } returns serverInfo()
 
@@ -197,6 +202,31 @@ class DrugResolverTest {
         coEvery { drugRepository.getDrugInfoByNdc(any()) } throws boom
 
         assertEquals(DrugLookup.Failed(boom), resolver.resolve(NDC))
+    }
+
+    @Test
+    fun `canada user looks up and saves canada drugs`() = runTest {
+        every { regionProvider.current } returns Region.CA
+        coEvery { drugRepository.getDrugInfoByNdc(any()) } returns serverInfo(ndc = "00013285")
+        val saved = slot<DrugMasterEntity>()
+        coEvery { drugMasterDao.upsertPreservingId(capture(saved)) } returns SAVED_ID
+
+        resolver.resolve("00013285")
+
+        coVerify { drugMasterDao.getDrugByNdc("00013285", Region.CA) }
+        coVerify { drugMasterDao.getDrugByGtin("00013285", Region.CA) }
+        assertEquals(Region.CA, saved.captured.region)
+    }
+
+    @Test
+    fun `a US drug with the same code is not found for a canada user`() = runTest {
+        every { regionProvider.current } returns Region.CA
+        coEvery { drugMasterDao.getDrugByNdc(NDC, Region.US) } returns savedDrug(ndc = NDC)
+        coEvery { drugRepository.getDrugInfoByNdc(any()) } returns serverInfo()
+
+        val result = resolver.resolve(NDC) as DrugLookup.Found
+
+        assertTrue(result.fromServer)
     }
 
     private fun savedDrug(ndc: String, name: String? = "Aspirin") =

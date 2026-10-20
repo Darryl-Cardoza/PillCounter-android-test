@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import androidx.room.Room
 import com.dispensesure.retail.core.room.AppDatabase
+import com.dispensesure.retail.core.room.AppDatabaseMigrations
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
@@ -38,6 +39,8 @@ object DatabaseModule {
             AppDatabase::class.java,
             DatabaseKeyProvider.DATABASE_NAME
         )
+            // v6 → v7 keeps the data: it only adds the drug region.
+            .addMigrations(AppDatabaseMigrations.MIGRATION_6_7)
             // Stock-count normalization (v3 → v4) restructures local tables; existing local
             // rows are disposable (synced to PMS), so recreate rather than migrate.
             .fallbackToDestructiveMigration()

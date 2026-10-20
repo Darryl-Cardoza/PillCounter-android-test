@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
@@ -84,6 +85,7 @@ class StockCountViewModel @Inject constructor(
     private val drugResolver: DrugResolver,
     private val stockHl7Repository: StockHl7Repository,
     private val hl7EventHandler: Hl7EventHandler,
+    private val regionProvider: RegionProvider,
 ) : ViewModel() {
 
     private val logger = AppLogger("StockCountVM")
@@ -252,7 +254,7 @@ class StockCountViewModel @Inject constructor(
         if (existing != 0L) return existing
         return try {
             val bucket = if (FtueController.state.isActive) TutorialData.BUCKET else _bucketId.value
-            val newId = stockBatchDao.insertNewInProgressBatch(bucketId = bucket)
+            val newId = stockBatchDao.insertNewInProgressBatch(bucketId = bucket, region = regionProvider.current)
             resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {
@@ -486,8 +488,8 @@ class StockCountViewModel @Inject constructor(
         if (!FtueController.state.isActive) return
         FtueController.track(viewModelScope.launch {
             try {
-                TutorialData.upsertDemoDrug(drugMasterDao, demoDrugName)
-                val drug = drugMasterDao.getDrugByNdc(TutorialData.DEMO_NDC) ?: return@launch
+                TutorialData.upsertDemoDrug(drugMasterDao, demoDrugName, regionProvider.current)
+                val drug = drugMasterDao.getDrugByNdc(TutorialData.DEMO_NDC, regionProvider.current) ?: return@launch
 
                 if (resolvedBatchId.value == 0L && ensureBatchCreated() == 0L) return@launch
 
@@ -639,7 +641,7 @@ class StockCountViewModel @Inject constructor(
             return
         }
         try {
-            val drugId = drugMasterDao.getDrugIdByNdc(active.ndc)
+            val drugId = drugMasterDao.getDrugIdByNdc(active.ndc, regionProvider.current)
             logger.d("INV_SCAN persistActive drugId lookup ndc=${active.ndc} → drugId=$drugId")
             if (drugId == null) {
                 logger.w("INV_SCAN persistActive ABORT: drugId null for ndc=${active.ndc}")
@@ -784,7 +786,7 @@ class StockCountViewModel @Inject constructor(
      */
     private suspend fun buildActiveTotals(batchId: Long, ndc: String): ActiveNdc? {
         if (batchId == 0L) return null
-        val drug = drugMasterDao.getDrugByNdc(ndc) ?: return null
+        val drug = drugMasterDao.getDrugByNdc(ndc, regionProvider.current) ?: return null
         val bottles = stockBottleInfoDao.getByBatchId(batchId).filter { it.ndc == ndc }
         if (bottles.isEmpty()) return null
         val sealedCount = bottles.count { (it.bottleQty ?: 0) > 0 }

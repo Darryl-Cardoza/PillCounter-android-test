@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.stockCount.batch.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
@@ -34,7 +35,8 @@ class StockBatchDetailViewModel @Inject constructor(
     private val stockTxnDao: StockTxnDao,
     private val stockBottleInfoDao: StockBottleInfoDao,
     private val stockBatchDao: StockBatchDao,
-    private val preferenceHelper: PreferenceHelper
+    private val preferenceHelper: PreferenceHelper,
+    private val regionProvider: RegionProvider
 ) : ViewModel() {
 
     private val argBatchId: Long = savedStateHandle["batch_id"] ?: 0
@@ -54,7 +56,7 @@ class StockBatchDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val batchId = if (argBatchId == 0L) {
-                    stockBatchDao.getLatest()?.batchId?.also { _resolvedBatchId.value = it } ?: 0L
+                    stockBatchDao.getLatest(regionProvider.current)?.batchId?.also { _resolvedBatchId.value = it } ?: 0L
                 } else {
                     argBatchId
                 }

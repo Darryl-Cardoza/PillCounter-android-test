@@ -35,8 +35,16 @@ class AppDatabaseTest {
     }
 
     @Test
-    fun `database opens at version 6`() {
-        assertEquals(6, sqliteDatabase.version)
+    fun `database opens at version 7`() {
+        assertEquals(7, sqliteDatabase.version)
+    }
+
+    @Test
+    fun `drug_master has a region column and a unique ndc-region index`() {
+        assertTrue("region" in columnNamesOf(tableName = "drug_master"))
+        val indexNames = schemaObjectNames(objectType = "index")
+        assertTrue("index_drug_master_ndc_region" in indexNames)
+        assertFalse("index_drug_master_ndc" in indexNames)
     }
 
     @Test

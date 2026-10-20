@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.room.dao
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import kotlinx.coroutines.test.runTest
@@ -49,7 +50,7 @@ class DrugMasterDaoTest {
         val secondResult = dao.insertIgnore(DrugMasterEntity(ndc = "111", drugName = "Second"))
 
         assertEquals(-1L, secondResult)
-        val stored = dao.getDrugByNdc("111")
+        val stored = dao.getDrugByNdc("111", Region.US)
         assertEquals("First", stored?.drugName)
     }
 
@@ -102,37 +103,37 @@ class DrugMasterDaoTest {
 
     @Test
     fun `getDrugByNdc returns null when not found`() = runTest {
-        assertNull(dao.getDrugByNdc("missing"))
+        assertNull(dao.getDrugByNdc("missing", Region.US))
     }
 
     @Test
     fun `getDrugByNdc returns matching entity`() = runTest {
         dao.insertIgnore(DrugMasterEntity(ndc = "555", drugName = "Aspirin"))
-        val result = dao.getDrugByNdc("555")
+        val result = dao.getDrugByNdc("555", Region.US)
         assertEquals("Aspirin", result?.drugName)
     }
 
     @Test
     fun `getDrugByGtin returns null when not found`() = runTest {
-        assertNull(dao.getDrugByGtin("missing-gtin"))
+        assertNull(dao.getDrugByGtin("missing-gtin", Region.US))
     }
 
     @Test
     fun `getDrugByGtin returns matching entity`() = runTest {
         dao.insertIgnore(DrugMasterEntity(ndc = "1", gtin = "GTIN1"))
-        val result = dao.getDrugByGtin("GTIN1")
+        val result = dao.getDrugByGtin("GTIN1", Region.US)
         assertEquals("GTIN1", result?.gtin)
     }
 
     @Test
     fun `getDrugIdByNdc returns null when not found`() = runTest {
-        assertNull(dao.getDrugIdByNdc("missing"))
+        assertNull(dao.getDrugIdByNdc("missing", Region.US))
     }
 
     @Test
     fun `getDrugIdByNdc returns id when found`() = runTest {
         val id = dao.insertIgnore(DrugMasterEntity(ndc = "777"))
-        assertEquals(id, dao.getDrugIdByNdc("777"))
+        assertEquals(id, dao.getDrugIdByNdc("777", Region.US))
     }
 
     @Test
@@ -237,5 +238,40 @@ class DrugMasterDaoTest {
         val secondId = dao.upsertPreservingId(DrugMasterEntity(ndc = "ndc-b"))
 
         assertNotEquals(firstId, secondId)
+    }
+
+    // ───────────────────────── region ─────────────────────────
+
+    @Test
+    fun `lookups only find drugs of the asked region`() = runTest {
+        dao.insertIgnore(DrugMasterEntity(ndc = "00013285", gtin = "00000000013285", drugName = "Valium", region = Region.CA))
+
+        assertNull(dao.getDrugByNdc("00013285", Region.US))
+        assertNull(dao.getDrugByGtin("00000000013285", Region.US))
+        assertNull(dao.getDrugIdByNdc("00013285", Region.US))
+        assertEquals("Valium", dao.getDrugByNdc("00013285", Region.CA)?.drugName)
+        assertEquals("Valium", dao.getDrugByGtin("00000000013285", Region.CA)?.drugName)
+    }
+
+    @Test
+    fun `the same code is kept once per region`() = runTest {
+        val usDrugId = dao.upsertPreservingId(DrugMasterEntity(ndc = "111", drugName = "US drug", region = Region.US))
+        val caDrugId = dao.upsertPreservingId(DrugMasterEntity(ndc = "111", drugName = "CA drug", region = Region.CA))
+
+        assertNotEquals(usDrugId, caDrugId)
+        assertEquals("US drug", dao.getDrugByNdc("111", Region.US)?.drugName)
+        assertEquals("CA drug", dao.getDrugByNdc("111", Region.CA)?.drugName)
+    }
+
+    @Test
+    fun `upsert updates the row of its own region only`() = runTest {
+        val caDrugId = dao.upsertPreservingId(DrugMasterEntity(ndc = "111", drugName = "Old", region = Region.CA))
+        dao.upsertPreservingId(DrugMasterEntity(ndc = "111", drugName = "US drug", region = Region.US))
+
+        val updatedCaDrugId = dao.upsertPreservingId(DrugMasterEntity(ndc = "111", drugName = "New", region = Region.CA))
+
+        assertEquals(caDrugId, updatedCaDrugId)
+        assertEquals("New", dao.getDrugByNdc("111", Region.CA)?.drugName)
+        assertEquals("US drug", dao.getDrugByNdc("111", Region.US)?.drugName)
     }
 }

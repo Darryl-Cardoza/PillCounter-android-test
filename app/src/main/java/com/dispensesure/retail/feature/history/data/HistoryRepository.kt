@@ -1,6 +1,7 @@
 package com.dispensesure.retail.feature.history.data
 
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
@@ -17,7 +18,8 @@ import javax.inject.Inject
 class HistoryRepository @Inject constructor(
     private val dispenseTxnDao: DispenseTxnDao,
     private val stockBatchDao: StockBatchDao,
-    private val stockTxnDao: StockTxnDao
+    private val stockTxnDao: StockTxnDao,
+    private val regionProvider: RegionProvider,
 ) {
 
     private fun LocalDate.toEpochRange(): Pair<Long, Long> {
@@ -48,9 +50,9 @@ class HistoryRepository @Inject constructor(
         val startMillis = startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
         val endMillis = endDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
 
-        val batchIds = stockBatchDao.getBatchIdsByDate(startMillis, endMillis, isCompleted)
+        val batchIds = stockBatchDao.getBatchIdsByDate(startMillis, endMillis, isCompleted, regionProvider.current)
         if (batchIds.isNotEmpty()) {
-            stockBatchDao.softDeleteBatchesByDate(startMillis, endMillis, isCompleted)
+            stockBatchDao.softDeleteBatchesByDate(startMillis, endMillis, isCompleted, regionProvider.current)
             stockTxnDao.deleteByBatchIds(batchIds)
         }
     }
@@ -64,7 +66,7 @@ class HistoryRepository @Inject constructor(
         val startMillis = startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
         val endMillis = endDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
 
-        return stockBatchDao.getBatchSummaries(startMillis, endMillis).map { dtos ->
+        return stockBatchDao.getBatchSummaries(startMillis, endMillis, regionProvider.current).map { dtos ->
             dtos.map { dto ->
                 BatchSummary(
                     batchId = dto.batchId,
