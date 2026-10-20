@@ -92,6 +92,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.toColorInt
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.compose.withReplacedText
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -198,11 +199,11 @@ object UserInterfaceUtils {
 
     // ───────────────────────────── Date/Time Formatting ─────────────────────────────
 
-    /** Formats a nullable epoch millis timestamp into `MM/dd/yy hh:mm a` format. */
-    fun Long?.toFormattedDate(): String {
+    /** Formats a nullable epoch millis timestamp in [region]'s date-time format (US `MM/dd/yy hh:mm a`). */
+    fun Long?.toFormattedDate(region: Region): String {
         return if (this != null && this > 0) {
             try {
-                val formatter = DateTimeFormatter.ofPattern(DateFormats.MM_DD_YY_HH_MM_A)
+                val formatter = DateTimeFormatter.ofPattern(region.numericDateTimePattern)
                     .withLocale(Locale.getDefault())
                     .withZone(ZoneId.systemDefault())
                 formatter.format(Instant.ofEpochMilli(this))

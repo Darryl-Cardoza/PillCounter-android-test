@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.room.models.enums.CountStatus
@@ -214,7 +215,7 @@ fun CountsSection(
                                         ndc = rowData.ndc,
                                         drugType = rowData.drugType,
                                         drugName = rowData.drugName ?: "",
-                                        date = rowData.createdAt.toFormattedDate(),
+                                        date = rowData.createdAt.toFormattedDate(LocalRegion.current),
                                         bucketId = rowData.bucketId,
                                         targetCount = rowData.targetCount ?: 0,
                                         strength = rowData.strength,
@@ -231,7 +232,7 @@ fun CountsSection(
                             items(batches, key = { it.batchId }) { batch ->
                                 BatchHistoryRow(
                                     title = batch.batchId.toString(),
-                                    dateTime = batch.createdAt.toFormattedDate(),
+                                    dateTime = batch.createdAt.toFormattedDate(LocalRegion.current),
                                     bucketId = batch.bucketId,
                                     count = batch.uniqueNdcCount.toString(),
                                     isPrescription = batch.requestIdFromPMS != null,
@@ -250,7 +251,7 @@ fun CountsSection(
                                         ndc = rowData.ndc,
                                         drugType = rowData.drugType,
                                         drugName = rowData.drugName ?: "",
-                                        date = rowData.createdAt.toFormattedDate(),
+                                        date = rowData.createdAt.toFormattedDate(LocalRegion.current),
                                         bucketId = rowData.bucketId,
                                         targetCount = rowData.targetCount ?: 0,
                                         strength = rowData.strength,
@@ -268,7 +269,7 @@ fun CountsSection(
                             items(filteredBatches, key = { it.batchId }) { batch ->
                                 BatchHistoryRow(
                                     title = batch.batchId.toString(),
-                                    dateTime = batch.createdAt.toFormattedDate(),
+                                    dateTime = batch.createdAt.toFormattedDate(LocalRegion.current),
                                     bucketId = batch.bucketId,
                                     count = batch.uniqueNdcCount.toString(),
                                     isPrescription = batch.requestIdFromPMS != null,

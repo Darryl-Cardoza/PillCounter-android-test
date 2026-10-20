@@ -49,4 +49,12 @@ class RegionTest {
         assertTrue(Region.US.showsBucket)
         assertFalse(Region.CA.showsBucket)
     }
+
+    @Test
+    fun `US dates are month first, canada dates are ISO`() {
+        assertEquals("MM/dd/yy", Region.US.numericDatePattern)
+        assertEquals("MM/dd/yy hh:mm a", Region.US.numericDateTimePattern)
+        assertEquals("yyyy-MM-dd", Region.CA.numericDatePattern)
+        assertEquals("yyyy-MM-dd hh:mm a", Region.CA.numericDateTimePattern)
+    }
 }

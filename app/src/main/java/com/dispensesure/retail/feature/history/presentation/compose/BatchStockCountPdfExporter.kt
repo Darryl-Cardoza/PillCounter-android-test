@@ -10,7 +10,7 @@ import android.graphics.pdf.PdfDocument
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.common.drugDisplayName
-import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
+import com.dispensesure.retail.core.utils.common.formatDisplayDate
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.stockCount.batch.domain.model.BatchDrugGroup
@@ -323,7 +323,7 @@ class BatchStockCountPdfExporter(private val context: Context) {
                     cv.drawText(lot.lotNo?.takeIf(String::isNotBlank) ?: "—", tL + 4f, bl(y, ROW_LOT, it), it)
                 }
                 np(C_TEXT_DARK, 10f, Paint.Align.CENTER).let {
-                    cv.drawText(lot.expiry?.takeIf(String::isNotBlank)?.let(::formatDateToUSFormat) ?: "—", tL + c1W + c2W / 2f, bl(y, ROW_LOT, it), it)
+                    cv.drawText(lot.expiry?.takeIf(String::isNotBlank)?.let(::formatDisplayDate) ?: "—", tL + c1W + c2W / 2f, bl(y, ROW_LOT, it), it)
                 }
                 np(C_TEXT_DARK, 10f, Paint.Align.RIGHT).let {
                     cv.drawText(lot.count.toString(), tR, bl(y, ROW_LOT, it), it)

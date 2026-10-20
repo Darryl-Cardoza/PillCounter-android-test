@@ -47,7 +47,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.drugDisplayName
-import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
+import com.dispensesure.retail.core.utils.common.formatDisplayDate
 import com.dispensesure.retail.core.utils.compose.repeatWhileHeld
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.ActiveNdc
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.RecentBatchRow
@@ -331,7 +331,7 @@ internal fun ScannedDrugCard(
             )
             DetailField(
                 label = stringResource(R.string.batch_stock_count_label_expiry),
-                value = formatDateToUSFormat(active.expiry),
+                value = formatDisplayDate(active.expiry, LocalRegion.current.numericDatePattern),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -584,7 +584,7 @@ internal fun ScannedDrugDetailsPortrait(
             )
             DetailField(
                 label = stringResource(R.string.batch_stock_count_label_expiry),
-                value = formatDateToUSFormat(active.expiry),
+                value = formatDisplayDate(active.expiry, LocalRegion.current.numericDatePattern),
                 modifier = Modifier.weight(1f),
             )
             if (LocalRegion.current.showsBucket) {
@@ -717,7 +717,7 @@ internal fun ScannedDrugDetailsPhone(
             )
             DetailField(
                 label = stringResource(R.string.batch_stock_count_label_expiry),
-                value = formatDateToUSFormat(active.expiry),
+                value = formatDisplayDate(active.expiry, LocalRegion.current.numericDatePattern),
                 modifier = Modifier.weight(1f),
             )
         }

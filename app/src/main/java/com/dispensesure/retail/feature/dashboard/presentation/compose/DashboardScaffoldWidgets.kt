@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.tourguide.TourGuideState
 import com.dispensesure.retail.core.tourguide.tourTarget
@@ -406,13 +408,13 @@ internal fun ScaffoldQueueList(
         }) { item ->
             when (item) {
                 is QueueItem.Dispense -> DrugCountRow(
-                    data = item.toDrugCountRowData(),
+                    data = item.toDrugCountRowData(LocalRegion.current),
                     onClick = { onDispenseClick?.invoke(item.txn.txnId) },
                 )
 
                 is QueueItem.Inventory -> BatchHistoryRow(
                     title = item.batch.batchId.toString(),
-                    dateTime = item.batch.createdAt.toFormattedDate(),
+                    dateTime = item.batch.createdAt.toFormattedDate(LocalRegion.current),
                     bucketId = item.batch.bucketId,
                     count = item.batch.uniqueNdcCount.toString(),
                     isPrescription = item.batch.requestIdFromPMS != null,
@@ -424,12 +426,12 @@ internal fun ScaffoldQueueList(
 }
 
 // One mapping from a queued dispense to the row data, shared by the list row and the UP NEXT card.
-internal fun QueueItem.Dispense.toDrugCountRowData() = DrugCountRowData(
+internal fun QueueItem.Dispense.toDrugCountRowData(region: Region) = DrugCountRowData(
     barcodeImage = DispenseBottleJson.decode(txn.bottlesJson).firstOrNull()?.barcodeImagePath,
     ndc = txn.ndc,
     drugType = txn.drugType,
     drugName = txn.drugName.orEmpty(),
-    date = txn.createdAt.toFormattedDate(),
+    date = txn.createdAt.toFormattedDate(region),
     bucketId = txn.bucketId,
     targetCount = txn.targetCount ?: 0,
     strength = txn.strength,

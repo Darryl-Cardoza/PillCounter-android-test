@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.RectF
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.TrayClass
 import com.dispensesure.retail.core.scanning.logic.TrayDetection
@@ -124,6 +125,18 @@ class OverlayUtilsTest {
     fun `stored expiry shows in US format`() {
         val top = OverlayUtils.topRowFields(info(), res).associate { it.label to it.value }
         assertEquals("07/31/28", top["Expiry"])
+    }
+
+    @Test
+    fun `canada photo strip shows ISO expiry and date-time`() {
+        val canadaInfo = info().copy(region = Region.CA)
+
+        val top = OverlayUtils.topRowFields(canadaInfo, res).associate { it.label to it.value }
+        assertEquals("2028-07-31", top["Expiry"])
+
+        val bottom = OverlayUtils.bottomRows(canadaInfo, res).flatten().associate { it.label to it.value }
+        // 14 or 15 Nov depending on the machine's time zone.
+        assertTrue(bottom.getValue("Date & Time").matches(Regex("""2023-11-1[45] \d\d:\d\d [AaPp][Mm]""")))
     }
 
     @Test

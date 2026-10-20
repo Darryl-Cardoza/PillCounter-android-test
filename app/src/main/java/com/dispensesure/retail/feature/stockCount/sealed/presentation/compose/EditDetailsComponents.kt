@@ -46,7 +46,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.drugDisplayName
-import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
+import com.dispensesure.retail.core.utils.common.formatDisplayDate
 import com.dispensesure.retail.core.utils.compose.repeatWhileHeld
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditDrugDetails
@@ -332,7 +332,7 @@ private fun EditBatchRowItem(
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = formatDateToUSFormat(row.expiry).ifBlank { "—" },
+            text = formatDisplayDate(row.expiry, LocalRegion.current.numericDatePattern).ifBlank { "—" },
             color = AppTheme.extendedColors.textColor,
             fontSize = responsiveSp(6.sp),
             maxLines = 1,

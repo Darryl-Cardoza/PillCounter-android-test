@@ -90,6 +90,7 @@ class AddPhotoWriter(
                 userName = listOfNotNull(loggedInUser?.fName, loggedInUser?.lName).joinToString(" "),
                 location = location,
                 timestamp = System.currentTimeMillis(),
+                region = label.region,
             )
             val photoWithStrip = try {
                 OverlayUtils.drawDetectionsOnBitmap(

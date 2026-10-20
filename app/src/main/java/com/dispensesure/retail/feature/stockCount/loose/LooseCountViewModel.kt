@@ -231,6 +231,7 @@ class LooseCountViewModel @Inject constructor(
             expirationDate = state.expirationDate,
             rxRefill = null,
             stepLabel = StepState.TARGET_VERIFICATION.name,
+            region = countedDrug.region,
         )
     }
 

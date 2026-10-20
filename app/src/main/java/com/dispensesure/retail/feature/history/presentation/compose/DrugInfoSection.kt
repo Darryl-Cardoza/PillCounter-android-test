@@ -61,9 +61,10 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.room.models.dtos.DispenseCountInfo
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
-import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
+import com.dispensesure.retail.core.utils.common.formatDisplayDate
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.ui.theme.AppTheme
 import java.io.File
@@ -547,7 +548,7 @@ private fun DispensedDrugDetailsPager(
                     stringResource(R.string.ndc).uppercase() to record.ndc,
                     stringResource(R.string.date_and_time) to
                         "${record.date} ${record.time}".trim(),
-                    stringResource(R.string.expiry) to formatDateToUSFormat(record.expiry),
+                    stringResource(R.string.expiry) to formatDisplayDate(record.expiry, LocalRegion.current.numericDatePattern),
                     stringResource(R.string.lotNo) to record.lotNo,
                     stringResource(R.string.serial_no) to record.serialNo,
                 )

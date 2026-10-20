@@ -46,6 +46,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toDateString
@@ -171,7 +172,7 @@ fun BatchHistoryDetailScreen(
                                 )
                                 Text(
                                     text =
-                                        "${batchEntity!!.endDateTime!!.toDateString()} ${batchEntity!!.endDateTime!!.toTimeString()}",
+                                        "${batchEntity!!.endDateTime!!.toDateString(LocalRegion.current.numericDatePattern)} ${batchEntity!!.endDateTime!!.toTimeString()}",
                                     fontSize = 14.sp,
                                     color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f)
                                 )

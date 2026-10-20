@@ -49,6 +49,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import com.dispensesure.retail.core.utils.common.FullScreenImageDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -182,7 +183,7 @@ fun TxnDetailDialog(
                         }
                         Spacer(modifier = Modifier.height(dimens.smallMedium))
                         Text(
-                            text = details.createdAt.toFormattedDate(),
+                            text = details.createdAt.toFormattedDate(LocalRegion.current),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = AppTheme.extendedColors.textColor,
                                 fontSize = 12.sp

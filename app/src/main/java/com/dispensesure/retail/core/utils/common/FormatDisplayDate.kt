@@ -6,9 +6,9 @@ import java.text.ParsePosition
 import java.text.SimpleDateFormat
 import java.util.*
 
-private val logger = AppLogger("formatDateToUSFormat")
+private val logger = AppLogger("formatDisplayDate")
 
-fun formatDateToUSFormat(
+fun formatDisplayDate(
     input: String,
     outputPattern: String = DateFormats.MM_DD_YY
 ): String {

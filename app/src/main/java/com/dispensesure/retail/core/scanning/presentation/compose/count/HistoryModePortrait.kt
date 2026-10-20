@@ -43,6 +43,7 @@ import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import com.dispensesure.retail.core.utils.common.FullScreenImageDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
@@ -317,7 +318,7 @@ internal fun TxnHistoryCard(
                 modifier = Modifier.padding(top = 6.dp)
             )
             Text(
-                text = txnDetail.createdAt.toFormattedDate(),
+                text = txnDetail.createdAt.toFormattedDate(LocalRegion.current),
                 color = AppTheme.extendedColors.textColor,
                 fontSize = responsiveSpForPillCountingHistoryScreen(12.sp)
             )

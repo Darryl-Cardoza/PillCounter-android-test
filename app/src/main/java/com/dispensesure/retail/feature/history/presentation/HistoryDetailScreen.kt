@@ -18,6 +18,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.utils.common.FullScreenImageDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -78,7 +79,7 @@ fun HistoryDetailScreen(
                 expiry = "",
                 lotNo = "",
                 serialNo = "",
-                date = uiState.txnInfo?.createdAt?.toDateString() ?: "",
+                date = uiState.txnInfo?.createdAt?.toDateString(LocalRegion.current.numericDatePattern) ?: "",
                 time = uiState.txnInfo?.createdAt?.toTimeString() ?: "",
                 note = uiState.txnInfo?.note ?: "",
                 barcodeImage = bottleList.firstOrNull()?.barcodeImagePath,

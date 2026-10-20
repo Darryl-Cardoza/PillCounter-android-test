@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.compose.DrugCountRow
@@ -112,7 +113,7 @@ fun UnsyncedTransactionList(
                     items(batchList, key = { "batch_${it.batchId}" }) { batch ->
                         BatchHistoryRow(
                             title = batch.batchId.toString(),
-                            dateTime = batch.createdAt.toFormattedDate(),
+                            dateTime = batch.createdAt.toFormattedDate(LocalRegion.current),
                             bucketId = batch.bucketId,
                             count = batch.uniqueNdcCount.toString(),
                             isPrescription = batch.requestIdFromPMS != null,

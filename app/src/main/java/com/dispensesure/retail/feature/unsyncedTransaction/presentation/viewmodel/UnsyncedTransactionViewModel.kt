@@ -110,7 +110,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
         bucketId = bucketId,
         target = targetCount ?: 0,
         bottlesJson = bottlesJson,
-        date = createdAt.toFormattedDate(),
+        date = createdAt.toFormattedDate(regionProvider.current),
         isComingFromHL7 = isComingFromHL7,
         isNdcVerified = isNdcVerified,
         strength = strength,

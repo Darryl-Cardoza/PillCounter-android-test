@@ -13,6 +13,7 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.TrayClass
 import com.dispensesure.retail.core.scanning.logic.TrayDetection
@@ -40,6 +41,7 @@ data class PhotoInfo(
     val userName: String?,
     val location: String?,
     val timestamp: Long,
+    val region: Region = Region.US,
 )
 
 /** One label/value cell of an info strip. */
@@ -114,7 +116,7 @@ object OverlayUtils {
         }
         add(InfoField(res.getString(R.string.lotNo), info.lotNumber.orDash()))
         add(InfoField(res.getString(R.string.serial_no), info.serialNumber.orDash()))
-        add(InfoField(res.getString(R.string.expiry), info.expirationDate?.let(::formatDateToUSFormat).orDash()))
+        add(InfoField(res.getString(R.string.expiry), info.expirationDate?.let { storedExpiry -> formatDisplayDate(storedExpiry, info.region.numericDatePattern) }.orDash()))
     }
 
     /**
@@ -122,7 +124,7 @@ object OverlayUtils {
      * Location at half width.
      */
     internal fun bottomRows(info: PhotoInfo, res: Resources): List<List<InfoField>> {
-        val date = SimpleDateFormat(DateFormats.MM_DD_YY_HH_MM_A, Locale.getDefault()).format(Date(info.timestamp))
+        val date = SimpleDateFormat(info.region.numericDateTimePattern, Locale.getDefault()).format(Date(info.timestamp))
         return listOf(
             listOfNotNull(
                 InfoField(res.getString(R.string.count), info.count.toString()),

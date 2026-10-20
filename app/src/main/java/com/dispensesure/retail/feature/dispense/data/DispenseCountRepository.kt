@@ -130,6 +130,7 @@ class DispenseCountRepository @Inject constructor(
             expirationDate = activeBottle?.expirationDate,
             rxRefill = OverlayUtils.rxRefill(dispenseTxn?.rxNo, dispenseTxn?.refillNo),
             stepLabel = step.name,
+            region = regionProvider.current,
         )
     }
 
