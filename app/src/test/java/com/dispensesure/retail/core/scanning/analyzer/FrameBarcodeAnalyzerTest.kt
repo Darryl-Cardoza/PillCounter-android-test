@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.scanning.analyzer
 
 import android.content.Context
 import androidx.camera.core.ImageProxy
+import com.dispensesure.retail.core.region.Region
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -168,5 +169,13 @@ class FrameBarcodeAnalyzerTest {
 
         assertFalse(fired)
         verify(exactly = 0) { proxy.imageInfo }
+    }
+
+    @Test
+    fun `an 8-digit code is a product barcode in canada only`() {
+        assertTrue("00013285".isGtinLike(Region.CA.plainProductCodeLengths))
+        assertFalse("00013285".isGtinLike(Region.US.plainProductCodeLengths))
+        assertTrue("368540100014".isGtinLike(Region.US.plainProductCodeLengths))
+        assertFalse("YL006IDA".isGtinLike(Region.CA.plainProductCodeLengths))
     }
 }

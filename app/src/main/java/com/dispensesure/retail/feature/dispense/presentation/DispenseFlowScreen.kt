@@ -32,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
@@ -217,7 +218,8 @@ fun DispenseFlowScreen(
     val awaitingResume = dispenseState.isResolvingEntry
 
     // Which handler a barcode read goes to, per stage and counting step.
-    val barcodeRouting = remember { DispenseBarcodeRouting(ScanDecoder(BarcodeDecoder())) }
+    val loggedInRegion = LocalRegion.current
+    val barcodeRouting = remember { DispenseBarcodeRouting(ScanDecoder(BarcodeDecoder()), loggedInRegion) }
     val readsBarcodes = barcodeRouting.readsBarcodes(
         stage = dispenseState.stage,
         currentStep = pillStepType,
@@ -289,7 +291,11 @@ fun DispenseFlowScreen(
     }
 
     val barcodeAnalyzer = remember {
-        FrameBarcodeAnalyzer(context.applicationContext, isGrayscale = dispenseCountViewModel::isGrayscaleImage)
+        FrameBarcodeAnalyzer(
+            context.applicationContext,
+            isGrayscale = dispenseCountViewModel::isGrayscaleImage,
+            region = loggedInRegion,
+        )
     }
     DisposableEffect(Unit) {
         onDispose { barcodeAnalyzer.pause() }
@@ -487,7 +493,7 @@ fun DispenseFlowScreen(
             is BarcodeRoute.RxLabel ->
                 dispenseVm.onAction(DispenseFlowAction.RxLabelScanned(barcodeRoute.rawValue))
             is BarcodeRoute.Container ->
-                dispenseVm.onAction(DispenseFlowAction.ContainerScanned(barcodeRoute.gtin14, barcodeRoute.firstBottle))
+                dispenseVm.onAction(DispenseFlowAction.ContainerScanned(barcodeRoute.scannedCode, barcodeRoute.firstBottle))
             // Wrong label for this step: the view model toasts; read again.
             BarcodeRoute.RxLabelOnContainerStep -> {
                 dispenseVm.onAction(DispenseFlowAction.RxLabelScannedOnContainerStep)

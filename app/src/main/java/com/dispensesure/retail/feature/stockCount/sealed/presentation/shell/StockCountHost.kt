@@ -24,6 +24,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.tourguide.FtueController
@@ -104,6 +105,7 @@ fun StockCountHost(
     var pendingNote by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
+    val loggedInRegion = LocalRegion.current
     val analyzer = remember {
         FrameBarcodeAnalyzer(
             context.applicationContext,
@@ -112,6 +114,7 @@ fun StockCountHost(
             // run more decode attempts/sec to cut time-to-detect on a steadied label.
             minIntervalMs = 100L,
             isGrayscale = stockCountViewModel::isGrayscaleImage,
+            region = loggedInRegion,
         )
     }
     DisposableEffect(Unit) { onDispose { analyzer.close() } }

@@ -9,6 +9,7 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.common.HelperFunctions.saveBitmapToFile
 import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -75,6 +76,8 @@ class FrameBarcodeAnalyzer(
     private val minIntervalMs: Long = DEFAULT_MIN_INTERVAL_MS,
     /** Read at each barcode-image save, so a settings change applies straight away. */
     private val isGrayscale: () -> Boolean = { false },
+    /** Logged-in region; decides which plain barcode lengths count as a product. */
+    private val region: Region = Region.US,
 ) {
     private val logger = AppLogger("FrameBarcodeAnalyzer")
     private val scannerDelegate = lazy {
@@ -280,10 +283,10 @@ class FrameBarcodeAnalyzer(
                     b.format == Barcode.FORMAT_AZTEC
                 }
                 val barcode = barcodes.firstOrNull(is2D)
-                    ?: barcodes.firstOrNull { it.rawValue?.isGtinLike() == true }
+                    ?: barcodes.firstOrNull { it.rawValue?.isGtinLike(region.plainProductCodeLengths) == true }
                     ?: barcodes.firstOrNull()
                 val rawValue = barcode?.rawValue
-                val isProductBarcode = rawValue?.isGtinLike() == true
+                val isProductBarcode = rawValue?.isGtinLike(region.plainProductCodeLengths) == true
                 logger.d("INV_SCAN MLKit success token=$token barcodes=${barcodes.size} first='$rawValue' gtinLike=$isProductBarcode paused=${isPaused.get()}")
 
                 // Log every detected barcode so scan results are visible in logcat.
@@ -415,13 +418,13 @@ class FrameBarcodeAnalyzer(
 /**
  * Heuristic: does this barcode value plausibly carry a GTIN/NDC? Drug product
  * barcodes are all-digit and 12–14 chars (UPC-A is 12, EAN-13 is 13, GTIN-14
- * is 14). GS1 DataMatrix payloads start with the "01" AI followed by a 14-digit
- * GTIN, so they pass too. Lot/serial codes like "YL006IDAM02" mix letters and
- * digits and never qualify.
+ * is 14); in Canada a plain 8-digit DIN counts too. GS1 DataMatrix payloads
+ * start with the "01" AI followed by a 14-digit GTIN, so they pass too.
+ * Lot/serial codes like "YL006IDAM02" mix letters and digits and never qualify.
  */
-private fun String.isGtinLike(): Boolean {
+internal fun String.isGtinLike(plainProductCodeLengths: IntRange): Boolean {
     if (startsWith("01") && length >= 16 && substring(2, 16).all { it.isDigit() }) return true
-    return length in 12..14 && all { it.isDigit() }
+    return length in plainProductCodeLengths && all { it.isDigit() }
 }
 
 private fun barcodeFormatName(format: Int): String = when (format) {

@@ -1,7 +1,9 @@
 package com.dispensesure.retail.core.region
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RegionTest {
@@ -22,5 +24,17 @@ class RegionTest {
         assertNull(Region.fromCountryCode("MX"))
         assertNull(Region.fromCountryCode(""))
         assertNull(Region.fromCountryCode(null))
+    }
+
+    @Test
+    fun `US pads short barcodes and accepts 12 to 14 digit plain codes`() {
+        assertTrue(Region.US.padsShortBarcodes)
+        assertEquals(12..14, Region.US.plainProductCodeLengths)
+    }
+
+    @Test
+    fun `canada never pads and accepts 8 to 14 digit plain codes`() {
+        assertFalse(Region.CA.padsShortBarcodes)
+        assertEquals(8..14, Region.CA.plainProductCodeLengths)
     }
 }

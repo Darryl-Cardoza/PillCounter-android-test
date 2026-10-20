@@ -39,12 +39,13 @@ class ContainerVerifier @Inject constructor(
      *      confirmation dialog first. The user has to
      *      accept the substitute explicitly via the SubstituteConfirmed action.
      */
-    suspend fun verify(gtin14: String, expectedNdc: String?): ContainerOutcome {
+    suspend fun verify(scannedCode: String, expectedNdc: String?): ContainerOutcome {
         val lookup = drugResolver.resolve(
-            code = gtin14,
+            code = scannedCode,
             expectedNdc = expectedNdc,
             allowNoName = true,
-            scannedGtin = gtin14.trim(),
+            // A DIN isn't a GTIN; only a 14-digit code is saved as the drug's GTIN.
+            scannedGtin = scannedCode.trim().takeIf { it.length == 14 },
         )
         return when (lookup) {
             is DrugLookup.Found -> outcomeOf(lookup, expectedNdc)

@@ -35,6 +35,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
@@ -114,8 +115,9 @@ fun LooseCountScreen(
         }
     }
 
+    val loggedInRegion = LocalRegion.current
     val barcodeAnalyzer = remember {
-        FrameBarcodeAnalyzer(context.applicationContext, isGrayscale = viewModel::isGrayscaleImage)
+        FrameBarcodeAnalyzer(context.applicationContext, isGrayscale = viewModel::isGrayscaleImage, region = loggedInRegion)
     }
     DisposableEffect(Unit) { onDispose { barcodeAnalyzer.close() } }
 

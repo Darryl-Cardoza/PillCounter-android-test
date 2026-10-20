@@ -223,7 +223,7 @@ class DispenseCountViewModelTest : DispenseCountViewModelTestBase() {
     /** Counting TARGET_VERIFICATION on NDC1, with a GS1 scan of NDC1 lot [lot]. */
     private fun TestScope.countingWithScanOf(lot: String) {
         startCounting(dispenseTxn(ndc = "NDC1"))
-        every { scanDecoder.decode(any()) } returns DecodedScan(
+        every { scanDecoder.decode(any(), any()) } returns DecodedScan(
             isGs1 = true, gtin14 = BOTTLE_GTIN, lot = lot, expiry = "04-30-2028", serial = "S1",
         )
         coEvery { dispenseCountRepository.findLocalDrug(BOTTLE_GTIN) } returns DrugMasterEntity(drugId = 1L, ndc = "NDC1")

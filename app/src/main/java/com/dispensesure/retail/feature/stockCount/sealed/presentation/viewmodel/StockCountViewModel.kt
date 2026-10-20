@@ -331,24 +331,26 @@ class StockCountViewModel @Inject constructor(
                             "length=${rawValue.length} | " +
                             "bypassCooldown=$bypassCooldown"
                 )
-                val scan = scanDecoder.decode(rawValue)
+                val scan = scanDecoder.decode(rawValue, regionProvider.current)
                 val gtin14 = scan.gtin14
                 logger.i(
                     "INV_SCAN DECODED isGs1=${scan.isGs1} | " +
                             "gtin14=$gtin14 | " +
+                            "lookupCode=${scan.lookupCode} | " +
                             "lot=${scan.lot} | " +
                             "expiry=${scan.expiry} | " +
                             "serial=${scan.serial}"
                 )
 
                 // Determine the lookup key for the drug database.
-                // Primary path: GTIN-14 produced by the GS1 decoder.
+                // Primary path: the decoder's lookup code (GTIN-14, or for Canada a DIN as scanned).
                 // Fallback: strip non-digits from the raw value — BT-scanner QR
                 // codes often encode a plain NDC (10-11 digits) that toGtin14
                 // rejects, but the drug_master table can resolve it via getDrugByNdc.
                 val scanKey: String
-                if (!gtin14.isNullOrBlank() && gtin14.length == 14 && gtin14.all { it.isDigit() }) {
-                    scanKey = gtin14
+                val decodedLookupCode = scan.lookupCode
+                if (!decodedLookupCode.isNullOrBlank()) {
+                    scanKey = decodedLookupCode
                 } else {
                     val rawDigits = rawValue.filter { it.isDigit() }
                     if (rawDigits.length in 10..14) {

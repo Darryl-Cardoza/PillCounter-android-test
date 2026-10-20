@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
@@ -64,6 +65,7 @@ class DispenseCountViewModel @Inject constructor(
     private val scanDecoder: ScanDecoder,
     private val dispenseCountRepository: DispenseCountRepository,
     engineFactory: PillCountingEngine.Factory,
+    private val regionProvider: RegionProvider,
 ) : ViewModel() {
 
     private val logger = AppLogger("DispenseCountVM")
@@ -720,9 +722,9 @@ class DispenseCountViewModel @Inject constructor(
                 val activeNdc = loadedTxn?.ndc
                 if (activeNdc.isNullOrBlank()) return@launch
 
-                val scan = scanDecoder.decode(rawValue)
+                val scan = scanDecoder.decode(rawValue, regionProvider.current)
 
-                val scannedDrug = scan.gtin14?.let { dispenseCountRepository.findLocalDrug(it) }
+                val scannedDrug = scan.lookupCode?.let { dispenseCountRepository.findLocalDrug(it) }
                 if (scannedDrug == null || scannedDrug.ndc != activeNdc) {
                     // Not the same drug (or unreadable) — ignore, no popup, no lookup, no DB write.
                     return@launch
