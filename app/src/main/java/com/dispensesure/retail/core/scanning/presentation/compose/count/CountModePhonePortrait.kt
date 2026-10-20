@@ -176,11 +176,13 @@ internal fun BoxScope.CountModePhonePortraitDetailsBar(
                 value = strength,
                 modifier = Modifier.weight(1f)
             )
-            PortraitDetailColumn(
-                label = stringResource(R.string.detail_label_bucket),
-                value = bucket,
-                modifier = Modifier.weight(1f)
-            )
+            if (bucket.isNotBlank()) {
+                PortraitDetailColumn(
+                    label = stringResource(R.string.detail_label_bucket),
+                    value = bucket,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }

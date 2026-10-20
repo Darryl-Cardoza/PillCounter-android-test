@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
@@ -134,11 +135,13 @@ internal fun EditDetailsContent(
                         value = details.ndc,
                         modifier = Modifier.weight(1.4f),
                     )
-                    EditDetailField(
-                        label = stringResource(R.string.batch_stock_count_label_bucket),
-                        value = details.bucket,
-                        modifier = Modifier.weight(1f),
-                    )
+                    if (LocalRegion.current.showsBucket) {
+                        EditDetailField(
+                            label = stringResource(R.string.batch_stock_count_label_bucket),
+                            value = details.bucket,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             } else {
                 // Drug Name on its own full-width row, then NDC | Bucket.
@@ -157,12 +160,14 @@ internal fun EditDetailsContent(
                         value = details.ndc,
                         modifier = Modifier.weight(1f),
                     )
-                    EditDetailField(
-                        label = stringResource(R.string.batch_stock_count_label_bucket),
-                        value = details.bucket,
-                        modifier = Modifier.weight(1f),
-                        alignEnd = true,
-                    )
+                    if (LocalRegion.current.showsBucket) {
+                        EditDetailField(
+                            label = stringResource(R.string.batch_stock_count_label_bucket),
+                            value = details.bucket,
+                            modifier = Modifier.weight(1f),
+                            alignEnd = true,
+                        )
+                    }
                 }
             }
             HorizontalDivider(

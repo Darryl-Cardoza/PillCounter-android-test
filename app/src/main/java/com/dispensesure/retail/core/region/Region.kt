@@ -8,9 +8,11 @@ enum class Region(
     val plainProductCodeLengths: IntRange,
     /** HL7 orders may carry an 8-digit DIN where the HL7 library only accepts an NDC. */
     val hl7OrdersAcceptDin: Boolean,
+    /** Pharmacies sort stock into buckets (Normal, 340B…); Canada has none. */
+    val showsBucket: Boolean,
 ) {
-    US(eightDigitCodesAreDins = false, plainProductCodeLengths = 12..14, hl7OrdersAcceptDin = false),
-    CA(eightDigitCodesAreDins = true, plainProductCodeLengths = 8..14, hl7OrdersAcceptDin = true);
+    US(eightDigitCodesAreDins = false, plainProductCodeLengths = 12..14, hl7OrdersAcceptDin = false, showsBucket = true),
+    CA(eightDigitCodesAreDins = true, plainProductCodeLengths = 8..14, hl7OrdersAcceptDin = true, showsBucket = false);
 
     companion object {
         /** Null for anything other than US / CA. */

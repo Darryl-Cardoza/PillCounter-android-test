@@ -228,7 +228,7 @@ fun LooseCountScreen(
         drugName = countedDrug?.drugName.orEmpty(),
         ndc = countedDrug?.ndc.orEmpty(),
         strength = countedDrug?.strength.orEmpty(),
-        bucket = uiState.bucketId ?: stringResource(R.string.default_bucket),
+        bucket = if (LocalRegion.current.showsBucket) uiState.bucketId ?: stringResource(R.string.default_bucket) else "",
         dosageForm = countedDrug?.dosageForm.orEmpty(),
         drugImage = countedDrug?.drugImagePath.orEmpty(),
         totalCount = uiState.totalCount,

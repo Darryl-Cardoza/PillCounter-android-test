@@ -82,7 +82,8 @@ internal fun DrugCountRowData.buildIdentifierLine(
     }
     // Only the region's schedule codes render (CII–CVI, or C/N/TS); drugType can hold other values.
     val scheduleCode = drugType.trimmedOrNull()?.uppercase()?.takeIf { isControlledDrugType(it, region) }
-    return listOfNotNull(id, bucketId.trimmedOrNull(), scheduleCode).joinToString(IdentifierLineSeparator)
+    val bucket = bucketId.trimmedOrNull()?.takeIf { region.showsBucket }
+    return listOfNotNull(id, bucket, scheduleCode).joinToString(IdentifierLineSeparator)
 }
 
 // Trimmed value, or null when missing or blank.

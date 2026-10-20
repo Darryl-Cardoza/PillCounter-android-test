@@ -43,4 +43,10 @@ class RegionTest {
         assertFalse(Region.US.hl7OrdersAcceptDin)
         assertTrue(Region.CA.hl7OrdersAcceptDin)
     }
+
+    @Test
+    fun `only US shows buckets`() {
+        assertTrue(Region.US.showsBucket)
+        assertFalse(Region.CA.showsBucket)
+    }
 }

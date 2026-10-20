@@ -386,7 +386,7 @@ fun DispenseFlowScreen(
         drugName = dispenseCountState.drugName,
         ndc = dispenseCountState.ndc,
         strength = dispenseCountState.strength,
-        bucket = dispenseCountState.bucketId ?: stringResource(R.string.default_bucket),
+        bucket = if (LocalRegion.current.showsBucket) dispenseCountState.bucketId ?: stringResource(R.string.default_bucket) else "",
         dosageForm = dispenseCountState.dosageForm,
         drugImage = dispenseCountState.drugImage,
         totalCount = dispenseCountState.totalCount,

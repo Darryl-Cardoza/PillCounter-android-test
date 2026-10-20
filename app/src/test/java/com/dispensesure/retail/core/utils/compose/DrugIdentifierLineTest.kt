@@ -65,4 +65,11 @@ class DrugIdentifierLineTest {
             .buildIdentifierLine(region = Region.CA, rxLabel = { "Rx $it" }, ndcLabel = { "NDC $it" })
         assertEquals("Rx 1  •  N", canadaLine)
     }
+
+    @Test
+    fun `canada row has no bucket`() {
+        val canadaLine = row(rxNo = "1", bucketId = "340B", drugType = "TS")
+            .buildIdentifierLine(region = Region.CA, rxLabel = { "Rx $it" }, ndcLabel = { "NDC $it" })
+        assertEquals("Rx 1  •  TS", canadaLine)
+    }
 }

@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 
 const val PMS_STEP_ID = "pms"
 const val NOTE_STEP_ID = "d_note"
+const val BUCKET_STEP_ID = "s_bucket"
 
 /** How long a demo action may wait on the app (a scan result, a saved photo) before the step fails. */
 const val TourActionTimeoutMs = 8_000L
@@ -40,9 +41,9 @@ object FtueController {
 
     private var continuing = false
 
-    fun start(sections: List<TourSection>, hl7Enabled: Boolean, notesEnabled: Boolean) {
+    fun start(sections: List<TourSection>, hl7Enabled: Boolean, notesEnabled: Boolean, bucketsEnabled: Boolean) {
         if (!state.isActive) continuing = false
-        state.start(sections, hl7Enabled, notesEnabled)
+        state.start(sections, hl7Enabled, notesEnabled, bucketsEnabled)
     }
 
     /** Drops queued events, e.g. a stale [TourEvent.Ended] that no collector will see until the next login. */
@@ -98,7 +99,7 @@ private val DISPENSE_STEPS = listOf(
 
 private val STOCK_COUNT_STEPS = listOf(
     TourStep("s_card", R.string.tour_title_stock_count_tap, R.string.tour_desc_stock_count_tap, TourSection.STOCK_COUNT, setOf("stock_count")),
-    TourStep("s_bucket", R.string.tour_title_select_bucket, R.string.tour_desc_select_bucket, TourSection.STOCK_COUNT, setOf("select_bucket")),
+    TourStep(BUCKET_STEP_ID, R.string.tour_title_select_bucket, R.string.tour_desc_select_bucket, TourSection.STOCK_COUNT, setOf("select_bucket")),
     TourStep("s_scan", R.string.tour_title_inv_camera_preview, R.string.tour_desc_inv_camera_preview, TourSection.STOCK_COUNT, setOf("inv_camera_preview"), TooltipEdge.BOTTOM),
     TourStep("s_counter", R.string.tour_title_inv_counter, R.string.tour_desc_inv_counter, TourSection.STOCK_COUNT, setOf("inv_counter")),
     TourStep("s_edit", R.string.tour_title_inv_edit_button, R.string.tour_desc_inv_edit_button, TourSection.STOCK_COUNT, setOf("inv_edit_button")),

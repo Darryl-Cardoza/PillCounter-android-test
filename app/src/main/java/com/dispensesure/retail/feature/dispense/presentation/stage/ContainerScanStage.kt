@@ -6,6 +6,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.scanning.presentation.compose.ContainerScanStrip
 import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModePhonePortraitDetailsBar
 import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModeTopDetailsBar
@@ -34,6 +35,7 @@ fun BoxScope.ContainerScanStage(
         // Same default the counting steps apply, so the bucket does not blank
         // out when a reset lands back on the container scan.
         val defaultBucket = stringResource(R.string.default_bucket)
+        val showsBucket = LocalRegion.current.showsBucket
         // Phone portrait drops the image, strength and bucket onto a second
         // row. Same bar as the steps that follow, so the header does not
         // change shape once the container is scanned.
@@ -42,7 +44,7 @@ fun BoxScope.ContainerScanStage(
                 ndc = flowState.ndc,
                 drugName = flowState.drugName,
                 strength = flowState.ndcStrength.orEmpty(),
-                bucket = flowState.selectedBucketId.ifBlank { defaultBucket },
+                bucket = if (showsBucket) flowState.selectedBucketId.ifBlank { defaultBucket } else "",
                 dosageForm = flowState.ndcDosageForm.orEmpty(),
                 drugImage = flowState.drugImage,
                 showGloveIcon = false,
@@ -53,7 +55,7 @@ fun BoxScope.ContainerScanStage(
                 ndc = flowState.ndc,
                 drugName = flowState.drugName,
                 strength = flowState.ndcStrength.orEmpty(),
-                bucket = flowState.selectedBucketId.ifBlank { defaultBucket },
+                bucket = if (showsBucket) flowState.selectedBucketId.ifBlank { defaultBucket } else "",
                 drugImage = flowState.drugImage,
             )
         }

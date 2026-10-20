@@ -67,6 +67,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.rememberAsyncImagePainter
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
 import com.dispensesure.retail.core.tourguide.TourGuideState
@@ -922,7 +923,12 @@ private fun TabletVerticalBody(
                 horizontalArrangement = Arrangement.spacedBy(gridSpacing)
             ) {
                 StrengthTile(strength = strength, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
-                BucketTile(bucket = bucket, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+                // Canada has no buckets; the empty cell keeps the grid's shape.
+                if (LocalRegion.current.showsBucket) {
+                    BucketTile(bucket = bucket, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
             }
 
             // Balancing gap below the grid so it reads as centered in the space.
@@ -1171,7 +1177,9 @@ private fun DetailTilesRow(
         QuantityTile(quantity = quantity, compact = compact, modifier = tileModifier)
         DrugImageTile(drugImagePath = drugImage, compact = compact, modifier = tileModifier)
         StrengthTile(strength = strength, compact = compact, modifier = tileModifier)
-        BucketTile(bucket = bucket, compact = compact, modifier = tileModifier)
+        if (LocalRegion.current.showsBucket) {
+            BucketTile(bucket = bucket, compact = compact, modifier = tileModifier)
+        }
     }
 }
 

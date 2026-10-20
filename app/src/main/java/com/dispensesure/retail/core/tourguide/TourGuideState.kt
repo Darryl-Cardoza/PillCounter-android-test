@@ -129,10 +129,17 @@ class TourGuideState(
         targetBounds.remove(id to owner)
     }
 
-    /** Steps whose scenario doesn't arise in this run (no PMS, no note prompt) are left out. */
-    fun start(sections: List<TourSection>, hl7Enabled: Boolean = true, notesEnabled: Boolean = true) {
+    /** Steps whose scenario doesn't arise in this run (no PMS, no note prompt, no buckets) are left out. */
+    fun start(
+        sections: List<TourSection>,
+        hl7Enabled: Boolean = true,
+        notesEnabled: Boolean = true,
+        bucketsEnabled: Boolean = true,
+    ) {
         steps = sections.flatMap(stepsFor).filter {
-            (hl7Enabled || it.id != PMS_STEP_ID) && (notesEnabled || it.id != NOTE_STEP_ID)
+            (hl7Enabled || it.id != PMS_STEP_ID) &&
+                (notesEnabled || it.id != NOTE_STEP_ID) &&
+                (bucketsEnabled || it.id != BUCKET_STEP_ID)
         }
         currentIndex = 0
         pendingSection = null

@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
@@ -303,11 +304,13 @@ internal fun ScannedDrugCard(
                 value = drugDisplayName(active.drugName),
                 modifier = Modifier.weight(2f),
             )
-            DetailField(
-                label = stringResource(R.string.batch_stock_count_label_bucket),
-                value = active.bucket,
-                modifier = Modifier.weight(1f),
-            )
+            if (LocalRegion.current.showsBucket) {
+                DetailField(
+                    label = stringResource(R.string.batch_stock_count_label_bucket),
+                    value = active.bucket,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
         HorizontalDivider(
             color = AppTheme.extendedColors.primaryBackground,
@@ -584,11 +587,13 @@ internal fun ScannedDrugDetailsPortrait(
                 value = formatDateToUSFormat(active.expiry),
                 modifier = Modifier.weight(1f),
             )
-            DetailField(
-                label = stringResource(R.string.batch_stock_count_label_bucket),
-                value = active.bucket,
-                modifier = Modifier.weight(1f),
-            )
+            if (LocalRegion.current.showsBucket) {
+                DetailField(
+                    label = stringResource(R.string.batch_stock_count_label_bucket),
+                    value = active.bucket,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
         HorizontalDivider(
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.12f),
@@ -685,11 +690,13 @@ internal fun ScannedDrugDetailsPhone(
                 value = drugDisplayName(active.drugName),
                 modifier = Modifier.weight(2f),
             )
-            DetailField(
-                label = stringResource(R.string.batch_stock_count_label_bucket),
-                value = active.bucket,
-                modifier = Modifier.weight(1f),
-            )
+            if (LocalRegion.current.showsBucket) {
+                DetailField(
+                    label = stringResource(R.string.batch_stock_count_label_bucket),
+                    value = active.bucket,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
         HorizontalDivider(
             color = AppTheme.extendedColors.primaryBackground,

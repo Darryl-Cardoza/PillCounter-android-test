@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.utils.compose.cardSelectionShadow
 import com.dispensesure.retail.ui.theme.AppTheme
 
@@ -104,7 +105,7 @@ fun BatchHistoryRow(
                             color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f)
                         )
                         Spacer(Modifier.width(12.dp))
-                        if (!bucketId.isNullOrBlank()) {
+                        if (LocalRegion.current.showsBucket && !bucketId.isNullOrBlank()) {
                             Text(
                                 text = bucketId,
                                 fontSize = 12.sp,
