@@ -167,7 +167,8 @@ class LooseCountViewModel @Inject constructor(
             // A PMS batch counts only what its request asked for; an unknown drug can't be one.
             allowedNdcs.isNotEmpty() && (scannedDrug == null || scannedDrug.ndc !in allowedNdcs) ->
                 rejectContainer(R.string.batch_stock_count_ndc_not_in_request, scannedDrug?.ndc ?: scannedCode)
-            scannedDrug == null -> rejectContainer(R.string.the_scanned_ndc_does_not_match)
+            // Same toast as the sealed-bottle scan: "Invalid NDC/DIN <code>".
+            scannedDrug == null -> rejectContainer(R.string.batch_stock_count_drug_not_found, scannedCode)
             else -> startCounting(scannedDrug, decodedScan)
         }
     }

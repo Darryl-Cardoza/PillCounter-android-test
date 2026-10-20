@@ -303,7 +303,7 @@ class LooseCountViewModelTest {
         viewModel.onAction(LooseCountAction.ContainerScanned("RAW"))
         advanceUntilIdle()
 
-        assertEquals(listOf(LooseCountEffect.ContainerRejected(R.string.the_scanned_ndc_does_not_match)), effects)
+        assertEquals(listOf(LooseCountEffect.ContainerRejected(R.string.batch_stock_count_drug_not_found, CONTAINER_GTIN)), effects)
     }
 
     @Test
