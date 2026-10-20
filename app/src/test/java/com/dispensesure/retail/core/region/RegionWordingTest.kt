@@ -23,4 +23,10 @@ class RegionWordingTest {
     fun `canada keeps strings that have no canada wording`() {
         assertEquals(R.string.expiry, Region.CA.wording(R.string.expiry))
     }
+
+    @Test
+    fun `canada HL7 notifications say DIN`() {
+        assertEquals(R.string.hl7_notification_drug_not_found_no_drug_ca, Region.CA.wording(R.string.hl7_notification_drug_not_found_no_drug))
+        assertEquals(R.string.hl7_notification_drug_not_found_no_drug, Region.US.wording(R.string.hl7_notification_drug_not_found_no_drug))
+    }
 }

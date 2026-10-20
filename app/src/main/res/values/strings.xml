@@ -698,4 +698,9 @@
     <string name="batch_stock_count_ndc_not_in_request_ca">DIN %1$s is not part of this inventory request</string>
     <string name="photo_label_requested_ndc_ca">Requested DIN</string>
     <string name="photo_label_dispensed_ndc_ca">Dispensed DIN</string>
+    <string name="hl7_notification_drug_not_found_api_failed_ca">DIN %1$s could not be resolved. API request failed.</string>
+    <string name="hl7_notification_drug_not_found_no_drug_ca">No drug found for DIN %1$s.</string>
+    <string name="hl7_notification_edit_rx_drug_not_found_ca">Rx %1$s update failed: drug DIN %2$s not found.</string>
+    <string name="hl7_notification_new_rx_ndc_missing_ca">New order for Rx %1$s ignored — DIN missing in RXE-2</string>
+    <string name="hl7_notification_refill_ndc_or_qty_missing_ca">Refill for Rx %1$s ignored — DIN or quantity missing/invalid</string>
 </resources>

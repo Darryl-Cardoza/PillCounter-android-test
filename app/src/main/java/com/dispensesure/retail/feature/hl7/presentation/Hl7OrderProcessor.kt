@@ -2,6 +2,8 @@ package com.dispensesure.retail.feature.hl7.presentation
 
 import android.content.Context
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
@@ -32,6 +34,7 @@ class Hl7OrderProcessor @Inject constructor(
     private val drugResolver: DrugResolver,
     private val notifier: Hl7Notifier,
     private val dispenseHl7Repository: DispenseHl7Repository,
+    private val regionProvider: RegionProvider,
 ) {
 
     private val logger = AppLogger("Hl7OrderProcessor")
@@ -65,7 +68,7 @@ class Hl7OrderProcessor @Inject constructor(
             logger.w("handleNewOrder: NDC missing (RXE-2) for rxNo=$rxNo — ignoring")
             notifier.show(
                 title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                message = context.getString(R.string.hl7_notification_new_rx_ndc_missing, rxNo.orEmpty()),
+                message = context.getString(regionProvider.current.wording(R.string.hl7_notification_new_rx_ndc_missing), rxNo.orEmpty()),
             )
             return
         }
@@ -185,7 +188,7 @@ class Hl7OrderProcessor @Inject constructor(
             logger.w("handleRefill: missing NDC or qty for rxNo=$rxNo refillNo=$refillNo — ignoring")
             notifier.show(
                 title = context.getString(R.string.hl7_notification_new_rx_title),
-                message = context.getString(R.string.hl7_notification_refill_ndc_or_qty_missing, rxNo.orEmpty()),
+                message = context.getString(regionProvider.current.wording(R.string.hl7_notification_refill_ndc_or_qty_missing), rxNo.orEmpty()),
             )
             return
         }
@@ -258,14 +261,14 @@ class Hl7OrderProcessor @Inject constructor(
             is DrugLookup.Failed -> {
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                    message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, ndc),
+                    message = context.getString(regionProvider.current.wording(R.string.hl7_notification_drug_not_found_api_failed), ndc),
                 )
                 null
             }
             DrugLookup.NoName, DrugLookup.NotFound -> {
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                    message = context.getString(R.string.hl7_notification_drug_not_found_no_drug, ndc),
+                    message = context.getString(regionProvider.current.wording(R.string.hl7_notification_drug_not_found_no_drug), ndc),
                 )
                 null
             }

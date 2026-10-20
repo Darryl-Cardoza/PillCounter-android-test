@@ -126,6 +126,7 @@ class DispenseHl7RepositoryTest {
         drugResolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader, regionProvider),
         notifier = notifier,
         hl7ConfigProvider = Hl7ConfigProvider(context, preferenceHelper),
+        regionProvider = regionProvider,
     )
 
     // ─────────────────────────────── message builders ───────────────────────────────

@@ -1,6 +1,7 @@
 package com.dispensesure.retail.feature.hl7.presentation
 
 import android.content.Context
+import com.dispensesure.retail.R
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
@@ -68,6 +69,7 @@ class Hl7OrderProcessorTest {
         processor = Hl7OrderProcessor(
             context, dispenseTxnDao, preferenceHelper,
             DrugResolver(drugMasterDao, drugRepository, drugImageDownloader, regionProvider), notifier, dispenseHl7Repository,
+            regionProvider,
         )
     }
 
@@ -168,6 +170,16 @@ class Hl7OrderProcessorTest {
 
         verify(exactly = 1) { notifier.show(any(), any()) }
         verifyNoTxnWrite()
+    }
+
+    @Test
+    fun `NW without an NDC for a canada user says DIN in the notification`() = runTest {
+        every { regionProvider.current } returns Region.CA
+
+        processor.process(newOrder(order("NW", giveCode = null))).join()
+
+        verify { context.getString(R.string.hl7_notification_new_rx_ndc_missing_ca, any()) }
+        verify(exactly = 0) { context.getString(R.string.hl7_notification_new_rx_ndc_missing, any()) }
     }
 
     @Test
