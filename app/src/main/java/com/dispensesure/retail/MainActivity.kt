@@ -35,6 +35,8 @@ import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DeviceIntegrityCheckFailed
 import com.dispensesure.retail.core.auth.AuthEvent
 import com.dispensesure.retail.core.auth.AuthEventBus
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
@@ -45,6 +47,7 @@ import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.security.RuntimeUnit
+import com.dispensesure.retail.core.security.SecurityUtils
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourEvent
 import com.dispensesure.retail.core.tourguide.TourSectionPrompt
@@ -78,6 +81,7 @@ import com.dispensesure.retail.ui.theme.DispenseSureRetailTheme
 import com.dispensesure.retail.ui.theme.ExtendedColors
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -121,6 +125,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var connectivityCallback: ConnectivityCallback
+
+    @Inject
+    lateinit var auditLogger: AuditLogger
 
     private lateinit var navController: NavController
 
@@ -226,6 +233,11 @@ class MainActivity : ComponentActivity() {
 //        } else {
 //            runtimeUnit.revokeClearance()
 //        }
+
+        // Log-only integrity check, once per fresh launch and off the main thread.
+        if (savedInstanceState == null) {
+            lifecycleScope.launch(Dispatchers.IO) { logFailedIntegrityChecks() }
+        }
 
         lifecycleScope.launch {
             try {
@@ -559,6 +571,23 @@ class MainActivity : ComponentActivity() {
             showToast(this, R.string.session_expired, keepUntilShown = true)
         } finally {
             sessionHealthController.endTeardown()
+        }
+    }
+
+    private fun logFailedIntegrityChecks() {
+        try {
+            val report = SecurityUtils.runIntegrityChecks(applicationContext)
+            if (report.failedChecks.isEmpty()) return
+            auditLogger.log(
+                DeviceIntegrityCheckFailed(
+                    failedChecks = report.failedChecks,
+                    notChecked = report.notChecked,
+                    installer = report.installer,
+                    overlayPackages = report.overlayPackages
+                )
+            )
+        } catch (e: Exception) {
+            logger.e("Integrity check for audit log failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
         }
     }
 

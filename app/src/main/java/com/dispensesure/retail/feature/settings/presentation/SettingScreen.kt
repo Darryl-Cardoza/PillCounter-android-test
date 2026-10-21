@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.dispensesure.retail.BuildConfig
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.ScheduleCode
 import com.dispensesure.retail.core.region.LocalRegion
@@ -249,6 +250,12 @@ fun SettingsScreen(
                         labelRes = R.string.clear_all_local_data,
                         onClick = { showCLearAllDataConfirmDialog = true }
                     )
+                    if (BuildConfig.DEBUG) {
+                        SettingsRow(
+                            labelRes = R.string.setting_audit_log_debug,
+                            onClick = { navController.navigate(Screen.AuditLog.route) }
+                        )
+                    }
                     if (isUseStaticPmsConnection) {
                         SettingsRow(
                             labelRes = R.string.setting_pms_connection,

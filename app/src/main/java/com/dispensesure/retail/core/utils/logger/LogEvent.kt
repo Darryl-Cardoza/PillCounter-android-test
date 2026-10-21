@@ -92,6 +92,9 @@ enum class LogEvent {
     // ── Security (core.security, core.room) ──────────────────────────────────
     DB_KEY_ROTATE_FAILED,
     AUDIT_LOG_FAILED,
+    AUDIT_TRAIL_WRITE_FAILED,
+    AUDIT_TRAIL_FILE_DROPPED,
+    AUDIT_TRAIL_KEY_CHANGED,
     SECURITY_CHECK_FAILED,
     CACHE_READ_FAILED,
 
