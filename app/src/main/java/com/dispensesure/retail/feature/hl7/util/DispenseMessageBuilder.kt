@@ -19,6 +19,7 @@ import org.rite.hl7.builder.ZsnTransactionType
 import org.rite.hl7.builder.ZsvMatchStrength
 import org.rite.hl7.builder.ZsvValidationResult
 import org.rite.hl7.builder.ZuiTransactionStatus
+import org.rite.hl7.model.segment.ZDSSegment
 import java.io.File
 
 /**
@@ -137,6 +138,30 @@ object DispenseMessageBuilder {
         val effectiveExpirationDate = expirationDate ?: firstBottle?.expirationDate
         val effectiveSerialNumber = serialNumber ?: firstBottle?.serialNumber
 
+        if (config.messageFormat == Hl7Format.DISPENSESURE_NATIVE) {
+            return buildDispenseMessageNative(
+                txn = txn,
+                txnDetails = txnDetails,
+                drugCode = drugCode,
+                scannedDrugCode = scannedDrugCode,
+                drugName = drugName,
+                pharmacistName = pharmacistName,
+                pharmacistFamilyName = pharmacistFamilyName,
+                pharmacistGivenName = pharmacistGivenName,
+                location = location,
+                isControlledSubstance = isControlledSubstance,
+                isHazardousDrug = isHazardousDrug,
+                isNdcVerified = isNdcVerified,
+                config = config,
+                hl7 = hl7,
+                builder = builder,
+                now = now,
+                messageId = messageId,
+                orderId = orderId,
+                totalCount = totalCount,
+                bottles = bottles,
+            )
+        }
 
         val message = builder.rdsO13 {
             msh { msh ->
@@ -150,12 +175,12 @@ object DispenseMessageBuilder {
                 msh.versionId = config.versionId
             }
 
-            when (config.messageFormat.sendingApplication) {
+            when (config.messageFormat) {
                 // Field mapping verified against Vivid's response-parse spec (ZUI-1 drugId,
                 // ZUI-2 VerifiedBy truncated to 10 chars, ZUI-4 RxNo-RefillNo composite,
                 // ZUI-6 qtyDispensed, ZUI-7 fill status, ZUI-9/10/11 lot/serial/expiry).
                 // ZUI-8 (Base64 tray image log) populated below via drugImages.
-                Hl7Format.VIVID.sendingApplication -> zui { z ->
+                Hl7Format.VIVID -> zui { z ->
                     z.ndc = drugCode.replace("-", "")
                     z.vividUserName = pharmacistGivenName.orEmpty().take(10)
                     z.transactionOrderId = orderId
@@ -168,7 +193,7 @@ object DispenseMessageBuilder {
                     z.drugSerialNumber = effectiveSerialNumber
                     z.drugExpirationDate = effectiveExpirationDate
                 }
-                Hl7Format.EYECON.sendingApplication -> {
+                Hl7Format.EYECON -> {
                     // EyeCon uses a 25-field fixed ZUI layout that the ZUIDispenseBuilder
                     // (11 fields max) cannot express. Use the builder for ZUI-1 only so the
                     // segment appears in the encoded message, then replace the whole line with
@@ -176,6 +201,7 @@ object DispenseMessageBuilder {
                     val eyeConNdc = drugCode.replace("-", "")
                     zui { z -> z.ndc = eyeConNdc }
                 }
+                else -> Unit
             }
 
             orc { orc ->
@@ -315,6 +341,99 @@ object DispenseMessageBuilder {
         } else {
             encoded
         }
+    }
+
+    private fun buildDispenseMessageNative(
+        txn: DispenseTxnEntity,
+        txnDetails: List<DispenseCountEntity>,
+        drugCode: String,
+        scannedDrugCode: String,
+        drugName: String,
+        pharmacistName: String?,
+        pharmacistFamilyName: String?,
+        pharmacistGivenName: String?,
+        location: String?,
+        isControlledSubstance: Boolean,
+        isHazardousDrug: Boolean,
+        isNdcVerified: Boolean,
+        config: HL7Config,
+        hl7: HL7,
+        builder: org.rite.hl7.builder.HL7Builder,
+        now: String,
+        messageId: String,
+        orderId: String,
+        totalCount: Int,
+        bottles: List<com.dispensesure.retail.core.scanning.domain.model.DispenseBottle>,
+    ): String {
+        val imageList = txnDetails.mapNotNull { it.imagePath }.map { path ->
+            "${ZDSSegment.NAME}:${java.io.File(path).name}"
+        }
+
+        val message = builder.rdsO13Ds {
+            msh { msh ->
+                msh.sendingApplication = config.sendingApplication
+                msh.sendingFacility = config.sendingFacility
+                msh.receivingApplication = config.receivingApplication
+                msh.receivingFacility = config.receivingFacility
+                msh.dateTimeOfMessage = now
+                msh.messageControlId = messageId
+                msh.processingId = "P"
+                msh.versionId = config.versionId
+            }
+
+            pid { pid ->
+                pid.patientId = orderId
+            }
+
+            orc { orc ->
+                orc.orderControl = "RE"
+                orc.placerOrderNumber = orderId
+                orc.orderingProviderId = pharmacistName?.takeIf { it.isNotBlank() }
+            }
+
+            rxd { rxd ->
+                rxd.dispenseGiveCode = drugCode
+                rxd.dispenseGiveName = drugName
+                rxd.dispenseGiveCodeSystem = "NDC"
+                rxd.dateTimeDispensed = now
+                rxd.actualDispenseAmount = totalCount.toString()
+                rxd.actualDispenseUnits = "TAB"
+                rxd.prescriptionNumber = orderId
+                rxd.dispensingProviderFamilyName = pharmacistFamilyName
+                rxd.dispensingProviderGivenName = pharmacistGivenName
+                rxd.dispenseSubIdCounter = "1"
+            }
+
+            zds { z ->
+                z.flowType = "DISPENSE"
+                z.layoutVersion = "1.0"
+                z.responseMessageId = messageId
+                z.requestMessageId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() }
+                z.responseType = "COMPLETE"
+                z.drugs = listOf(drugCode)
+                z.drugCodeType = "NDC"
+                z.operatorFamilyName = pharmacistFamilyName
+                z.operatorGivenName = pharmacistGivenName
+                z.prescriptionNumber = orderId
+                z.orderReferenceNumber = txn.transactionOrderId
+                z.fillNumber = txn.refillNo
+                z.dispensedQuantity = totalCount.toString()
+                z.fillStatus = "COMPLETE"
+                z.startTime = now
+                z.finishTime = now
+                z.transactionId = txn.txnId.toString()
+                z.note = txn.note
+                z.unitOfMeasure = "TAB"
+                z.verificationStatus = if (isNdcVerified) "VERIFIED" else "UNVERIFIED"
+                z.requestedNdc = drugCode
+                z.dispensedNdc = scannedDrugCode
+                z.controlledSubstanceFlag = if (isControlledSubstance) "Y" else "N"
+                z.hazardousDrugFlag = if (isHazardousDrug) "Y" else "N"
+                z.imageList = imageList
+            }
+        }
+
+        return message.encode()
     }
 
     /**

@@ -22,7 +22,7 @@ class Hl7ConfigProviderTest {
         every { preferenceHelper.getSelectedTerminalName() } returns "TERMINAL-1"
         every { preferenceHelper.getHl7PmsHost() } returns "PMS-HOST"
         every { preferenceHelper.getHl7Version() } returns "2.5.1"
-        every { preferenceHelper.getHl7Format() } returns Hl7Format.DISPENSESURE
+        every { preferenceHelper.getHl7Format() } returns Hl7Format.DISPENSESURE_STANDARD
     }
 
     @Test
@@ -34,7 +34,7 @@ class Hl7ConfigProviderTest {
         assertEquals("client", config.receivingApplication)
         assertEquals("PMS-HOST", config.receivingFacility)
         assertEquals("2.5.1", config.versionId)
-        assertEquals(Hl7Format.DISPENSESURE, config.messageFormat)
+        assertEquals(Hl7Format.DISPENSESURE_STANDARD, config.messageFormat)
     }
 
     @Test

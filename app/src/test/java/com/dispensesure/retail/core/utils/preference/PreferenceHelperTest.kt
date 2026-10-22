@@ -686,8 +686,8 @@ class PreferenceHelperTest {
         helper.saveHl7Format(Hl7Format.EYECON)
         assertEquals(Hl7Format.EYECON, helper.getHl7Format())
 
-        helper.saveHl7Format(Hl7Format.DISPENSESURE)
-        assertEquals(Hl7Format.DISPENSESURE, helper.getHl7Format())
+        helper.saveHl7Format(Hl7Format.DISPENSESURE_STANDARD)
+        assertEquals(Hl7Format.DISPENSESURE_STANDARD, helper.getHl7Format())
     }
 
     @Test

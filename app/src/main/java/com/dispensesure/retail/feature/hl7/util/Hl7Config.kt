@@ -7,12 +7,13 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
  * Persisted via [PreferenceHelper.saveHl7Format]/[PreferenceHelper.getHl7Format].
  */
 enum class Hl7Format(val sendingApplication: String) {
-    DISPENSESURE("DISPENSESURE"),
+    DISPENSESURE_STANDARD("DISPENSESURE"),
+    DISPENSESURE_NATIVE("DISPENSESURE"),
     EYECON("EYECON"),
     VIVID("VIVID");
 
     companion object {
-        val DEFAULT = DISPENSESURE
+        val DEFAULT = DISPENSESURE_STANDARD
 
         fun fromSendingApplication(value: String?): Hl7Format =
             entries.firstOrNull { it.sendingApplication == value } ?: DEFAULT
@@ -40,7 +41,7 @@ data class HL7Config(
             pmsHostName: String,
             hl7Version: String = PreferenceHelper.DEFAULT_HL7_VERSION,
             hl7Format: Hl7Format = Hl7Format.DEFAULT,
-            sendingApplicationName: String = Hl7Format.DISPENSESURE.sendingApplication
+            sendingApplicationName: String = Hl7Format.DISPENSESURE_STANDARD.sendingApplication
         ) = HL7Config(
             sendingApplication = sendingApplicationName,
             sendingFacility = selectedTerminalName,
