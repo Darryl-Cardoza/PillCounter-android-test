@@ -26,7 +26,6 @@ class Hl7Validator @Inject constructor(
         val defaultConfig = ValidationConfig()
         val config = defaultConfig.copy(
             knownOrderControlCodes = setOf("NW", "RF", "CA", "HD", "RL", "DC", "XO", "RP"),
-            knownPriorities = setOf("High", "Medium", "Low"),
         )
         HL7Validator(config)
     }
@@ -55,11 +54,11 @@ class Hl7Validator @Inject constructor(
     }
 }
 
-private val INVALID_NDC_IN_RXE = Regex("""^Invalid NDC in RXE (\d+)""")
-
-// The library's "Invalid NDC in RXE n" (n counts from 1) raised for an RXE-2 that is a DIN.
+// The library raises an "Invalid NDC in RXE" issue (segmentId=RXE, fieldPosition=2) for RXE-2
+// that fails NDC validation. For Canada, RXE-2 may be an 8-digit DIN — suppress the issue when
+// any RXE in the message carries a DIN as its give code.
 private fun ValidationIssue.isInvalidNdcForDin(rxeSegments: List<RXESegment>): Boolean {
-    val rxeNumber = INVALID_NDC_IN_RXE.find(errorText)?.groupValues?.get(1)?.toIntOrNull() ?: return false
-    val giveCode = rxeSegments.getOrNull(rxeNumber - 1)?.giveCode?.trim() ?: return false
-    return giveCode.isDin()
+    if (segmentId != "RXE" || fieldPosition != "2") return false
+    if (!errorText.contains("Invalid NDC", ignoreCase = true)) return false
+    return rxeSegments.any { rxeSegment -> rxeSegment.giveCode?.trim()?.isDin() == true }
 }

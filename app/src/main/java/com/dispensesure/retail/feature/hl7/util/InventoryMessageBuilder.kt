@@ -107,7 +107,7 @@ object InventoryMessageBuilder {
             val chunkTotal = chunkRows.sumOf { it.value.opened + it.value.sealed }
             val messageId = "RES${System.currentTimeMillis() / 1000}-$chunkIndex"
 
-            val hl7 = HL7(version = config.versionId)
+            val hl7 = HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from(config.versionId)))
             val builder = hl7.build()
 
             var obxSetId = 0

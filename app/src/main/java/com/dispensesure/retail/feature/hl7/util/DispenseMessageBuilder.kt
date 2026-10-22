@@ -96,7 +96,7 @@ object DispenseMessageBuilder {
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS")
     ): String {
 
-        val hl7 = HL7(version = config.versionId)
+        val hl7 = HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from(config.versionId)))
         val builder = hl7.build()
 
         val now = hl7TimestampNow()

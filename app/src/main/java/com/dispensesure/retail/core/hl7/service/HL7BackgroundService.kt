@@ -341,7 +341,7 @@ class HL7Service : Service() {
         coreInitialized = true
 
         // HL7 version comes from config, populated by the feature layer from preferences.
-        hl7 = HL7(version = config.hl7Version)
+        hl7 = HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from(config.hl7Version)))
 
         tlsFactory = TlsSocketFactory(this)
         val client = MllpClient(tlsFactory)
@@ -805,17 +805,18 @@ class HL7Service : Service() {
             logger.i("Plain HL7 received:\n$raw")
 
             val parseResult = hl7.parse(raw)
-            val message = parseResult.messageOrNull
+            val message: org.rite.hl7.model.HL7Message? = when (parseResult) {
+                is org.rite.hl7.parser.HL7ParseResult.Success -> parseResult.message
+                is org.rite.hl7.parser.HL7ParseResult.Failure -> {
+                    logger.w("HL7 parse had errors but partial message available: ${parseResult.errors}")
+                    parseResult.partialMessage
+                }
+            }
 
             if (message == null) {
                 val errors = (parseResult as? org.rite.hl7.parser.HL7ParseResult.Failure)?.errors
                 logger.e("HL7 parse failed, no partial message (${errors?.size ?: 0} error(s))", event = LogEvent.HL7_RECEIVE_FAILED)
                 return Hl7FallbackAck.build(raw, "Parse Failed")
-            }
-
-            if (!parseResult.isSuccess) {
-                val errors = (parseResult as? org.rite.hl7.parser.HL7ParseResult.Failure)?.errors
-                logger.w("HL7 parse had errors but partial message available: $errors")
             }
 
             logger.i("HL7 parsed OK: type=${message.header?.messageType.orEmpty()}, controlId=${message.header?.messageControlId.orEmpty()}")

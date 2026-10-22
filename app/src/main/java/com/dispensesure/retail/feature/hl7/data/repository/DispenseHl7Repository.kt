@@ -53,7 +53,6 @@ import org.rite.hl7.model.segment.ORCSegment
 import org.rite.hl7.model.segment.RXESegment
 import org.rite.hl7.model.segment.ZINSegment
 import org.rite.hl7.model.segment.ZNISegment
-import org.rite.hl7.model.segment.ZPRSegment
 import org.rite.hl7.model.segment.ZUISegment
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -390,12 +389,7 @@ class DispenseHl7Repository @Inject constructor(
 
         val drugId = finalDrug.drugId
 
-        // Priority from ZPR segment, if the sender included one alongside the order packet
-        val priority = TxnPriority.fromString(
-            message.segment<ZPRSegment>(ZPRSegment.NAME)
-                ?.takeIf { it.qualifier == "PRIORITY" }
-                ?.priority
-        )
+        val priority = TxnPriority.fromString(null)
 
         logger.i("MSH-10 raw messageControlId (site2) = '${message.header?.messageControlId.orEmpty()}'")
 
@@ -479,12 +473,7 @@ class DispenseHl7Repository @Inject constructor(
 
         val drugId = finalDrug.drugId
 
-        // Priority from ZPR segment, if the sender included one alongside the order packet
-        val priority = TxnPriority.fromString(
-            message.segment<ZPRSegment>(ZPRSegment.NAME)
-                ?.takeIf { it.qualifier == "PRIORITY" }
-                ?.priority
-        )
+        val priority = TxnPriority.fromString(null)
 
         logger.i("MSH-10 raw messageControlId (site3/orderPacket) = '${message.header?.messageControlId.orEmpty()}'")
 
@@ -638,12 +627,7 @@ class DispenseHl7Repository @Inject constructor(
 
         val newDrugId = resolvedDrug.drugId
 
-        // 3. Parse priority from ZPR segment
-        val newPriority = TxnPriority.fromString(
-            message.segment<ZPRSegment>(ZPRSegment.NAME)
-                ?.takeIf { it.qualifier == "PRIORITY" }
-                ?.priority
-        )
+        val newPriority = TxnPriority.fromString(null)
 
         // 4. Map order status and apply the edit
         val newStatus = mapHl7OrderStatus(orderStatusRaw)

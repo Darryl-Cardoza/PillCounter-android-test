@@ -64,7 +64,7 @@ class Hl7EventHandler @Inject constructor(
     fun clearCertMismatch() { _pmsCertMismatch.value = false }
 
     private val ackBuilder by lazy { AckBuilder() }
-    private fun hl7() = HL7(version = preferenceHelper.getHl7Version())
+    private fun hl7() = HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from(preferenceHelper.getHl7Version())))
 
     override fun onMessageReceived(parsed: HL7Message, idempotencyKey: String): String {
         val msh = parsed.header

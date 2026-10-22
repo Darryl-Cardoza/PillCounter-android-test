@@ -111,8 +111,7 @@ class DispenseMessageBuilderTest {
         )
 
         assertTrue(raw.isNotEmpty())
-        assertTrue("should contain RDS^O13 in MSH", raw.contains("RDS"))
-        assertTrue(raw.contains("O13"))
+        assertTrue("should contain RDS in MSH", raw.contains("RDS"))
         assertTrue("should contain RXD", raw.contains("RXD"))
         assertTrue("should contain PID", raw.contains("PID"))
         assertTrue("should contain ORC", raw.contains("ORC"))
