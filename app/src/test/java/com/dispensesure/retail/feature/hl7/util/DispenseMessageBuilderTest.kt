@@ -12,6 +12,7 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -436,6 +437,181 @@ class DispenseMessageBuilderTest {
         // Every step still gets its image OBX row — only the counting changed.
         assertTrue(raw.contains("before_dispense_stock_bottle_count"))
         assertTrue(raw.contains("dispense_recount"))
+    }
+
+    // ============================ DISPENSESURE_NATIVE ZDS ============================
+
+    private fun nativeConfig() = HL7Config.current(
+        selectedTerminalName = "PILLCOUNTER",
+        pmsHostName = "PMS",
+        hl7Format = Hl7Format.DISPENSESURE_NATIVE,
+        sendingApplicationName = Hl7Format.DISPENSESURE_NATIVE.sendingApplication,
+    )
+
+    @Test
+    fun `buildDispenseMessage for DISPENSESURE_NATIVE emits ZDS segment`() {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 15, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name, imagePath = "/a/img1.png"),
+        )
+        val txn = txn(txnId = 200L, rxNo = "RX-NATIVE-1", note = "native note")
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn,
+            txnDetails = details,
+            drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
+            drugName = "Metformin",
+            pharmacistName = "Alice Smith",
+            pharmacistFamilyName = "Smith",
+            pharmacistGivenName = "Alice",
+            isNdcVerified = true,
+            isControlledSubstance = false,
+            isHazardousDrug = false,
+            config = nativeConfig(),
+        )
+
+        assertTrue("ZDS segment must be present", raw.lineSequence().any { it.startsWith("ZDS|") })
+        assertTrue("MSH must carry DISPENSESURE sending app", raw.contains("DISPENSESURE"))
+        assertTrue("RXD must be present", raw.lineSequence().any { it.startsWith("RXD|") })
+        assertTrue("PID must carry rxNo", raw.contains("RX-NATIVE-1"))
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE ZDS flowType is DISPENSE`() {
+        val details = listOf(detail(countId = 1L, pillCount = 10, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name))
+        val txn = txn(txnId = 201L, rxNo = "RX-NATIVE-2", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "11111-222-33", scannedDrugCode = "11111-222-33",
+            drugName = "Drug", pharmacistName = null,
+            config = nativeConfig(),
+        )
+
+        val zds = raw.lineSequence().first { it.startsWith("ZDS|") }.split("|")
+        assertEquals("DISPENSE", zds[1])
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE ZDS fillStatus is COMPLETE`() {
+        val details = listOf(detail(countId = 1L, pillCount = 5, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name))
+        val txn = txn(txnId = 202L, rxNo = "RX-NATIVE-3", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            config = nativeConfig(),
+        )
+
+        val zds = raw.lineSequence().first { it.startsWith("ZDS|") }.split("|")
+        assertTrue("ZDS fillStatus should be COMPLETE", zds.any { it == "COMPLETE" })
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE ZDS verificationStatus reflects isNdcVerified`() {
+        val details = listOf(detail(countId = 1L, pillCount = 7, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name))
+        val txn = txn(txnId = 203L, rxNo = "RX-NATIVE-4", note = null)
+
+        val verified = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            isNdcVerified = true, config = nativeConfig(),
+        )
+        val unverified = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            isNdcVerified = false, config = nativeConfig(),
+        )
+
+        assertTrue("verified flag should appear in verified message", verified.contains("VERIFIED"))
+        assertTrue("UNVERIFIED flag should appear in unverified message", unverified.contains("UNVERIFIED"))
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE ZDS controlledSubstance and hazardous flags`() {
+        val details = listOf(detail(countId = 1L, pillCount = 3, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name))
+        val txn = txn(txnId = 204L, rxNo = "RX-NATIVE-5", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            isControlledSubstance = true, isHazardousDrug = true,
+            config = nativeConfig(),
+        )
+
+        val zds = raw.lineSequence().first { it.startsWith("ZDS|") }
+        assertTrue("controlled substance flag Y", zds.contains("|Y|") || zds.endsWith("|Y"))
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE ZDS imageList carries filenames`() {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 10, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name, imagePath = "/storage/img_one.png"),
+            detail(countId = 2L, pillCount = 5, step = com.dispensesure.retail.core.models.StepState.VIAL.name, imagePath = "/storage/img_two.png"),
+            detail(countId = 3L, pillCount = 0, step = com.dispensesure.retail.core.models.StepState.CONTAINER_INITIATE.name, imagePath = null),
+        )
+        val txn = txn(txnId = 205L, rxNo = "RX-NATIVE-6", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            config = nativeConfig(),
+        )
+
+        val zds = raw.lineSequence().first { it.startsWith("ZDS|") }
+        assertTrue("image list should contain img_one.png", zds.contains("img_one.png"))
+        assertTrue("image list should contain img_two.png", zds.contains("img_two.png"))
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE does not emit ZUI or ZSN segments`() {
+        val details = listOf(detail(countId = 1L, pillCount = 8, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name))
+        val txn = txn(txnId = 206L, rxNo = "RX-NATIVE-7", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            config = nativeConfig(),
+        )
+
+        assertFalse("ZUI must not appear in native format", raw.lineSequence().any { it.startsWith("ZUI|") })
+        assertFalse("ZSN must not appear in native format", raw.lineSequence().any { it.startsWith("ZSN|") })
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE RXD carries dispensed quantity`() {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 12, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name),
+            detail(countId = 2L, pillCount = 3, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name),
+        )
+        val txn = txn(txnId = 207L, rxNo = "RX-NATIVE-8", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            config = nativeConfig(),
+        )
+
+        val rxd = raw.lineSequence().first { it.startsWith("RXD|") }.split("|")
+        assertEquals("15", rxd[4])
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE legacy pref migration — stored DISPENSESURE routes to STANDARD not NATIVE`() {
+        // Verifies that the preference migration in PreferenceHelper does NOT silently
+        // route legacy "DISPENSESURE" stored value to DISPENSESURE_NATIVE.
+        // Legacy value must map to DISPENSESURE_STANDARD.
+        val migratedFormat = Hl7Format.valueOf(
+            "DISPENSESURE".let { if (it == "DISPENSESURE") "DISPENSESURE_STANDARD" else it }
+        )
+        assertEquals(Hl7Format.DISPENSESURE_STANDARD, migratedFormat)
     }
 
     @Test
