@@ -1,6 +1,11 @@
 package com.dispensesure.retail.feature.hl7.data.repository
 
 import android.content.Context
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DispenseSyncAbandoned
+import com.dispensesure.retail.core.audit.model.Hl7DispenseSent
+import com.dispensesure.retail.core.audit.model.Hl7SendOutcome
+import com.dispensesure.retail.core.audit.model.SendTrigger
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
@@ -127,7 +132,70 @@ class DispenseHl7RepositoryTest {
         notifier = notifier,
         hl7ConfigProvider = Hl7ConfigProvider(context, preferenceHelper),
         regionProvider = regionProvider,
+        auditLogger = auditLogger,
     )
+
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
+
+    private fun stubSendableTxn(ack: String) {
+        coEvery { dispenseTxnDao.getById(1L) } returns txnEntity(drugId = 5L)
+        coEvery { dispenseCountDao.getAllForTxn("1") } returns listOf(DispenseCountEntity(txnId = 1L, pillCount = 5))
+        coEvery { locationProvider.getCurrentLocationAsString() } returns "loc"
+        coEvery { drugMasterDao.getDrugById(5L) } returns DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
+        coEvery { hl7MessageSender.send(any()) } returns Result.success(ack)
+        every { preferenceHelper.isAllowLocalStorage() } returns true
+    }
+
+    @Test
+    fun `an accepted send is logged with its trigger`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        stubSendableTxn("MSH|^~\\&|A|B|C|D|20240101||ACK|1|P|2.5\rMSA|AA|1\r")
+
+        repo.sendDispense(1L, SendTrigger.FIRST_SEND)
+
+        verify { auditLogger.log(match { it is Hl7DispenseSent && it.outcome == Hl7SendOutcome.ACCEPTED && it.trigger == SendTrigger.FIRST_SEND }) }
+    }
+
+    @Test
+    fun `an AR reject is logged as rejected and abandoned`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        stubSendableTxn("MSH|^~\\&|A|B|C|D|20240101||ACK|1|P|2.5\rMSA|AR|1|bad\r")
+
+        repo.sendDispense(1L)
+
+        verify { auditLogger.log(match { it is Hl7DispenseSent && it.outcome == Hl7SendOutcome.REJECTED }) }
+        verify { auditLogger.log(match { it is DispenseSyncAbandoned && it.txnId == 1L }) }
+    }
+
+    @Test
+    fun `an AE reply is logged as failed`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        stubSendableTxn("MSH|^~\\&|A|B|C|D|20240101||ACK|1|P|2.5\rMSA|AE|1|rejected\r")
+
+        repo.sendDispense(1L)
+
+        verify { auditLogger.log(match { it is Hl7DispenseSent && it.outcome == Hl7SendOutcome.FAILED }) }
+    }
+
+    @Test
+    fun `a txn with no drug row is logged as skipped`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { dispenseTxnDao.getById(1L) } returns txnEntity(drugId = null)
+
+        repo.sendDispense(1L)
+
+        verify { auditLogger.log(match { it is Hl7DispenseSent && it.outcome == Hl7SendOutcome.SKIPPED_NO_DRUG }) }
+    }
+
+    @Test
+    fun `a send that throws is logged as failed`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { dispenseTxnDao.getById(1L) } throws RuntimeException("db boom")
+
+        repo.sendDispense(1L)
+
+        verify { auditLogger.log(match { it is Hl7DispenseSent && it.outcome == Hl7SendOutcome.FAILED }) }
+    }
 
     // ─────────────────────────────── message builders ───────────────────────────────
 
@@ -332,7 +400,7 @@ class DispenseHl7RepositoryTest {
     fun `resendPendingDispenses sends every pending dispense`() = runTest(testDispatcher) {
         val repo = createRepo()
         // Stock (REGULAR) counts no longer live in pill_count_txn; every pending row is a dispense.
-        // Batch HL7 responses are resent per-batch via StockHl7Repository.resendPendingBatches().
+        // Batch HL7 responses are resent per-batch via StockHl7Repository.sendPendingBatches().
         coEvery { dispenseTxnDao.getPendingHl7TxnOnce() } returns listOf(txnEntity(txnId = 1L))
 
         coEvery { dispenseTxnDao.getById(1L) } returns txnEntity(txnId = 1L, drugId = 5L)
@@ -516,7 +584,7 @@ class DispenseHl7RepositoryTest {
         repo.handleOrderEdit(editMessage(orderStatus = "CA"))
 
         coVerify(timeout = 3000) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
-        coVerify(timeout = 3000) { dispenseTxnDao.softDeleteByRxNo("RX1", any()) }
+        coVerify(timeout = 3000) { dispenseTxnDao.cancelActiveTxnsByRxNo("RX1") }
         // notifier.show NOT called on CA path (returns before notify)
     }
 

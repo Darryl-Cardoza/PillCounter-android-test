@@ -9,6 +9,10 @@ import com.dispensesure.retail.core.models.ApiResponse
 import com.dispensesure.retail.core.models.ScheduleCode
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.LocalDataCleared
+import com.dispensesure.retail.core.audit.model.SecuritySetting
+import com.dispensesure.retail.core.audit.model.SettingChanged
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
@@ -62,6 +66,7 @@ class MainActivityViewModelTest {
     private lateinit var stockBatchDao: StockBatchDao
     private lateinit var stockTxnDao: StockTxnDao
     private lateinit var stockBottleInfoDao: StockBottleInfoDao
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var hl7EventHandler: Hl7EventHandler
     private lateinit var sessionHealthController: SessionHealthController
@@ -185,7 +190,31 @@ class MainActivityViewModelTest {
         sessionHealthController,
         testDispatcher,
         regionProvider,
+        auditLogger,
     )
+
+    @Test
+    fun `a security setting change is logged once with old and new`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.toggleRequireBackCountOnOff(true)
+        vm.toggleRequireBackCountOnOff(true)
+
+        verify(exactly = 1) {
+            auditLogger.log(SettingChanged(SecuritySetting.REQUIRE_BACK_COUNT, "false", "true"))
+        }
+    }
+
+    @Test
+    fun `re-selecting the same face lock timeout logs nothing`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.updateFaceLockTimeoutMinutes(vm.faceLockTimeoutMinutes.value)
+
+        verify(exactly = 0) { auditLogger.log(match { it is SettingChanged }) }
+    }
 
     // ─────────────────────────── init / theme loading ───────────────────────────
 
@@ -778,6 +807,22 @@ class MainActivityViewModelTest {
     }
 
     @Test
+    fun `deleteAllTransaction logs the row counts the deletes returned`() = runTest(testDispatcher) {
+        coEvery { dispenseTxnDao.deleteAllTransactions() } returns 4
+        coEvery { stockBottleInfoDao.deleteAll() } returns 3
+        coEvery { stockTxnDao.deleteAll() } returns 2
+        coEvery { stockBatchDao.deleteAll() } returns 1
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.deleteAllTransaction()
+        advanceUntilIdle()
+
+        val expectedRowsDeleted = mapOf("dispense_txn" to 4, "stock_bottle_info" to 3, "stock_txn" to 2, "stock_batch" to 1)
+        verify { auditLogger.log(match { it is LocalDataCleared && it.rowsDeleted == expectedRowsDeleted }) }
+    }
+
+    @Test
     fun `updateSchedules writes the chosen set to state and prefs`() = runTest(testDispatcher) {
         every { preferenceHelper.isControlDrugTypesInitialized(Region.US) } returns true
         every { preferenceHelper.getControlDrugTypes(Region.US) } returns emptySet()
@@ -813,6 +858,28 @@ class MainActivityViewModelTest {
         vm.clearTrayColorLists()
 
         verify { preferenceHelper.clearAllTrayColorLists() }
+    }
+
+    @Test
+    fun `clearTrayColorLists logs set to cleared only when a color was stored`() = runTest(testDispatcher) {
+        every { preferenceHelper.getHazardousTrayColor() } returns "BLUE"
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.clearTrayColorLists()
+
+        verify { auditLogger.log(SettingChanged(SecuritySetting.TRAY_COLORS, "set", "cleared")) }
+    }
+
+    @Test
+    fun `clearTrayColorLists logs nothing when no color was stored`() = runTest(testDispatcher) {
+        every { preferenceHelper.getHazardousTrayColor() } returns null
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.clearTrayColorLists()
+
+        verify(exactly = 0) { auditLogger.log(match { it is SettingChanged }) }
     }
 
     @Test

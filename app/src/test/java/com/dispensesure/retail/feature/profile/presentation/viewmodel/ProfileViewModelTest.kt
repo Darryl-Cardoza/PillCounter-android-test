@@ -5,6 +5,11 @@ import android.util.Log
 import app.cash.turbine.test
 import com.google.gson.Gson
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.FieldChange
+import com.dispensesure.retail.core.audit.model.ProfileUpdated
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.models.ErrorResponse
 import com.dispensesure.retail.core.models.ValidationResult
 import com.dispensesure.retail.core.room.dao.UserDao
@@ -72,6 +77,9 @@ class ProfileViewModelTest {
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var deviceKeyProvider: DeviceKeyProvider
     private lateinit var context: Context
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
+    private val dispenseTxnDao = mockk<DispenseTxnDao>(relaxed = true)
+    private val stockBatchDao = mockk<StockBatchDao>(relaxed = true)
 
     private val deviceKey = "test-device-key"
     private val activeTerminal =
@@ -161,8 +169,30 @@ class ProfileViewModelTest {
             validator,
             hl7ServiceManager,
             deviceKeyProvider,
-            context
+            context,
+            auditLogger,
+            dispenseTxnDao,
+            stockBatchDao
         )
+
+    @Test
+    fun `updateProfile logs only the fields that changed`() = runTest(testDispatcher) {
+        val savedUser = userEntity(country = "US", state = "CA")
+        every { userDao.observeByLocalId(any()) } returns flowOf(savedUser)
+        coEvery { userDao.getByLocalId(1L) } returns savedUser
+        coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.onPharmacyIdChanged("654321")
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        verify {
+            auditLogger.log(ProfileUpdated(listOf(FieldChange("pharmacy_id", "123456", "654321"))))
+        }
+    }
 
     private fun httpException(code: Int, body: String = "error"): HttpException {
         val responseBody = body.toResponseBody("application/json".toMediaTypeOrNull())

@@ -92,7 +92,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
                 .filter { it }
                 .collect {
                     try {
-                        stockHl7Repository.resendPendingBatches()
+                        stockHl7Repository.sendPendingBatches()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {

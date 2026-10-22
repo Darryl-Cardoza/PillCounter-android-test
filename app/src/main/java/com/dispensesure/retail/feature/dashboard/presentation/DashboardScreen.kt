@@ -22,6 +22,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.model.CertPinChoice
 import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.tourguide.BUCKET_STEP_ID
 import com.dispensesure.retail.core.tourguide.FtueController
@@ -367,9 +368,9 @@ fun DashboardScreen(
             message = stringResource(R.string.pms_cert_mismatch_message),
             confirmText = stringResource(R.string.pms_cert_mismatch_confirm),
             cancelText = stringResource(R.string.cancel),
-            onConfirm = { if (!viewModel.clearPmsCertPin()) showToast(context, R.string.error_generic) },
+            onConfirm = { if (!viewModel.clearPmsCertPin(CertPinChoice.CONFIRM)) showToast(context, R.string.error_generic) },
             onCancel = {
-                viewModel.clearPmsCertPin()
+                viewModel.clearPmsCertPin(CertPinChoice.CANCEL)
                 viewModel.dismissPmsCertMismatch()
             }
         )

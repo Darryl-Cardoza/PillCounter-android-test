@@ -2,6 +2,13 @@ package com.dispensesure.retail.feature.hl7.data.repository
 
 import android.content.Context
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.BatchCreated
+import com.dispensesure.retail.core.audit.model.BatchSource
+import com.dispensesure.retail.core.audit.model.BatchSyncOutcome
+import com.dispensesure.retail.core.audit.model.BatchSynced
+import com.dispensesure.retail.core.audit.model.PmsRequestReceived
+import com.dispensesure.retail.core.audit.model.SendTrigger
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
@@ -30,6 +37,7 @@ import kotlinx.coroutines.launch
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.segment.INVSegment
 import org.rite.hl7.model.segment.RXESegment
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -49,6 +57,7 @@ class StockHl7Repository @Inject constructor(
     private val notifier: Hl7Notifier,
     private val hl7ConfigProvider: Hl7ConfigProvider,
     private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
 ) {
 
     private val logger = AppLogger.create<StockHl7Repository>()
@@ -58,6 +67,9 @@ class StockHl7Repository @Inject constructor(
     // without this, two passes send the same chunk twice.
     // One worker runs passes in turn; triggers during a pass collapse into one more pass.
     private val resendRequests = Channel<Unit>(Channel.CONFLATED)
+
+    // Batches End Count just completed; kept apart from the channel so a collapsed trigger can't lose one.
+    private val firstSendBatchIds = ConcurrentHashMap.newKeySet<Long>()
 
     init {
         scope.launch {
@@ -74,11 +86,13 @@ class StockHl7Repository @Inject constructor(
      * previous chunk's ACK succeeds. Progress is persisted
      * ([StockBatchDao.markChunkAcked]) immediately after every successful ACK, so if
      * PMS goes offline or the app is killed mid-sync, the next call (via
-     * [resendPendingBatches]) resumes at the first un-ACKed chunk
+     * [sendPendingBatches]) resumes at the first un-ACKed chunk
      * instead of resending chunks PMS has already applied. The batch is marked
      * synced ([StockBatchDao.markBatchSynced]) only once every chunk has ACKed.
+     *
+     * @param trigger First send from End Count, or a resend; recorded on BATCH_SYNCED.
      */
-    suspend fun sendInventory(batchId: Long) {
+    suspend fun sendInventory(batchId: Long, trigger: SendTrigger = SendTrigger.AUTO_RESEND) {
         try {
             if (batchId in stockBatchDao.getTutorialBatchIds()) {
                 logger.i("Tutorial batch — never sending to PMS, batchId=$batchId")
@@ -136,21 +150,38 @@ class StockHl7Repository @Inject constructor(
                     } else {
                         logger.e(chunkMessage, event = LogEvent.HL7_SEND_FAILED)
                     }
+                    auditLogger.log(
+                        BatchSynced(
+                            batchId = batchId,
+                            trigger = trigger,
+                            outcome = BatchSyncOutcome.STOPPED,
+                            chunkIndex = chunk.chunkIndex,
+                            totalChunks = chunk.totalChunks
+                        )
+                    )
                     return
                 }
             }
 
             stockBatchDao.markBatchSynced(batchId)
             logger.i("All chunks sent — inventory HL7 sync complete for batchId=$batchId")
+            auditLogger.log(BatchSynced(batchId, trigger, BatchSyncOutcome.COMPLETE, chunkIndex = null, totalChunks = null))
 
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logger.e("sendInventory failed for batchId=$batchId", e, event = LogEvent.HL7_SEND_FAILED)
+            auditLogger.log(BatchSynced(batchId, trigger, BatchSyncOutcome.FAILED, chunkIndex = null, totalChunks = null))
         }
     }
 
-    fun resendPendingBatches() {
+    /**
+     * Sends every unsynced completed batch.
+     *
+     * @param firstSendBatchId The batch End Count just completed; it is logged as the first send, the rest as resends.
+     */
+    fun sendPendingBatches(firstSendBatchId: Long? = null) {
+        firstSendBatchId?.let { endCountBatchId -> firstSendBatchIds.add(endCountBatchId) }
         resendRequests.trySend(Unit)
     }
 
@@ -161,14 +192,15 @@ class StockHl7Repository @Inject constructor(
                 logger.i("No pending HL7 batch transactions to sync")
                 return
             }
-            logger.i("Resending ${pendingBatches.size} pending HL7 batch transactions")
+            logger.i("Sending ${pendingBatches.size} pending HL7 batch transactions")
             for (batch in pendingBatches) {
-                sendInventory(batchId = batch.batchId)
+                val trigger = if (firstSendBatchIds.remove(batch.batchId)) SendTrigger.FIRST_SEND else SendTrigger.AUTO_RESEND
+                sendInventory(batchId = batch.batchId, trigger = trigger)
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            logger.e("resendPendingBatches failed", e, event = LogEvent.HL7_RESEND_FAILED)
+            logger.e("sendPendingBatches failed", e, event = LogEvent.HL7_RESEND_FAILED)
         }
     }
 
@@ -217,6 +249,14 @@ class StockHl7Repository @Inject constructor(
             )?.let { resolvedItems.add(it) }
         }
 
+        auditLogger.log(
+            PmsRequestReceived(
+                controlId = message.header?.messageControlId,
+                drugCount = if (invSegments.isNotEmpty()) invSegments.size else 1,
+                resolvedCount = resolvedItems.size
+            )
+        )
+
         if (resolvedItems.isEmpty()) {
             logger.w("No valid drugs resolved from local DB or API. Batch will not be created.")
             notifier.show(
@@ -240,6 +280,17 @@ class StockHl7Repository @Inject constructor(
             region = regionProvider.current,
         )
         val batchId = stockBatchDao.insert(batch)
+        // insert ignores a conflicting row and returns -1; no batch was created then.
+        if (batchId > 0L) {
+            auditLogger.log(
+                BatchCreated(
+                    batchId = batchId,
+                    source = BatchSource.PMS,
+                    bucket = batch.bucketId,
+                    requestedNdcs = resolvedItems.map { it.ndc }
+                )
+            )
+        }
 
         for (item in resolvedItems) {
             val txn = StockTxnEntity(

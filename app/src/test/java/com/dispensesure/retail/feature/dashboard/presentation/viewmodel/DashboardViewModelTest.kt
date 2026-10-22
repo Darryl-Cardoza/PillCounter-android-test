@@ -1,6 +1,9 @@
 package com.dispensesure.retail.feature.dashboard.presentation.viewmodel
 
 import android.util.Log
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.CertPinChoice
+import com.dispensesure.retail.core.audit.model.PmsCertPinMismatch
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.ApiResponse
@@ -161,7 +164,10 @@ class DashboardViewModelTest {
         mockk(relaxed = true),
         testDispatcher,
         regionProvider,
+        auditLogger,
     )
+
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
 
     // ─────────────────────────────── helpers ───────────────────────────────
 
@@ -292,7 +298,7 @@ class DashboardViewModelTest {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        vm.clearPmsCertPin()
+        vm.clearPmsCertPin(CertPinChoice.CONFIRM)
 
         verify(exactly = 1) { hl7ServiceManager.clearPmsCertPin(hl7EventHandler) }
     }
@@ -303,7 +309,19 @@ class DashboardViewModelTest {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        assertFalse(vm.clearPmsCertPin())
+        assertFalse(vm.clearPmsCertPin(CertPinChoice.CONFIRM))
+    }
+
+    @Test
+    fun `clearPmsCertPin logs the old fingerprint and the choice once cleared`() = runTest(testDispatcher) {
+        every { hl7ServiceManager.pinnedPmsFingerprint() } returns "AB:CD"
+        every { hl7ServiceManager.clearPmsCertPin(hl7EventHandler) } returns true
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.clearPmsCertPin(CertPinChoice.CANCEL)
+
+        verify { auditLogger.log(PmsCertPinMismatch(oldFingerprint = "AB:CD", choice = CertPinChoice.CANCEL)) }
     }
 
     @Test

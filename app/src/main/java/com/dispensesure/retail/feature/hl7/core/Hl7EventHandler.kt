@@ -2,6 +2,8 @@ package com.dispensesure.retail.feature.hl7.core
 
 import android.content.Context
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.PmsOrderReceived
 import com.dispensesure.retail.core.hl7.core.Hl7EventListener
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -47,6 +49,7 @@ class Hl7EventHandler @Inject constructor(
     private val stockHl7Repository: StockHl7Repository,
     private val notifier: Hl7Notifier,
     private val preferenceHelper: PreferenceHelper,
+    private val auditLogger: AuditLogger,
 ) : Hl7EventListener {
 
     private val logger = AppLogger("HL7EventHandler")
@@ -120,11 +123,13 @@ class Hl7EventHandler @Inject constructor(
         return when {
             // ZUI and ZNI order-packet formats bypass the new RDE parser — handled in repository
             hasZui -> {
+                auditLogger.log(PmsOrderReceived(messageId = msgId.ifBlank { null }, orderControl = orderControl, format = "ZUI"))
                 scope.launch { dispenseHl7Repository.handleZuiOrderPacketDispenseRequest(parsed) }
                 buildSuccessAck(parsed)
             }
 
             hasZni -> {
+                auditLogger.log(PmsOrderReceived(messageId = msgId.ifBlank { null }, orderControl = orderControl, format = "ZNI"))
                 scope.launch { dispenseHl7Repository.handleOrderPacketDispenseRequest(parsed) }
                 buildSuccessAck(parsed)
             }
@@ -198,6 +203,13 @@ class Hl7EventHandler @Inject constructor(
 
                 // 4. Validation passed — dispatch processing async, return AA
                 orders.forEach { order ->
+                    auditLogger.log(
+                        PmsOrderReceived(
+                            messageId = order.messageControlId.ifBlank { null },
+                            orderControl = order.orderControl,
+                            format = "RXE"
+                        )
+                    )
                     hl7OrderProcessor.process(hl7OrderHandler.handle(order, parsed))
                 }
                 buildSuccessAck(parsed)
@@ -242,7 +254,7 @@ class Hl7EventHandler @Inject constructor(
         logger.i("HL7 client connected | $host:$port")
         _connectionState.value = true
         dispenseHl7Repository.resendPendingDispenses()
-        stockHl7Repository.resendPendingBatches()
+        stockHl7Repository.sendPendingBatches()
         notifier.show(
             title = context.getString(R.string.hl7_notification_device_connected_title),
             message = context.getString(R.string.hl7_notification_device_connected_message, host),

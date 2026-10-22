@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import app.cash.turbine.test
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.hl7.service.Hl7serviceHandler
 import com.dispensesure.retail.core.models.ValidationResult
 import com.dispensesure.retail.core.utils.common.NetworkUtils
@@ -89,7 +90,10 @@ class LoginViewModelTest {
 
         every { context.getString(any()) } returns "msg"
 
-        viewModel = LoginViewModel(repository, validator, context, preferenceHelper, serviceManager)
+        viewModel = LoginViewModel(
+            repository, validator, context, preferenceHelper, serviceManager,
+            mockk<AuditLogger>(relaxed = true)
+        )
     }
 
     @After

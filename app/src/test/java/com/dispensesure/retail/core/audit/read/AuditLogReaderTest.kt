@@ -21,7 +21,7 @@ class AuditLogReaderTest {
 
     private fun record(seq: Long) = AuditRecord(
         eventId = "e-$seq", seq = seq, timestamp = "2026-10-21T00:00:00Z", sessionId = "s-1",
-        userId = null, email = null, operatorId = null, deviceKey = null, terminalId = null,
+        userId = null, email = null, operatorProfileId = null, operatorName = null, deviceKey = null, terminalId = null,
         appVersion = "2.4.1 (241)", tag = "X", result = AuditResult.SUCCESS, data = buildJsonObject { }
     )
 

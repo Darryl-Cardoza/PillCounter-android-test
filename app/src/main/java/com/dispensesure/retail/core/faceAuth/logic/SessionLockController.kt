@@ -1,6 +1,9 @@
 package com.dispensesure.retail.core.faceAuth.logic
 
 import android.content.SharedPreferences
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.ScreenLockReason
+import com.dispensesure.retail.core.audit.model.ScreenLocked
 import com.dispensesure.retail.core.faceAuth.data.FaceProfileRepository
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -53,7 +56,8 @@ import javax.inject.Singleton
 @Singleton
 class SessionLockController @Inject constructor(
     private val preferenceHelper: PreferenceHelper,
-    faceProfileRepository: FaceProfileRepository
+    faceProfileRepository: FaceProfileRepository,
+    private val auditLogger: AuditLogger
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lastActivityAt = AtomicLong(System.currentTimeMillis())
@@ -80,15 +84,21 @@ class SessionLockController @Inject constructor(
     // Who verified into THIS session. Deliberately not derived from FaceProfileEntity.lastUsedAt:
     // that column is persistent history, so it would keep naming an operator across restarts and
     // would promote some other enrolled profile the moment the real one was switched off.
-    private val _verifiedFaceProfileId = MutableStateFlow<Long?>(null)
-    val verifiedFaceProfileId: StateFlow<Long?> = _verifiedFaceProfileId.asStateFlow()
+    private val _operatorProfileId = MutableStateFlow<Long?>(null)
+    val operatorProfileId: StateFlow<Long?> = _operatorProfileId.asStateFlow()
+
+    /** Who was verified before the last lock cleared them; recorded on the next FACE_VERIFIED. */
+    @Volatile
+    var previousOperatorProfileId: Long? = null
+        private set
 
     // Watches the pref, not each logout call site — several flip it directly. Held as a field:
     // the platform keeps only a weak reference to the listener.
     private val loggedOutListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == preferenceHelper.userLoggedInKey && !preferenceHelper.isUserLoggedIn()) {
-                _verifiedFaceProfileId.value = null
+                _operatorProfileId.value = null
+                previousOperatorProfileId = null
                 // Nobody to verify into after a logout, so release the lock and let Login show.
                 _isLocked.value = false
                 _startOnScan.value = false
@@ -134,9 +144,16 @@ class SessionLockController @Inject constructor(
 
         val timeoutMs = preferenceHelper.getFaceLockTimeoutMinutes() * 60_000L
         if (System.currentTimeMillis() - lastActivityAt.get() >= timeoutMs) {
+            auditLogger.log(ScreenLocked(ScreenLockReason.IDLE_TIMEOUT))
             _isLocked.value = true
-            _verifiedFaceProfileId.value = null
+            clearVerifiedOperator()
         }
+    }
+
+    // Keeps the outgoing operator for FACE_VERIFIED. Callers log SCREEN_LOCKED first, so it still names them.
+    private fun clearVerifiedOperator() {
+        _operatorProfileId.value?.let { previousOperatorProfileId = it }
+        _operatorProfileId.value = null
     }
 
     /**
@@ -146,7 +163,7 @@ class SessionLockController @Inject constructor(
      * @param faceProfileId The matched profile's Room id.
      */
     fun onFaceVerified(faceProfileId: Long) {
-        _verifiedFaceProfileId.value = faceProfileId
+        _operatorProfileId.value = faceProfileId
     }
 
     /**
@@ -169,11 +186,16 @@ class SessionLockController @Inject constructor(
      * @param startOnScan Open the overlay on the verify camera instead of the idle lock screen.
      * @return true if the lock engaged, false if there's no enabled face profile to verify against.
      */
-    fun lockNow(startOnScan: Boolean = false): Boolean {
+    fun lockNow(startOnScan: Boolean = false): Boolean =
+        // Only a fresh login opens on the scan camera; the Menu row never does.
+        engageLock(startOnScan, if (startOnScan) ScreenLockReason.AFTER_LOGIN else ScreenLockReason.MENU)
+
+    private fun engageLock(startOnScan: Boolean, reason: ScreenLockReason): Boolean {
         if (!hasEnabledProfile.value) return false
+        auditLogger.log(ScreenLocked(reason))
         _startOnScan.value = startOnScan
         _isLocked.value = true
-        _verifiedFaceProfileId.value = null
+        clearVerifiedOperator()
         return true
     }
 
@@ -184,9 +206,9 @@ class SessionLockController @Inject constructor(
     fun onAppLaunch(): Boolean {
         // Cleared unconditionally: a foreground service keeps this singleton alive across an
         // app kill, so a relaunch would otherwise inherit the previous session's operator.
-        _verifiedFaceProfileId.value = null
+        clearVerifiedOperator()
         if (!preferenceHelper.isUserLoggedIn()) return false
-        return lockNow()
+        return engageLock(startOnScan = false, reason = ScreenLockReason.APP_LAUNCH)
     }
 
     /** Clears the lock after a successful verify and resets the idle clock. */

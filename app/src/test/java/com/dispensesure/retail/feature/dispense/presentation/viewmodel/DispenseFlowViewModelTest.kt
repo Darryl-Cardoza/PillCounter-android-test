@@ -2,6 +2,11 @@ package com.dispensesure.retail.feature.dispense.presentation.viewmodel
 
 import androidx.lifecycle.SavedStateHandle
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DispenseResumed
+import com.dispensesure.retail.core.audit.model.ResumeSource
+import com.dispensesure.retail.core.audit.model.RxScanned
+import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
@@ -17,6 +22,7 @@ import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
 import com.dispensesure.retail.feature.dispense.data.ContainerOutcome
 import com.dispensesure.retail.feature.dispense.data.ContainerVerifier
 import com.dispensesure.retail.feature.dispense.data.DispenseFlowRepository
+import com.dispensesure.retail.feature.dispense.data.DispenseStepResolver
 import com.dispensesure.retail.feature.dispense.data.RxLabelResolver
 import com.dispensesure.retail.feature.dispense.data.RxScanOutcome
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseFlowAction
@@ -63,6 +69,8 @@ class DispenseFlowViewModelTest {
     private val rxLabelResolver: RxLabelResolver = mockk()
     private val containerVerifier: ContainerVerifier = mockk()
     private val dispenseFlowRepository: DispenseFlowRepository = mockk(relaxed = true)
+    private val auditLogger: AuditLogger = mockk(relaxed = true)
+    private val dispenseStepResolver: DispenseStepResolver = mockk()
     private val firstBottle = DispenseBottle(lotNumber = "LOT1", expirationDate = "01-31-2030", serialNumber = "SN1")
 
     @Before
@@ -75,6 +83,7 @@ class DispenseFlowViewModelTest {
         coEvery { dispenseFlowRepository.createStandaloneTxn(any(), any()) } returns 200L
         coEvery { dispenseFlowRepository.hasPendingDispenses(any()) } returns false
         every { dispenseFlowRepository.observeQueue(any()) } returns flowOf(emptyList())
+        coEvery { dispenseStepResolver.resumeStep(any(), any(), any(), any()) } returns StepState.SCAN
     }
 
     @After
@@ -98,6 +107,8 @@ class DispenseFlowViewModelTest {
         rxLabelResolver = rxLabelResolver,
         containerVerifier = containerVerifier,
         dispenseFlowRepository = dispenseFlowRepository,
+        auditLogger = auditLogger,
+        dispenseStepResolver = dispenseStepResolver,
     )
 
     private fun drug(
@@ -285,6 +296,23 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
+    fun `a resume entry with the container verified logs the step counting opens on`() = runTest {
+        coEvery { dispenseStepResolver.resumeStep(7L, true, null, "CII") } returns StepState.TARGET_VERIFICATION
+
+        countingViewModel()
+
+        coVerify { auditLogger.logOutsideTour(DispenseResumed(7L, ResumeSource.QUEUE, "TARGET_VERIFICATION")) }
+    }
+
+    @Test
+    fun `a resume entry with the container pending logs the scan step`() = runTest {
+        containerStepViewModel()
+
+        coVerify { dispenseStepResolver.resumeStep(7L, false, null, "CII") }
+        coVerify { auditLogger.logOutsideTour(DispenseResumed(7L, ResumeSource.QUEUE, "SCAN")) }
+    }
+
+    @Test
     fun `a queue entry opens the queue on the pending tab`() = runTest {
         val viewModel = createViewModel(fromQueue = true)
         advanceUntilIdle()
@@ -426,6 +454,16 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
+    fun `a partial order with the container verified logs the step counting opens on`() = runTest {
+        coEvery { dispenseStepResolver.resumeStep(1L, true, null, "CII") } returns StepState.VIAL
+        val viewModel = createViewModel()
+
+        scanRxLabel(viewModel, RxScanOutcome.Resume(txn(txnId = 1L, isNdcVerified = true), drug(), label()))
+
+        coVerify { auditLogger.logOutsideTour(DispenseResumed(1L, ResumeSource.RX_SCAN, "VIAL")) }
+    }
+
+    @Test
     fun `a partial order falls back to the label for what it leaves blank`() = runTest {
         val viewModel = createViewModel()
 
@@ -493,6 +531,16 @@ class DispenseFlowViewModelTest {
         assertEquals("B1", state.selectedBucketId)
         coVerify(exactly = 0) { dispenseFlowRepository.createStandaloneTxn(any(), any()) }
         coVerify(exactly = 0) { dispenseFlowRepository.clearGlovesPresent(any()) }
+    }
+
+    @Test
+    fun `a standalone label logs RX_SCANNED with no txn id`() = runTest {
+        val viewModel = createViewModel()
+        val draft = StandaloneRxDraft(drugId = 55L, rxNo = "RX999", refillNo = null, bucket = "B1", targetCount = 10)
+
+        scanRxLabel(viewModel, RxScanOutcome.Standalone(draft, drug(drugId = 55L)))
+
+        coVerify { auditLogger.logOutsideTour(RxScanned(txnId = null, labelNdc = "NDC123", qty = 10)) }
     }
 
     @Test
@@ -1057,6 +1105,19 @@ class DispenseFlowViewModelTest {
         assertEquals(DispenseStage.COUNTING, viewModel.uiState.value.stage)
         assertEquals(5L, viewModel.uiState.value.txnId)
         coVerify { dispenseFlowRepository.clearGlovesPresent(5L) }
+    }
+
+    @Test
+    fun `tapping a verified queue row logs the step counting opens on`() = runTest {
+        coEvery { dispenseFlowRepository.loadTxn(5L) } returns txn(txnId = 5L, isNdcVerified = true)
+        coEvery { dispenseFlowRepository.loadDrug(10L) } returns drug()
+        coEvery { dispenseStepResolver.resumeStep(5L, true, null, "CII") } returns StepState.CONTAINER_INITIATE
+        val viewModel = createViewModel(fromQueue = true)
+
+        viewModel.onAction(DispenseFlowAction.QueueItemTapped(5L))
+        advanceUntilIdle()
+
+        coVerify { auditLogger.logOutsideTour(DispenseResumed(5L, ResumeSource.QUEUE, "CONTAINER_INITIATE")) }
     }
 
     @Test

@@ -1,6 +1,10 @@
 package com.dispensesure.retail.feature.hl7.data.repository
 
 import android.content.Context
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.BatchSyncOutcome
+import com.dispensesure.retail.core.audit.model.BatchSynced
+import com.dispensesure.retail.core.audit.model.SendTrigger
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
@@ -54,7 +58,7 @@ import java.util.concurrent.TimeUnit
  * methods exist:
  *  - `suspend` methods called directly inside runTest (sendInventory) run inline and are
  *    verified with a plain `coVerify { }` immediately after the call.
- *  - methods that hand work to a coroutine on the SUT's scope (resendPendingBatches)
+ *  - methods that hand work to a coroutine on the SUT's scope (sendPendingBatches)
  *    run asynchronously on background threads; they are verified with MockK's
  *    polling form `coVerify(timeout = 3000) { }` / `verify(timeout = 3000) { }`. Absence
  *    ("not called") is only asserted AFTER synchronizing on a positive signal that proves the
@@ -127,7 +131,49 @@ class StockHl7RepositoryTest {
         notifier = notifier,
         hl7ConfigProvider = Hl7ConfigProvider(context, preferenceHelper),
         regionProvider = regionProvider,
+        auditLogger = auditLogger,
     )
+
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
+
+    @Test
+    fun `a completed send is logged with its trigger`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { stockBatchDao.getById(100L) } returns StockBatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
+        coEvery { stockBottleInfoDao.getByBatchId(100L) } returns emptyList()
+        coEvery { hl7MessageSender.sendRaw(any()) } returns Result.success(SUCCESS_ACK)
+
+        repo.sendInventory(100L, SendTrigger.FIRST_SEND)
+
+        verify { auditLogger.log(BatchSynced(100L, SendTrigger.FIRST_SEND, BatchSyncOutcome.COMPLETE, null, null)) }
+    }
+
+    @Test
+    fun `a stopped send is logged with the chunk it stopped at`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { stockBatchDao.getById(100L) } returns StockBatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
+        coEvery { stockBottleInfoDao.getByBatchId(100L) } returns emptyList()
+        coEvery { hl7MessageSender.sendRaw(any()) } returns Result.failure(RuntimeException("send fail"))
+
+        repo.sendInventory(100L)
+
+        verify {
+            auditLogger.log(match {
+                it is BatchSynced && it.outcome == BatchSyncOutcome.STOPPED &&
+                    it.trigger == SendTrigger.AUTO_RESEND && it.chunkIndex != null
+            })
+        }
+    }
+
+    @Test
+    fun `a send that throws is logged as failed`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { stockBatchDao.getById(100L) } throws RuntimeException("db boom")
+
+        repo.sendInventory(100L)
+
+        verify { auditLogger.log(match { it is BatchSynced && it.outcome == BatchSyncOutcome.FAILED }) }
+    }
 
     // ─────────────────────────────── message builders ───────────────────────────────
 
@@ -283,7 +329,7 @@ class StockHl7RepositoryTest {
         }
 
     @Test
-    fun `resendPendingBatches resumes a large batch from lastAckedChunkIndex and syncs`() =
+    fun `sendPendingBatches resumes a large batch from lastAckedChunkIndex and syncs`() =
         runTest(testDispatcher) {
             val repo = createRepo()
             // Batch previously got through chunk 40 of 50 before PMS went offline / app restarted.
@@ -303,7 +349,7 @@ class StockHl7RepositoryTest {
             coEvery { stockBottleInfoDao.getByBatchId(100L) } returns largeBatchTxns(10000)
             coEvery { hl7MessageSender.sendRaw(any()) } returns Result.success(SUCCESS_ACK)
 
-            repo.resendPendingBatches()
+            repo.sendPendingBatches()
 
             // Only the remaining 10 chunks (41..50) are resent; 1..40 are skipped as already ACKed.
             coVerify(timeout = 3000, exactly = 10) { hl7MessageSender.sendRaw(any()) }
@@ -318,7 +364,7 @@ class StockHl7RepositoryTest {
     fun `onClientConnected triggers large batch resend and marks synced once fully sent`() =
         runTest(testDispatcher) {
             // Mirrors Hl7EventHandler.onClientConnected, which calls
-            // resendPendingBatches() as soon as PMS (re)connects — this is the
+            // sendPendingBatches() as soon as PMS (re)connects — this is the
             // "send on connected" trigger for a large (10k-segment / 50-chunk) pending batch.
             val repo = createRepo()
             coEvery { stockBatchDao.getUnsyncedCompletedBatchesOnce() } returns
@@ -338,20 +384,20 @@ class StockHl7RepositoryTest {
 
             // Simulates the connect callback's resend trigger directly against the repository
             // (Hl7EventHandler.onClientConnected just forwards to this).
-            repo.resendPendingBatches()
+            repo.sendPendingBatches()
 
             coVerify(timeout = 3000, exactly = 50) { hl7MessageSender.sendRaw(any()) }
             coVerify(timeout = 3000) { stockBatchDao.markBatchSynced(100L) }
         }
 
-    // ─────────────────────────────── resendPendingBatches ───────────────────────────────
+    // ─────────────────────────────── sendPendingBatches ───────────────────────────────
 
     @Test
-    fun `resendPendingBatches empty returns`() = runTest(testDispatcher) {
+    fun `sendPendingBatches empty returns`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { stockBatchDao.getUnsyncedCompletedBatchesOnce() } returns emptyList()
 
-        repo.resendPendingBatches()
+        repo.sendPendingBatches()
 
         // Synchronize on the coroutine having read the unsynced list before asserting getById
         // was never invoked.
@@ -360,7 +406,7 @@ class StockHl7RepositoryTest {
     }
 
     @Test
-    fun `resendPendingBatches non-empty loops`() = runTest(testDispatcher) {
+    fun `sendPendingBatches non-empty loops`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { stockBatchDao.getUnsyncedCompletedBatchesOnce() } returns
             listOf(
@@ -376,7 +422,7 @@ class StockHl7RepositoryTest {
         coEvery { stockBatchDao.getById(100L) } returns StockBatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
         coEvery { stockBottleInfoDao.getByBatchId(100L) } returns emptyList()
 
-        repo.resendPendingBatches()
+        repo.sendPendingBatches()
 
         coVerify(timeout = 3000) { stockBatchDao.markBatchSynced(100L) }
     }
@@ -417,14 +463,18 @@ class StockHl7RepositoryTest {
         }
 
         // Reconnect pass is mid-send on batch 100 when END COUNT completes batch 9.
-        repo.resendPendingBatches()
+        repo.sendPendingBatches()
         assertTrue(firstPassSending.await(3, TimeUnit.SECONDS))
         unsyncedBatchIds.add(9L)
-        repo.resendPendingBatches()
+        repo.sendPendingBatches(firstSendBatchId = 9L)
         releaseFirstPass.countDown()
 
         coVerify(timeout = 3000) { stockBatchDao.markBatchSynced(9L) }
         coVerify(exactly = 1) { stockBatchDao.markBatchSynced(100L) }
+        verify(timeout = 3000) {
+            auditLogger.log(BatchSynced(9L, SendTrigger.FIRST_SEND, BatchSyncOutcome.COMPLETE, null, null))
+        }
+        verify { auditLogger.log(BatchSynced(100L, SendTrigger.AUTO_RESEND, BatchSyncOutcome.COMPLETE, null, null)) }
     }
 
     @Test
@@ -439,10 +489,10 @@ class StockHl7RepositoryTest {
             Result.success(SUCCESS_ACK)
         }
 
-        repo.resendPendingBatches()
+        repo.sendPendingBatches()
         assertTrue(firstPassSending.await(3, TimeUnit.SECONDS))
-        repo.resendPendingBatches()
-        repo.resendPendingBatches()
+        repo.sendPendingBatches()
+        repo.sendPendingBatches()
         releaseFirstPass.countDown()
 
         // The queued rerun reads the list after batch 100 is synced, so it sends nothing.

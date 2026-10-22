@@ -1,5 +1,6 @@
 package com.dispensesure.retail.core.utils.common
 
+import com.dispensesure.retail.core.audit.model.SessionEndReason
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
@@ -201,6 +202,53 @@ class HelperFunctionsTest {
         HelperFunctions.clearSessionIfNotRemembered(pref)
         io.mockk.verify(exactly = 0) { pref.clearTokens() }
         io.mockk.verify(exactly = 0) { pref.setUserLoggedIn(any()) }
+    }
+
+    @Test
+    fun clearIfNotRemembered_reportsTheReasonOnlyWhenItClears() {
+        val reasons = mutableListOf<SessionEndReason>()
+        val pref = mockk<PreferenceHelper>(relaxed = true)
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.isRememberMeEnabled() } returns false
+        HelperFunctions.clearSessionIfNotRemembered(pref) { reasons += it }
+
+        every { pref.isRememberMeEnabled() } returns true
+        HelperFunctions.clearSessionIfNotRemembered(pref) { reasons += it }
+
+        assertEquals(listOf(SessionEndReason.NOT_REMEMBERED_ON_LAUNCH), reasons)
+    }
+
+    @Test
+    fun resolve_reportsTheReasonForEachClear() {
+        val reasons = mutableListOf<SessionEndReason>()
+        val noRegion = mockk<PreferenceHelper>(relaxed = true)
+        every { noRegion.isUserLoggedIn() } returns true
+        every { noRegion.getRegion() } returns null
+        HelperFunctions.resolveStartDestinationAndClearIfExpired(noRegion) { reasons += it }
+
+        val expired = mockk<PreferenceHelper>(relaxed = true)
+        every { expired.isUserLoggedIn() } returns true
+        every { expired.getRegion() } returns Region.US
+        every { expired.getLastHealthCheckedAt() } returns System.currentTimeMillis() - 120_000L
+        every { expired.getOfflineSessionThresholdSeconds() } returns 60L
+        HelperFunctions.resolveStartDestinationAndClearIfExpired(expired) { reasons += it }
+
+        assertEquals(
+            listOf(SessionEndReason.REGION_MISSING_ON_LAUNCH, SessionEndReason.EXPIRED_ON_LAUNCH),
+            reasons
+        )
+    }
+
+    @Test
+    fun resolve_withinThreshold_reportsNothing() {
+        val pref = mockk<PreferenceHelper>()
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
+        every { pref.getLastHealthCheckedAt() } returns System.currentTimeMillis() - 5_000L
+        every { pref.getOfflineSessionThresholdSeconds() } returns 60L
+        var reported = false
+        HelperFunctions.resolveStartDestinationAndClearIfExpired(pref) { reported = true }
+        assertEquals(false, reported)
     }
 
 }

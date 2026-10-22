@@ -10,6 +10,7 @@ import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.UserEntity
+import com.dispensesure.retail.core.room.models.dtos.unsyncedIds
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.tourguide.TutorialData
@@ -222,6 +223,20 @@ class DispenseTxnDaoTest {
     }
 
     @Test
+    fun `cancelActiveTxnsByRxNo returns only the txns it soft-deleted`() = runTest {
+        val activeId = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "R1"))
+        val alreadyDeletedId = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "R1"))
+        val otherRxId = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "R2"))
+        dispenseTxnDao.softDelete(alreadyDeletedId)
+
+        val cancelledTxnIds = dispenseTxnDao.cancelActiveTxnsByRxNo("R1")
+
+        assertEquals(listOf(activeId), cancelledTxnIds)
+        assertTrue(dispenseTxnDao.getById(activeId)!!.isDeleted)
+        assertFalse(dispenseTxnDao.getById(otherRxId)!!.isDeleted)
+    }
+
+    @Test
     fun `getDeletedByRxNo returns most recent deleted row or null`() = runTest {
         assertNull(dispenseTxnDao.getDeletedByRxNo("NONE"))
 
@@ -357,8 +372,8 @@ class DispenseTxnDaoTest {
     fun `deleteAllTransactions removes every row`() = runTest {
         dispenseTxnDao.insertIgnore(baseTxn())
         dispenseTxnDao.insertIgnore(baseTxn())
-        dispenseTxnDao.deleteAllTransactions()
 
+        assertEquals(2, dispenseTxnDao.deleteAllTransactions())
         assertNull(dispenseTxnDao.getById(1L))
         assertNull(dispenseTxnDao.getById(2L))
     }
@@ -395,6 +410,28 @@ class DispenseTxnDaoTest {
     }
 
     // ───────────────────────── Date-range deletes / retention ─────────────────────────
+
+    @Test
+    fun `deleteTransactionsByDateReturningSyncStates returns exactly the rows it deleted`() = runTest {
+        val unsyncedInRange = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.COMPLETED, createdAt = 150L, isSynced = false)
+        )
+        val outOfRange = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.COMPLETED, createdAt = 999L)
+        )
+
+        val deletedRows = dispenseTxnDao.deleteTransactionsByDateReturningSyncStates(
+            start = 100L,
+            end = 200L,
+            isCompleted = true,
+            userLocalId = 1L
+        )
+
+        assertEquals(listOf(unsyncedInRange), deletedRows.map { it.id })
+        assertEquals(listOf(unsyncedInRange), deletedRows.unsyncedIds())
+        assertNull(dispenseTxnDao.getById(unsyncedInRange))
+        assertEquals(outOfRange, dispenseTxnDao.getById(outOfRange)?.txnId)
+    }
 
     @Test
     fun `deleteTransactionsByDate removes only rows within range matching filters`() = runTest {

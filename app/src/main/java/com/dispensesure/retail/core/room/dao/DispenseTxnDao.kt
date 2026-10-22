@@ -11,6 +11,7 @@ import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
+import com.dispensesure.retail.core.room.models.dtos.RecordSyncState
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.tourguide.TutorialData
@@ -20,6 +21,19 @@ import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import kotlinx.coroutines.flow.Flow
 
 private val logger = AppLogger("DispenseTxnDao")
+
+// WHERE clauses shared by a read and the write it pairs with, so both always match the same rows.
+private const val ACTIVE_TXNS_FOR_RX = "rxNo = :rxNo AND isDeleted = 0"
+private const val TXNS_IN_DATE_RANGE = """
+    createdAt >= :start
+      AND createdAt < :end
+      AND userLocalId = :userLocalId
+      AND (
+        :isCompleted IS NULL
+        OR (:isCompleted = 1 AND (status = :completedStatus OR status = :forceCompletedStatus))
+        OR (:isCompleted = 0 AND status != :completedStatus AND status != :forceCompletedStatus)
+      )
+"""
 
 /**
  * **Dispense Transaction Data Access Object**
@@ -250,11 +264,27 @@ interface DispenseTxnDao {
         now: Long = System.currentTimeMillis()
     )
 
-    @Query("UPDATE dispense_txn SET isDeleted = 1, updatedAt = :now WHERE rxNo = :rxNo AND isDeleted = 0")
+    @Query("UPDATE dispense_txn SET isDeleted = 1, updatedAt = :now WHERE $ACTIVE_TXNS_FOR_RX")
     suspend fun softDeleteByRxNo(
         rxNo: String,
         now: Long = System.currentTimeMillis()
     )
+
+    /** The txns [softDeleteByRxNo] is about to cancel, read first so the audit event names them without the Rx. */
+    @Query("SELECT txnId FROM dispense_txn WHERE $ACTIVE_TXNS_FOR_RX")
+    suspend fun getActiveTxnIdsByRxNo(rxNo: String): List<Long>
+
+    /** Soft-deletes the Rx's active txns and returns their ids, for ORDER_CANCELLED. */
+    @Transaction
+    suspend fun cancelActiveTxnsByRxNo(rxNo: String): List<Long> {
+        val cancelledTxnIds = getActiveTxnIdsByRxNo(rxNo)
+        softDeleteByRxNo(rxNo)
+        return cancelledTxnIds
+    }
+
+    /** Status of an order's active txns before a release changes it, for ORDER_RELEASED. */
+    @Query("SELECT status FROM dispense_txn WHERE transactionOrderId = :orderId AND isDeleted = 0 LIMIT 1")
+    suspend fun getActiveStatusByOrderId(orderId: String): CountStatus?
 
     @Query(
         """
@@ -372,7 +402,7 @@ interface DispenseTxnDao {
         orderId: String,
         status: CountStatus,
         now: Long = System.currentTimeMillis()
-    )
+    ): Int
 
     @Query(
         """
@@ -388,16 +418,17 @@ interface DispenseTxnDao {
         orderId: String,
         status: CountStatus,
         now: Long = System.currentTimeMillis()
-    )
+    ): Int
 
     @Query("UPDATE dispense_txn SET isDeleted = 1, updatedAt = :now WHERE transactionOrderId = :orderId AND isDeleted = 0")
     suspend fun softDeleteByOrderId(
         orderId: String,
         now: Long = System.currentTimeMillis()
-    )
+    ): Int
 
+    /** @return Rows deleted, recorded on LOCAL_DATA_CLEARED. */
     @Query("DELETE FROM dispense_txn")
-    suspend fun deleteAllTransactions()
+    suspend fun deleteAllTransactions(): Int
 
     // ─────────────────────────────── Relations ───────────────────────────────
 
@@ -595,14 +626,7 @@ interface DispenseTxnDao {
     @Query(
         """
     DELETE FROM dispense_txn
-    WHERE createdAt >= :start
-      AND createdAt < :end
-      AND userLocalId = :userLocalId
-      AND (
-        :isCompleted IS NULL
-        OR (:isCompleted = 1 AND (status = :completedStatus OR status = :forceCompletedStatus))
-        OR (:isCompleted = 0 AND status != :completedStatus AND status != :forceCompletedStatus)
-      )
+    WHERE $TXNS_IN_DATE_RANGE
     """
     )
     suspend fun deleteTransactionsByDate(
@@ -613,6 +637,50 @@ interface DispenseTxnDao {
         completedStatus: CountStatus = CountStatus.COMPLETED,
         forceCompletedStatus: CountStatus = CountStatus.FORCE_COMPLETED
     )
+
+    /** Same rows as [deleteTransactionsByDate], read first so the audit event can list them. */
+    @Query(
+        """
+    SELECT txnId AS id, isSynced,
+      (status = :completedStatus OR status = :forceCompletedStatus) AS isCompleted
+    FROM dispense_txn
+    WHERE $TXNS_IN_DATE_RANGE
+    """
+    )
+    suspend fun getSyncStatesByDate(
+        start: Long,
+        end: Long,
+        isCompleted: Boolean?,
+        userLocalId: Long,
+        completedStatus: CountStatus = CountStatus.COMPLETED,
+        forceCompletedStatus: CountStatus = CountStatus.FORCE_COMPLETED
+    ): List<RecordSyncState>
+
+    /** Deletes the date range and returns the deleted rows' sync states, for HISTORY_BULK_DELETED. */
+    @Transaction
+    suspend fun deleteTransactionsByDateReturningSyncStates(
+        start: Long,
+        end: Long,
+        isCompleted: Boolean?,
+        userLocalId: Long
+    ): List<RecordSyncState> {
+        val deletedRows = getSyncStatesByDate(start, end, isCompleted, userLocalId)
+        deleteTransactionsByDate(start, end, isCompleted, userLocalId)
+        return deletedRows
+    }
+
+    /** Every dispense row's sync state, read before "Clear all local data". */
+    @Query(
+        """
+    SELECT txnId AS id, isSynced,
+      (status = :completedStatus OR status = :forceCompletedStatus) AS isCompleted
+    FROM dispense_txn
+    """
+    )
+    suspend fun getAllSyncStates(
+        completedStatus: CountStatus = CountStatus.COMPLETED,
+        forceCompletedStatus: CountStatus = CountStatus.FORCE_COMPLETED
+    ): List<RecordSyncState>
 
     /**
      * Retrieves all completed transactions created before a specific cutoff date.

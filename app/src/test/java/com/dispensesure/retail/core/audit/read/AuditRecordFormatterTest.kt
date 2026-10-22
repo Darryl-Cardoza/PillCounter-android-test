@@ -16,7 +16,7 @@ class AuditRecordFormatterTest {
     fun `record renders as a decorated block`() {
         val record = AuditRecord(
             eventId = "e-1", seq = 3, timestamp = "2026-10-21T14:03:22.481Z", sessionId = "s-1",
-            userId = "1042", email = null, operatorId = 7, deviceKey = "dev-1", terminalId = "T-03",
+            userId = "1042", email = null, operatorProfileId = 7, operatorName = "Asha Rao", deviceKey = "dev-1", terminalId = "T-03",
             appVersion = "2.4.1 (241)", tag = "DEVICE_INTEGRITY_CHECK_FAILED", result = AuditResult.FAILURE,
             data = buildJsonObject {
                 put("failed_checks", JsonArray(listOf(JsonPrimitive("EMULATOR"))))
@@ -26,7 +26,7 @@ class AuditRecordFormatterTest {
         val expected = """
             ┌ 2026-10-21 14:03:22.481 UTC   #3   DEVICE_INTEGRITY_CHECK_FAILED   ✖ FAILURE
             │ session   s-1
-            │ user      1042   operator  7
+            │ user      1042   operator  Asha Rao (#7)
             │ device    dev-1   terminal  T-03   app  2.4.1 (241)
             │ data      failed_checks=[EMULATOR]  installer=unknown
             └──
@@ -38,7 +38,7 @@ class AuditRecordFormatterTest {
     fun `missing values render as a dash`() {
         val record = AuditRecord(
             eventId = "e-2", seq = 1, timestamp = "2026-10-21T00:00:00Z", sessionId = "s-1",
-            userId = null, email = null, operatorId = null, deviceKey = null, terminalId = null,
+            userId = null, email = null, operatorProfileId = null, operatorName = null, deviceKey = null, terminalId = null,
             appVersion = "2.4.1 (241)", tag = "X", result = AuditResult.SUCCESS, data = buildJsonObject { }
         )
         val text = AuditRecordFormatter.format(AuditLogEntry.Record(record))

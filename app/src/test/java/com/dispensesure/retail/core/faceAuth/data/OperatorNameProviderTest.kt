@@ -40,7 +40,7 @@ class OperatorNameProviderTest {
 
     /** Wires the session flow plus a resolvable logged-in account. */
     private fun givenAccount() {
-        every { sessionLockController.verifiedFaceProfileId } returns verifiedId
+        every { sessionLockController.operatorProfileId } returns verifiedId
         every { preferenceHelper.getLocalId() } returns 7L
         coEvery { userDao.getByLocalId(7L) } returns account
     }
@@ -96,7 +96,7 @@ class OperatorNameProviderTest {
 
     @Test
     fun `returns nulls when there is no verified face and no resolvable account`() = runTest {
-        every { sessionLockController.verifiedFaceProfileId } returns verifiedId
+        every { sessionLockController.operatorProfileId } returns verifiedId
         verifiedId.value = null
         every { preferenceHelper.getLocalId() } returns 0L
 

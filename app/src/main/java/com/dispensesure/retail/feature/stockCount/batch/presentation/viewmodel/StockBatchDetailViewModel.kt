@@ -3,12 +3,15 @@ package com.dispensesure.retail.feature.stockCount.batch.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.BatchDeleted
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
+import com.dispensesure.retail.core.room.models.dtos.unsyncedIds
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -36,7 +39,8 @@ class StockBatchDetailViewModel @Inject constructor(
     private val stockBottleInfoDao: StockBottleInfoDao,
     private val stockBatchDao: StockBatchDao,
     private val preferenceHelper: PreferenceHelper,
-    private val regionProvider: RegionProvider
+    private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger
 ) : ViewModel() {
 
     private val argBatchId: Long = savedStateHandle["batch_id"] ?: 0
@@ -87,8 +91,18 @@ class StockBatchDetailViewModel @Inject constructor(
             try {
                 val id = _resolvedBatchId.value
                 if (id != 0L) {
+                    // Re-read, not the state loaded at init, which may be stale by now.
+                    val rowsToDelete = stockBatchDao.getSyncStatesByIds(listOf(id))
                     stockBatchDao.softDelete(id)
                     stockTxnDao.deleteByBatchIds(listOf(id))
+                    auditLogger.log(
+                        BatchDeleted(
+                            batchIds = listOf(id),
+                            rangeStart = null,
+                            rangeEnd = null,
+                            unsyncedIds = rowsToDelete.unsyncedIds()
+                        )
+                    )
                 }
             } catch (e: CancellationException) {
                 throw e

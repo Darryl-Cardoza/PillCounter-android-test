@@ -5,9 +5,15 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.CountDeleted
+import com.dispensesure.retail.core.audit.model.DispenseReset
+import com.dispensesure.retail.core.audit.model.NoteAdded
+import com.dispensesure.retail.core.audit.model.NoteSkipped
+import com.dispensesure.retail.core.audit.model.VialPhotoMode
+import com.dispensesure.retail.core.audit.model.VialPhotoSaved
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.region.RegionProvider
-import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
@@ -24,6 +30,7 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dispense.data.DispenseCountRepository
+import com.dispensesure.retail.feature.dispense.data.DispenseStepResolver
 import com.dispensesure.retail.feature.dispense.domain.BottleRescanDecider
 import com.dispensesure.retail.feature.dispense.domain.DispenseWorkflow
 import com.dispensesure.retail.feature.dispense.domain.DoneOutcome
@@ -66,6 +73,8 @@ class DispenseCountViewModel @Inject constructor(
     private val dispenseCountRepository: DispenseCountRepository,
     engineFactory: PillCountingEngine.Factory,
     private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
+    private val dispenseStepResolver: DispenseStepResolver,
 ) : ViewModel() {
 
     private val logger = AppLogger("DispenseCountVM")
@@ -106,6 +115,9 @@ class DispenseCountViewModel @Inject constructor(
 
     // True once the still on screen has been written, so a Done re-tap cannot write it twice.
     private var captureCommitted = false
+
+    // How the still on screen was taken, recorded on VIAL_PHOTO_SAVED.
+    private var capturedStillMode = VialPhotoMode.MANUAL
 
     /** Tour: set once Done goes straight to confirm (notes setting off), so the VIAL wait ends. */
     private var confirmDoneStarted = false
@@ -152,9 +164,9 @@ class DispenseCountViewModel @Inject constructor(
             DispenseCountAction.DoneTapped -> onDoneTapped()
             is DispenseCountAction.CountDeleted -> deleteCount(action.countId)
             is DispenseCountAction.BottleScanned -> onBottleScanned(action.rawValue, action.imagePath)
-            DispenseCountAction.VialCaptureTapped -> captureVialStill(autoConfirm = false)
+            DispenseCountAction.VialCaptureTapped -> captureVialStill(autoConfirm = false, mode = VialPhotoMode.MANUAL)
             // Only auto-commit when VIAL is the last step; otherwise wait for Done.
-            DispenseCountAction.VialLabelMatched -> captureVialStill(autoConfirm = isVialLastStep())
+            DispenseCountAction.VialLabelMatched -> captureVialStill(autoConfirm = isVialLastStep(), mode = VialPhotoMode.AUTO)
             DispenseCountAction.VialRedoTapped -> redoVialStill()
             DispenseCountAction.VialSaveTapped -> _uiState.value.capturedStill?.let { vialStill -> commitVialStill(vialStill) }
             is DispenseCountAction.TargetCountEntered -> onTargetCountEntered(action.targetCount)
@@ -162,6 +174,7 @@ class DispenseCountViewModel @Inject constructor(
             DispenseCountAction.NoteDismissed -> _uiState.update { it.copy(showNotesDialog = false) }
             DispenseCountAction.NoteSkipped -> {
                 _uiState.update { it.copy(showNotesDialog = false) }
+                auditLogger.logOutsideTour(NoteSkipped(activeTxnId))
                 completeDispense()
             }
             is DispenseCountAction.NoteSaved -> onNoteSaved(action.note)
@@ -302,13 +315,11 @@ class DispenseCountViewModel @Inject constructor(
                 logger.d("Txn info loaded. Drug=${txnInfo?.drugName}, Target=${txnInfo?.targetCount}")
 
                 val drugInfo = dispenseCountRepository.loadDrug(txnInfo?.drugId)
-                val steps = workflowSteps(txnInfo, drugInfo)
-                val savedWorkflowStep = txnInfo?.workflowStep
-                    ?.let { runCatching { StepState.valueOf(it) }.getOrNull() }
-                val resolvedStep = DispenseWorkflow.startStep(
+                val steps = dispenseStepResolver.steps(isTxnLoaded = txnInfo != null, drugType = drugInfo?.drugType)
+                val resolvedStep = dispenseStepResolver.countingStartStep(
+                    txnId = activeTxnId,
                     steps = steps,
-                    savedStep = savedWorkflowStep,
-                    latestCountStep = dispenseCountRepository.latestCountStep(activeTxnId),
+                    savedWorkflowStep = txnInfo?.workflowStep,
                     drugType = drugInfo?.drugType,
                 )
 
@@ -329,16 +340,6 @@ class DispenseCountViewModel @Inject constructor(
             }
         }
     }
-
-    /** The dispense's steps, from its drug and the double-count / back-count settings. */
-    private fun workflowSteps(txnInfo: DispenseTxnDetail?, drugInfo: DrugMasterEntity?): List<StepState> =
-        DispenseWorkflow.steps(
-            isTxnLoaded = txnInfo != null,
-            drugType = drugInfo?.drugType,
-            doubleCountOn = preferenceHelper.isRequireDoubleCountEnabled(),
-            controlDrugTypes = preferenceHelper.getControlDrugTypes(regionProvider.current),
-            backCountOn = preferenceHelper.isRequireBackCountEnabled(),
-        )
 
     // Keeps the txn the step rules read; a reset passes null.
     private fun keepLoadedTxn(txnInfo: DispenseTxnDetail?) {
@@ -397,7 +398,8 @@ class DispenseCountViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val txnInfo = dispenseCountRepository.loadTxn(activeTxnId)
-                val steps = workflowSteps(txnInfo, dispenseCountRepository.loadDrug(txnInfo?.drugId))
+                val drugType = dispenseCountRepository.loadDrug(txnInfo?.drugId)?.drugType
+                val steps = dispenseStepResolver.steps(isTxnLoaded = txnInfo != null, drugType = drugType)
                 _uiState.update { it.copy(steps = steps) }
             } catch (e: CancellationException) {
                 throw e
@@ -618,6 +620,8 @@ class DispenseCountViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 dispenseCountRepository.saveNote(activeTxnId, note)
+                // Only that a note exists and its length; the text never reaches the audit log.
+                auditLogger.logOutsideTour(NoteAdded(activeTxnId, noteLength = note.length))
                 completeDispense()
             } catch (e: CancellationException) {
                 throw e
@@ -662,9 +666,15 @@ class DispenseCountViewModel @Inject constructor(
     }
 
     private fun deleteCount(countId: Long) {
+        // Read before the delete: the row and its count leave stepCounts once it's gone.
+        val step = _uiState.value.currentStep
+        val deletedPillCount = _uiState.value.stepCounts.firstOrNull { it.txnDetailId == countId }?.count
         viewModelScope.launch {
             try {
                 dispenseCountRepository.deleteCount(activeTxnId, countId)
+                auditLogger.logOutsideTour(
+                    CountDeleted(activeTxnId, step = step.name, countId = countId, deletedPillCount = deletedPillCount)
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -837,7 +847,7 @@ class DispenseCountViewModel @Inject constructor(
      * A second call while a capture is still in flight is a no-op: no sound, no
      * flash, no capture request. See [DispenseCountUiState.isCapturing].
      */
-    private fun captureVialStill(autoConfirm: Boolean) {
+    private fun captureVialStill(autoConfirm: Boolean, mode: VialPhotoMode) {
         if (_uiState.value.isCapturing) return
         _uiState.update { it.copy(isCapturing = true) }
 
@@ -850,6 +860,7 @@ class DispenseCountViewModel @Inject constructor(
                     _uiState.update { it.copy(capturedStill = vialStill) }
                     // A fresh still is unsaved, so the flag can never outlive the still it guards.
                     captureCommitted = false
+                    capturedStillMode = mode
                     if (autoConfirm) commitVialStill(vialStill)
                 }
             },
@@ -886,6 +897,7 @@ class DispenseCountViewModel @Inject constructor(
                         activeTxnId, vialStill, grayscale,
                         saveFile = !FtueController.state.isActive,
                     )
+                    auditLogger.logOutsideTour(VialPhotoSaved(activeTxnId, capturedStillMode))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -1002,7 +1014,10 @@ class DispenseCountViewModel @Inject constructor(
     private suspend fun performReset() {
         val txnId = activeTxnId
         if (txnId != 0L) {
-            dispenseCountRepository.reset(txnId)
+            // Read before the reset clears the step.
+            val stepReached = _uiState.value.currentStep
+            val countsRemoved = dispenseCountRepository.reset(txnId)
+            auditLogger.logOutsideTour(DispenseReset(txnId, stepReached = stepReached.name, countsRemoved = countsRemoved))
         }
 
         keepLoadedTxn(null)

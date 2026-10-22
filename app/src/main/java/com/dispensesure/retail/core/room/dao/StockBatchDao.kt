@@ -8,6 +8,7 @@ import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
+import com.dispensesure.retail.core.room.models.dtos.RecordSyncState
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.tourguide.TutorialData
 import kotlinx.coroutines.flow.Flow
@@ -147,8 +148,20 @@ interface StockBatchDao {
     @Query("SELECT COUNT(*) FROM stock_batch WHERE isDeleted = 0")
     suspend fun getActiveCount(): Long
 
+    /** @return Rows deleted, recorded on LOCAL_DATA_CLEARED. */
     @Query("DELETE FROM stock_batch")
-    suspend fun deleteAll()
+    suspend fun deleteAll(): Int
+
+    /** Sync state of the given batches, read before a delete so the audit event can list them. */
+    @Query("SELECT batchId AS id, isSynced, (status = :completedStatus) AS isCompleted FROM stock_batch WHERE batchId IN (:batchIds)")
+    suspend fun getSyncStatesByIds(
+        batchIds: List<Long>,
+        completedStatus: BatchStatus = BatchStatus.COMPLETED
+    ): List<RecordSyncState>
+
+    /** Every batch's sync state, read before "Clear all local data". */
+    @Query("SELECT batchId AS id, isSynced, (status = :completedStatus) AS isCompleted FROM stock_batch")
+    suspend fun getAllSyncStates(completedStatus: BatchStatus = BatchStatus.COMPLETED): List<RecordSyncState>
 
     @Query("""
         SELECT batchId FROM stock_batch

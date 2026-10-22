@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.room.withTransaction
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DispenseCompleted
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.DISPENSED_QUANTITY_STEP
 import com.dispensesure.retail.core.models.StepState
@@ -50,6 +52,7 @@ class DispenseCountRepository @Inject constructor(
     private val operatorNameProvider: OperatorNameProvider,
     private val dispenseHl7Repository: DispenseHl7Repository,
     private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
 ) {
 
     private val logger = AppLogger("DispenseCountRepository")
@@ -310,15 +313,18 @@ class DispenseCountRepository @Inject constructor(
             dispenseTxnDao.observeById(txnId).map { txn -> txn?.isSynced != true }
         }
 
-    /** Hard-deletes every count and its files and clears the txn's count fields; the order itself stays. */
-    suspend fun reset(txnId: Long) {
+    /**
+     * Hard-deletes every count and its files and clears the txn's count fields; the order itself stays.
+     * @return How many count rows were removed, for DISPENSE_RESET.
+     */
+    suspend fun reset(txnId: Long): Int =
         withContext(Dispatchers.IO) {
             // Files first: once the rows are gone their paths are unrecoverable.
             deleteFilesQuietly(dispenseCountDao.getImagePathsForTxn(txnId), logger)
-            dispenseCountDao.deleteAllForTxn(txnId)
+            val countsRemoved = dispenseCountDao.deleteAllForTxn(txnId)
             dispenseTxnDao.resetForRecount(txnId)
+            countsRemoved
         }
-    }
 
     /**
      * Completes the dispense: operator, then status, then the HL7 send. Returns the status
@@ -350,6 +356,7 @@ class DispenseCountRepository @Inject constructor(
         } else {
             dispenseTxnDao.updateTxnStatus(txnId, status)
         }
+        auditLogger.logOutsideTour(DispenseCompleted(txnId, status.name, dispensed = dispensedCount, target = txn.targetCount))
 
         // Send the dispense to the PMS now, not on the next reconnect. Completion used to
         // only persist the status; the HL7 message went out when the MLLP connection next

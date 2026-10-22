@@ -50,8 +50,9 @@ interface StockBottleInfoDao {
     @Query("DELETE FROM stock_bottle_info WHERE bottleId = :bottleId")
     suspend fun delete(bottleId: Long)
 
+    /** @return Rows deleted, recorded on LOCAL_DATA_CLEARED. */
     @Query("DELETE FROM stock_bottle_info")
-    suspend fun deleteAll()
+    suspend fun deleteAll(): Int
 
     /**
      * Observes all bottle lines in a batch, joined with drug/stock-header data, newest drug first.

@@ -4,6 +4,15 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.BatchCompleted
+import com.dispensesure.retail.core.audit.model.BatchCreated
+import com.dispensesure.retail.core.audit.model.BatchSource
+import com.dispensesure.retail.core.audit.model.BottleCountAdjusted
+import com.dispensesure.retail.core.audit.model.BottleCounted
+import com.dispensesure.retail.core.audit.model.BottleLineDeleted
+import com.dispensesure.retail.core.audit.model.LineDeleted
+import com.dispensesure.retail.core.audit.model.LineEdited
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
@@ -86,6 +95,7 @@ class StockCountViewModel @Inject constructor(
     private val stockHl7Repository: StockHl7Repository,
     private val hl7EventHandler: Hl7EventHandler,
     private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
 ) : ViewModel() {
 
     private val logger = AppLogger("StockCountVM")
@@ -256,6 +266,7 @@ class StockCountViewModel @Inject constructor(
             val bucket = if (FtueController.state.isActive) TutorialData.BUCKET else _bucketId.value
             val newId = stockBatchDao.insertNewInProgressBatch(bucketId = bucket, region = regionProvider.current)
             resolvedBatchId.value = newId
+            auditLogger.logOutsideTour(BatchCreated(batchId = newId, source = BatchSource.MANUAL, bucket = bucket, requestedNdcs = emptyList()))
             newId
         } catch (e: Exception) {
             logger.e("ensureBatchCreated failed", e, event = LogEvent.BATCH_CREATE_FAILED)
@@ -471,7 +482,7 @@ class StockCountViewModel @Inject constructor(
                 // BACK/app-kill before ADD must not drop the count. persistActive
                 // INSERTs on the first scan of an (ndc, lot, expiry) tuple in this
                 // batch, UPDATEs on subsequent rescans (same-NDC +1 path).
-                persistActive(newActive)
+                persistActive(newActive, isScan = true)
             } catch (e: Exception) {
                 logger.e("INV_SCAN onBarcodeDetected failed", e, event = LogEvent.INVENTORY_SCAN_FAILED)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
@@ -623,8 +634,10 @@ class StockCountViewModel @Inject constructor(
      * by the auto-commit path when a different NDC is scanned while one is
      * already active. Updates the existing sealed txn if found, otherwise
      * inserts a new one.
+     *
+     * @param isScan True only from a barcode scan: a changed count is BOTTLE_COUNTED, otherwise BOTTLE_COUNT_ADJUSTED.
      */
-    private suspend fun persistActive(active: ActiveNdc) {
+    private suspend fun persistActive(active: ActiveNdc, isScan: Boolean = false) {
         // Any explicit persist supersedes a pending debounced counter write, so
         // cancel it to avoid a redundant follow-up upsert of the same row.
         counterPersistJob?.cancel()
@@ -659,6 +672,15 @@ class StockCountViewModel @Inject constructor(
                 // Card dropped to 0 bottles: an empty line would never be found again, so remove it.
                 stockBottleInfoDao.delete(existing.bottleId)
                 logger.d("INV_SCAN persistActive DELETED empty bottleId=${existing.bottleId}")
+                auditLogger.logOutsideTour(
+                    BottleLineDeleted(
+                        batchId = batchId,
+                        lineId = existing.bottleId,
+                        ndc = active.ndc,
+                        lot = lotNo,
+                        oldBottleQty = existing.bottleQty
+                    )
+                )
             } else if (existing != null) {
                 stockBottleInfoDao.update(
                     existing.copy(
@@ -668,6 +690,30 @@ class StockCountViewModel @Inject constructor(
                     )
                 )
                 logger.d("INV_SCAN persistActive UPDATED bottleId=${existing.bottleId} drugId=$drugId bottles=${active.bottles}")
+                // A flush with nothing new (row tap, scan pills) writes the same count and logs nothing.
+                if (existing.bottleQty != active.bottles) {
+                    auditLogger.logOutsideTour(
+                        if (isScan) {
+                            BottleCounted(
+                                batchId = batchId,
+                                ndc = active.ndc,
+                                lot = lotNo,
+                                expiry = expNo,
+                                serial = active.serialNo,
+                                oldBottleQty = existing.bottleQty,
+                                newBottleQty = active.bottles
+                            )
+                        } else {
+                            BottleCountAdjusted(
+                                batchId = batchId,
+                                ndc = active.ndc,
+                                lot = lotNo,
+                                oldBottleQty = existing.bottleQty,
+                                newBottleQty = active.bottles
+                            )
+                        }
+                    )
+                }
             } else if (active.bottles <= 0) {
                 // Open-pills-only NDC (no sealed bottle scanned): nothing to record as
                 // a sealed bottle line. The loose pills live on their own line from SCAN PILLS.
@@ -692,6 +738,18 @@ class StockCountViewModel @Inject constructor(
                     )
                 )
                 logger.d("INV_SCAN persistActive INSERTED new bottle line stockTxnId=$stockTxnId drugId=$drugId bottles=${active.bottles}")
+                // A new line is always a count, whichever path wrote it.
+                auditLogger.logOutsideTour(
+                    BottleCounted(
+                        batchId = batchId,
+                        ndc = active.ndc,
+                        lot = lotNo,
+                        expiry = expNo,
+                        serial = active.serialNo,
+                        oldBottleQty = null,
+                        newBottleQty = active.bottles
+                    )
+                )
                 // Stock txn added → keep the batch's live totals in sync.
                 stockTxnDao.refreshBatchTotalNdcs(batchId)
                 stockTxnDao.updateBatchUserName(batchId, operatorNameProvider().display())
@@ -862,21 +920,57 @@ class StockCountViewModel @Inject constructor(
                     if (edit == null) {
                         // Both rows removed — drop the bottle line.
                         stockBottleInfoDao.delete(dto.bottleId)
+                        auditLogger.logOutsideTour(
+                            LineDeleted(
+                                batchId = batchId,
+                                lineId = dto.bottleId,
+                                ndc = dto.ndc,
+                                lot = dto.lotNo,
+                                expiry = dto.expiry,
+                                oldBottleQty = dto.bottleQty,
+                                oldLooseQty = dto.looseQty
+                            )
+                        )
                         continue
                     }
                     val entity = stockBottleInfoDao.getById(dto.bottleId) ?: continue
-                    val newBottle = edit.first
-                    val newLoose = edit.second
-                    if ((newBottle ?: 0) <= 0 && (newLoose ?: 0) <= 0) {
+                    val newBottleQty = edit.first
+                    val newLooseQty = edit.second
+                    if ((newBottleQty ?: 0) <= 0 && (newLooseQty ?: 0) <= 0) {
                         stockBottleInfoDao.delete(dto.bottleId)
+                        auditLogger.logOutsideTour(
+                            LineDeleted(
+                                batchId = batchId,
+                                lineId = dto.bottleId,
+                                ndc = dto.ndc,
+                                lot = dto.lotNo,
+                                expiry = dto.expiry,
+                                oldBottleQty = dto.bottleQty,
+                                oldLooseQty = dto.looseQty
+                            )
+                        )
                     } else {
                         stockBottleInfoDao.update(
                             entity.copy(
-                                bottleQty = newBottle,
-                                looseQty = newLoose,
+                                bottleQty = newBottleQty,
+                                looseQty = newLooseQty,
                                 updatedAt = System.currentTimeMillis(),
                             )
                         )
+                        // SAVE rewrites every row; only the ones whose numbers moved are edits.
+                        if (dto.bottleQty != newBottleQty || dto.looseQty != newLooseQty) {
+                            auditLogger.logOutsideTour(
+                                LineEdited(
+                                    batchId = batchId,
+                                    lineId = dto.bottleId,
+                                    lot = dto.lotNo,
+                                    oldBottleQty = dto.bottleQty,
+                                    newBottleQty = newBottleQty,
+                                    oldLooseQty = dto.looseQty,
+                                    newLooseQty = newLooseQty
+                                )
+                            )
+                        }
                     }
                 }
 
@@ -970,8 +1064,18 @@ class StockCountViewModel @Inject constructor(
                     if (!note.isNullOrBlank()) {
                         stockBatchDao.updateNote(batchId, note)
                     }
+                    val rows = recentRows.value
+                    auditLogger.logOutsideTour(
+                        BatchCompleted(
+                            batchId = batchId,
+                            ndcCount = rows.size,
+                            totalPills = rows.sumOf { it.pills },
+                            // A blank note isn't saved, so it counts as no note.
+                            noteLength = note?.takeIf { it.isNotBlank() }?.length ?: 0
+                        )
+                    )
                     if (hl7EventHandler.connectionState.value) {
-                        stockHl7Repository.resendPendingBatches()
+                        stockHl7Repository.sendPendingBatches(firstSendBatchId = batchId)
                     }
                 } else {
                     logger.d("INV_SCAN confirmEndCount: no committed NDC — nothing to persist")

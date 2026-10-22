@@ -2,6 +2,18 @@ package com.dispensesure.retail.feature.hl7.data.repository
 
 import android.content.Context
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DataPurged
+import com.dispensesure.retail.core.audit.model.DispenseSyncAbandoned
+import com.dispensesure.retail.core.audit.model.DispenseTxnCreated
+import com.dispensesure.retail.core.audit.model.FieldChange
+import com.dispensesure.retail.core.audit.model.Hl7DispenseSent
+import com.dispensesure.retail.core.audit.model.Hl7SendOutcome
+import com.dispensesure.retail.core.audit.model.OrderCancelled
+import com.dispensesure.retail.core.audit.model.OrderEdited
+import com.dispensesure.retail.core.audit.model.PurgeReason
+import com.dispensesure.retail.core.audit.model.SendTrigger
+import com.dispensesure.retail.core.audit.model.TxnSource
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.region.RegionProvider
@@ -63,6 +75,7 @@ class DispenseHl7Repository @Inject constructor(
     private val notifier: Hl7Notifier,
     private val hl7ConfigProvider: Hl7ConfigProvider,
     private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
 ) {
 
     private val logger = AppLogger.create<DispenseHl7Repository>()
@@ -92,20 +105,24 @@ class DispenseHl7Repository @Inject constructor(
         observePendingHl7Transactions()
     }
 
+    /** @param trigger First send at completion, or a resend; recorded on HL7_DISPENSE_SENT. */
     suspend fun sendDispense(
-        txnId: Long
+        txnId: Long,
+        trigger: SendTrigger = SendTrigger.AUTO_RESEND
     ) {
         try {
-            sendDispenseInternal(txnId)
+            sendDispenseInternal(txnId, trigger)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logger.e("Failed to build/send dispense HL7 for txnId=$txnId — leaving unsynced for retry", e, event = LogEvent.HL7_SEND_FAILED)
+            auditLogger.log(Hl7DispenseSent(txnId, controlId = null, trigger = trigger, outcome = Hl7SendOutcome.FAILED))
         }
     }
 
     private suspend fun sendDispenseInternal(
-        txnId: Long
+        txnId: Long,
+        trigger: SendTrigger
     ) {
         val txn = dispenseTxnDao.getById(txnId)
             ?: run {
@@ -131,6 +148,7 @@ class DispenseHl7Repository @Inject constructor(
                 // Without a drug row there is no NDC to put in RXD-2, so the message cannot be
                 // built — but say so: this txn will sit unsynced forever and someone will ask why.
                 logger.w("Dispense HL7 skipped — txn $txnId has no drug (drugId=${txn.drugId})")
+                auditLogger.log(Hl7DispenseSent(txnId, txn.hl7MessageControlId, trigger, Hl7SendOutcome.SKIPPED_NO_DRUG))
                 return
             }
 
@@ -167,6 +185,7 @@ class DispenseHl7Repository @Inject constructor(
         val ack = result.getOrNull()
         if (result.isSuccess && ack != null && isSuccessAck(ack)) {
             markTransactionSynced(txnId)
+            auditLogger.log(Hl7DispenseSent(txnId, controlId, trigger, Hl7SendOutcome.ACCEPTED))
         } else if (result.isSuccess && ack != null && isRejectAck(ack)) {
             // Explicit reject (MSA|AR) — PMS rejected this exact message, not a transport
             // failure. PMS closes its TCP connection right after, which triggers our
@@ -175,11 +194,14 @@ class DispenseHl7Repository @Inject constructor(
             // automatic resend until the app restarts.
             rejectedTxnIds.add(txnId)
             logger.w("Dispense HL7 send for txnId=$txnId rejected (AR) — excluding from automatic resend: $ack")
+            auditLogger.log(Hl7DispenseSent(txnId, controlId, trigger, Hl7SendOutcome.REJECTED))
+            auditLogger.log(DispenseSyncAbandoned(txnId, controlId))
         } else {
             logger.w(
                 "Dispense HL7 send for txnId=$txnId failed or NAKed: " +
                     "${result.exceptionOrNull()?.message ?: "non-success ACK"} — leaving unsynced for retry"
             )
+            auditLogger.log(Hl7DispenseSent(txnId, controlId, trigger, Hl7SendOutcome.FAILED))
         }
     }
 
@@ -207,7 +229,7 @@ class DispenseHl7Repository @Inject constructor(
                     }
                     logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
                     resendMutex.withLock {
-                        sendDispense(txnId = txnId)
+                        sendDispense(txnId = txnId, trigger = SendTrigger.FIRST_SEND)
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -294,6 +316,7 @@ class DispenseHl7Repository @Inject constructor(
             filesToDelete.addAll(dispenseTxnDao.getTransactionDetailsImages(txnId))
 
             dispenseTxnDao.deleteTransaction(txnId)
+            auditLogger.log(DataPurged(PurgeReason.LOCAL_STORAGE_NOT_ALLOWED, count = 1, txnIds = listOf(txnId), unsyncedIds = emptyList()))
 
             filesToDelete.forEach { path ->
                 val file = java.io.File(path)
@@ -383,6 +406,7 @@ class DispenseHl7Repository @Inject constructor(
         logger.i("Saving txn (site2) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}'")
 
         val txnId = dispenseTxnDao.upsertPreservingId(txn)
+        logPacketTxnCreated(txnId, txn, hl7Ndc)
         insertZinContainerDetails(txnId, message)
 
         val notifBody = if (targetCount != null && targetCount > 0) {
@@ -471,6 +495,7 @@ class DispenseHl7Repository @Inject constructor(
         logger.i("Saving txn (site3) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}' transactionOrderId='${txn.transactionOrderId}'")
 
         val txnId = dispenseTxnDao.upsertPreservingId(txn)
+        logPacketTxnCreated(txnId, txn, hl7Ndc)
         insertZinContainerDetails(txnId, message)
 
         val notifBody = if (targetCount != null && targetCount > 0) {
@@ -482,6 +507,20 @@ class DispenseHl7Repository @Inject constructor(
             title = context.getString(R.string.hl7_notification_new_rx_title),
             message = notifBody,
             dispenseTxnId = txnId,
+        )
+    }
+
+    // ZNI / ZUI packets always insert a new order (txnId 0 upserts as an insert).
+    private fun logPacketTxnCreated(txnId: Long, txn: DispenseTxnEntity, ndc: String) {
+        auditLogger.log(
+            DispenseTxnCreated(
+                txnId = txnId,
+                source = TxnSource.PMS,
+                messageId = txn.hl7MessageControlId,
+                ndc = ndc,
+                targetQty = txn.targetCount,
+                priority = txn.priority?.name
+            )
         )
     }
 
@@ -544,12 +583,14 @@ class DispenseHl7Repository @Inject constructor(
 
         // 1. Locate the active transaction; if soft-deleted, restore it so the edit can be applied
         var existingTxn = dispenseTxnDao.getActiveByRxNo(rxNo)
+        var restored = false
         if (existingTxn == null) {
             val deletedTxn = dispenseTxnDao.getDeletedByRxNo(rxNo)
             if (deletedTxn != null) {
                 logger.i("ORC|XO: restoring deleted txnId=${deletedTxn.txnId} for rxNo=$rxNo before applying status=$orderStatusRaw")
                 dispenseTxnDao.restoreDeletedTxn(deletedTxn.txnId)
                 existingTxn = deletedTxn.copy(isDeleted = false, status = CountStatus.PARTIAL)
+                restored = true
             }
         }
         if (existingTxn == null) {
@@ -607,11 +648,19 @@ class DispenseHl7Repository @Inject constructor(
             "ORC|XO applied: txnId=${existingTxn.txnId}, rxNo=$rxNo, " +
                 "drugId=$newDrugId, targetCount=$newTargetCount, priority=$newPriority, status=$orderStatusRaw"
         )
+        // Mirrors updateFromHl7Edit: a null status keeps the old one.
+        val orderChanges = listOf(
+            FieldChange("drug_id", existingTxn.drugId?.toString(), newDrugId.toString()),
+            FieldChange("target_qty", existingTxn.targetCount?.toString(), newTargetCount?.toString()),
+            FieldChange("priority", existingTxn.priority?.name, newPriority?.name),
+            FieldChange("status", existingTxn.status.name, (newStatus ?: existingTxn.status).name)
+        ).filter { it.old != it.new }
+        auditLogger.log(OrderEdited(txnId = existingTxn.txnId, changes = orderChanges, restored = restored))
 
         // 5. If status is CA, soft-delete after applying the edit
         if (orderStatusRaw == "CA") {
             logger.i("ORC|XO with status=CA — soft-deleting txnId=${existingTxn.txnId} after update")
-            dispenseTxnDao.softDeleteByRxNo(rxNo)
+            auditLogger.log(OrderCancelled(txnIds = dispenseTxnDao.cancelActiveTxnsByRxNo(rxNo)))
             return
         }
 

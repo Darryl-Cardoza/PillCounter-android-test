@@ -236,6 +236,7 @@ fun MenuScreen(
                                 loginViewModel.logout(refreshToken)
                             } else {
                                 // Fallback: clear session locally if token missing
+                                loginViewModel.logLocalLogoutAndStartNewSession()
                                 loginViewModel.preferenceHelper.clearTokens()
                                 loginViewModel.preferenceHelper.setUserLoggedIn(false)
                                 showLogoutLoading = false

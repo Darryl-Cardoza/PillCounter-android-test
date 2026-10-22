@@ -5,6 +5,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.BatchCreated
+import com.dispensesure.retail.core.audit.model.BatchSource
+import com.dispensesure.retail.core.audit.model.LooseCountSaved
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.region.RegionProvider
@@ -52,6 +56,7 @@ class LooseCountViewModel @Inject constructor(
     preferenceHelper: PreferenceHelper,
     engineFactory: PillCountingEngine.Factory,
     private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
 ) : ViewModel() {
 
     private val logger = AppLogger("LooseCountVM")
@@ -276,6 +281,12 @@ class LooseCountViewModel @Inject constructor(
                     controlledImagePaths = if (isControlled) photoPaths.takeIf { it.isNotEmpty() } else null,
                 )
                 if (!isControlled) stockCountRepository.deletePhotos(photoPaths)
+                logLooseCountSaved(
+                    ndc = countedDrug.ndc,
+                    lot = state.lotNumber,
+                    looseQty = state.totalCount,
+                    savedBatchId = savedBatchId
+                )
                 // An ADD that landed while saving stays, so leaving still deletes its photo.
                 _uiState.update { it.copy(entries = it.entries - savedEntries.toSet(), isSaving = false) }
                 _effects.send(LooseCountEffect.CountSaved(savedBatchId))
@@ -286,6 +297,14 @@ class LooseCountViewModel @Inject constructor(
                 _effects.send(LooseCountEffect.ShowToast(R.string.batch_stock_count_save_failed))
             }
         }
+    }
+
+    // Route batch 0 means this save created the batch.
+    private fun logLooseCountSaved(ndc: String?, lot: String?, looseQty: Int, savedBatchId: Long) {
+        if (batchId == 0L) {
+            auditLogger.logOutsideTour(BatchCreated(savedBatchId, BatchSource.LOOSE_COUNT, bucketId, requestedNdcs = emptyList()))
+        }
+        auditLogger.logOutsideTour(LooseCountSaved(ndc = ndc, lot = lot, looseQty = looseQty, batchId = savedBatchId))
     }
 
     private fun resetCount() {

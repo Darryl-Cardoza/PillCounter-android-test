@@ -27,7 +27,7 @@ import org.junit.Test
  * Unit tests for [UnsyncedTransactionViewModel].
  *
  * syncBatchesWhenConnected collects hl7EventHandler.connectionState and calls
- * stockHl7Repository.resendPendingBatches() when it transitions to true.
+ * stockHl7Repository.sendPendingBatches() when it transitions to true.
  * The other two init observers use DAO flows that never emit under relaxed mocks,
  * so state stays at defaults.
  */
@@ -51,7 +51,7 @@ class UnsyncedTransactionViewModelTest {
     @Before
     fun setup() {
         every { hl7EventHandler.connectionState } returns connectionStateFlow
-        coJustRun { stockHl7Repository.resendPendingBatches() }
+        coJustRun { stockHl7Repository.sendPendingBatches() }
         viewModel = UnsyncedTransactionViewModel(
             dispenseTxnDao = dispenseTxnDao,
             stockBatchDao = stockBatchDao,
@@ -75,25 +75,25 @@ class UnsyncedTransactionViewModelTest {
 
     // UNSYNCED_VM_002
     @Test
-    fun `syncBatchesWhenConnected calls resendPendingBatches when connectionState becomes true`() = runTest {
+    fun `syncBatchesWhenConnected calls sendPendingBatches when connectionState becomes true`() = runTest {
         connectionStateFlow.value = true
         advanceUntilIdle()
 
-        coVerify(atLeast = 1) { stockHl7Repository.resendPendingBatches() }
+        coVerify(atLeast = 1) { stockHl7Repository.sendPendingBatches() }
     }
 
     // UNSYNCED_VM_003
     @Test
-    fun `resendPendingBatches is not called when connectionState stays false`() = runTest {
+    fun `sendPendingBatches is not called when connectionState stays false`() = runTest {
         // connectionStateFlow starts at false; never set to true
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { stockHl7Repository.resendPendingBatches() }
+        coVerify(exactly = 0) { stockHl7Repository.sendPendingBatches() }
     }
 
     // UNSYNCED_VM_004
     @Test
-    fun `resendPendingBatches is called again on each subsequent true emission`() = runTest {
+    fun `sendPendingBatches is called again on each subsequent true emission`() = runTest {
         connectionStateFlow.value = true
         advanceUntilIdle()
         // Toggle back to false (filter skips), then true again
@@ -102,6 +102,6 @@ class UnsyncedTransactionViewModelTest {
         connectionStateFlow.value = true
         advanceUntilIdle()
 
-        coVerify(atLeast = 2) { stockHl7Repository.resendPendingBatches() }
+        coVerify(atLeast = 2) { stockHl7Repository.sendPendingBatches() }
     }
 }

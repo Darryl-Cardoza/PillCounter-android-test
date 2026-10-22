@@ -7,6 +7,8 @@ import com.dispensesure.retail.core.audit.model.DeviceIntegrityCheckFailed
 import com.dispensesure.retail.core.audit.store.AuditLogFileStore
 import com.dispensesure.retail.core.audit.store.AuditSequenceCounter
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourSection
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -45,12 +47,13 @@ class AuditLoggerTest {
     }
 
     private val preferenceHelper = mockk<PreferenceHelper>(relaxed = true).also {
+        every { it.isUserLoggedIn() } returns true
         every { it.getUserId() } returns "1042"
         every { it.getSelectedTerminalId() } returns "T-03"
     }
     private val deviceKeyProvider = mockk<DeviceKeyProvider>().also { coEvery { it.getDeviceKey() } returns "dev-1" }
     private val sessionLockController = mockk<SessionLockController>().also {
-        every { it.verifiedFaceProfileId } returns MutableStateFlow(7L)
+        every { it.operatorProfileId } returns MutableStateFlow(7L)
     }
     private var nextSeq = 0L
     private val sequenceCounter = mockk<AuditSequenceCounter>().also { every { it.next() } answers { ++nextSeq } }
@@ -95,10 +98,51 @@ class AuditLoggerTest {
         assertEquals(LoggerConfig.sessionId, record.sessionId)
         assertEquals("1042", record.userId)
         assertEquals(null, record.email)
-        assertEquals(7L, record.operatorId)
+        assertEquals(7L, record.operatorProfileId)
         assertEquals("dev-1", record.deviceKey)
         assertEquals("T-03", record.terminalId)
         assertTrue(record.data.containsKey("failed_checks"))
+    }
+
+    @Test
+    fun `operator name is captured when the event is logged`() {
+        LoggerConfig.operatorName = "Asha Rao"
+        val auditLogger = createLogger()
+        auditLogger.log(integrityEvent)
+        LoggerConfig.operatorName = null
+        assertEquals("Asha Rao", AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).operatorName)
+    }
+
+    @Test
+    fun `logged out at start means records have no user`() {
+        every { preferenceHelper.isUserLoggedIn() } returns false
+        createLogger().log(integrityEvent)
+        val record = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single()))
+        assertEquals(null, record.userId)
+        assertEquals(null, record.email)
+    }
+
+    @Test
+    fun `session markers switch the user in call order`() {
+        every { preferenceHelper.isUserLoggedIn() } returns false
+        val auditLogger = createLogger()
+        auditLogger.log(integrityEvent)
+        auditLogger.onSessionStarted(userId = "9", email = "a@b.c")
+        auditLogger.log(integrityEvent)
+        auditLogger.onSessionEnded()
+        auditLogger.log(integrityEvent)
+
+        val userIds = awaitLines(3).map { AuditJson.decodeRecord(cipher.decrypt(it)).userId }
+        assertEquals(listOf(null, "9", null), userIds)
+    }
+
+    @Test
+    fun `email is kept only while the user id is unknown`() {
+        every { preferenceHelper.isUserLoggedIn() } returns false
+        val auditLogger = createLogger()
+        auditLogger.onSessionStarted(userId = null, email = "a@b.c")
+        auditLogger.log(integrityEvent)
+        assertEquals("a@b.c", AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).email)
     }
 
     @Test
@@ -128,6 +172,23 @@ class AuditLoggerTest {
         auditLogger.log(integrityEvent)
         // seq 1 was used by the dropped event, so the gap shows the loss.
         assertEquals(2L, AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).seq)
+    }
+
+    @Test
+    fun `logOutsideTour drops events while the tour runs`() {
+        val auditLogger = createLogger()
+        val tourEvent = DeviceIntegrityCheckFailed(listOf("TOUR"), emptyList(), "unknown", emptyList())
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, bucketsEnabled = true)
+        try {
+            auditLogger.logOutsideTour(tourEvent)
+        } finally {
+            FtueController.end() // process-wide singleton: don't leak the tour into other tests
+        }
+        auditLogger.logOutsideTour(integrityEvent)
+
+        // Records are written in call order, so a kept tour event would be the first line.
+        val firstRecord = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).first()))
+        assertEquals("[\"EMULATOR\"]", firstRecord.data["failed_checks"].toString())
     }
 
     @Test

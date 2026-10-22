@@ -60,6 +60,7 @@ class HistoryDetailsViewModelTest {
         HistoryDetailsViewModel(
             savedStateHandle = SavedStateHandle(mapOf(Screen.HistoryDetail.ARG_TXN_ID to txnId)),
             dispenseTxnDao = dispenseTxnDao,
+            auditLogger = io.mockk.mockk(relaxed = true),
         )
 
     private fun detail(

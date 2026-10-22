@@ -72,7 +72,7 @@ class OperatorNameProvider @Inject constructor(
 
     /** The profile that verified this session, or null if none did or it was switched off since. */
     private suspend fun verifiedFaceUser(): FaceProfileEntity? =
-        sessionLockController.verifiedFaceProfileId.value
+        sessionLockController.operatorProfileId.value
             ?.let { faceProfileDao.getById(it) }
             ?.takeIf { it.isEnabled }
 
@@ -95,7 +95,7 @@ class OperatorNameProvider @Inject constructor(
         val localId = preferenceHelper.getLocalId()
         val userChanges = if (localId > 0L) userDao.observeByLocalId(localId) else flowOf(null)
         return combine(
-            sessionLockController.verifiedFaceProfileId,
+            sessionLockController.operatorProfileId,
             faceProfileDao.observeAll(),
             userChanges
         ) { _, _, _ -> invoke() }

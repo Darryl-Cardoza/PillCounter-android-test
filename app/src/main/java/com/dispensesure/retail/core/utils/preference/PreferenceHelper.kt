@@ -81,6 +81,7 @@ private const val KEY_COUNTRIES = "key_countries"
 private const val KEY_LAST_HEALTH_CHECKED_AT = "last_health_checked_at"
 private const val KEY_OFFLINE_SESSION_THRESHOLD_SECONDS = "offline_session_threshold_seconds"
 private const val KEY_LOGGED_IN_AT = "logged_in_at_ms"
+private const val KEY_OFFLINE_STARTED_AT = "offline_started_at_ms"
 
 /** Default offline-session threshold (seconds) applied when the server has not yet supplied one. */
 private const val DEFAULT_OFFLINE_SESSION_THRESHOLD_SECONDS = 86_400L
@@ -831,6 +832,18 @@ class PreferenceHelper @Inject constructor(
     fun clearLoggedInAt() {
         prefs.remove(KEY_LOGGED_IN_AT)
         logger.i("Cleared loggedInAt")
+    }
+
+    /** When the open offline period began; kept so a relaunch can close it for the audit log. */
+    fun setOfflineStartedAt(timestampMs: Long) {
+        prefs.putLong(KEY_OFFLINE_STARTED_AT, timestampMs)
+    }
+
+    /** @return Epoch ms the open offline period began, or `0L` when none is open. */
+    fun getOfflineStartedAt(): Long = prefs.getLong(KEY_OFFLINE_STARTED_AT, 0L)
+
+    fun clearOfflineStartedAt() {
+        prefs.remove(KEY_OFFLINE_STARTED_AT)
     }
 
 

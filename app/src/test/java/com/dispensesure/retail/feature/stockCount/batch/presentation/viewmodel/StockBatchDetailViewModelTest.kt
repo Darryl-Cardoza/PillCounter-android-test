@@ -78,6 +78,7 @@ class StockBatchDetailViewModelTest {
             stockBatchDao,
             preferenceHelper,
             regionProvider,
+            io.mockk.mockk(relaxed = true),
         )
     }
 

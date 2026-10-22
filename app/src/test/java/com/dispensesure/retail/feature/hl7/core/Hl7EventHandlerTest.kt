@@ -75,6 +75,7 @@ class Hl7EventHandlerTest {
             stockHl7Repository,
             notifier,
             preferenceHelper,
+            io.mockk.mockk(relaxed = true),
         )
     }
 
@@ -166,7 +167,7 @@ class Hl7EventHandlerTest {
 
         assertTrue(handler.connectionState.value)
         verify(exactly = 1) { dispenseHl7Repository.resendPendingDispenses() }
-        verify(exactly = 1) { stockHl7Repository.resendPendingBatches() }
+        verify(exactly = 1) { stockHl7Repository.sendPendingBatches() }
         verify(exactly = 1) { notifier.show(title = "x", message = "y") }
     }
 

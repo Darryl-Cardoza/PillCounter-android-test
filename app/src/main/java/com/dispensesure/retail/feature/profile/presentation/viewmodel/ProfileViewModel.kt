@@ -8,7 +8,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.AccountDeleted
+import com.dispensesure.retail.core.audit.model.FieldChange
+import com.dispensesure.retail.core.audit.model.ProfileUpdated
+import com.dispensesure.retail.core.audit.model.TerminalChanged
 import com.dispensesure.retail.core.models.ErrorResponse
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.utils.common.NetworkUtils
@@ -62,7 +69,10 @@ class ProfileViewModel @Inject constructor(
     private val validator: CredentialsValidator,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val deviceKeyProvider: DeviceKeyProvider,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val auditLogger: AuditLogger,
+    private val dispenseTxnDao: DispenseTxnDao,
+    private val stockBatchDao: StockBatchDao
 ) : ViewModel() {
 
     private val logger = AppLogger.create<ProfileViewModel>()
@@ -447,6 +457,7 @@ class ProfileViewModel @Inject constructor(
 
                         var localSaveFailed = false
                         val localId = preferenceHelper.getLocalId()
+                        logProfileUpdated(localId, request)
                         if (localId != null && localId != 0L) {
                             val entity = UserEntity(
                                 localId = localId,
@@ -544,6 +555,15 @@ class ProfileViewModel @Inject constructor(
                                         terminalRepository.updateTerminal(terminalId, terminalRequest)
                                             .onSuccess { _ ->
                                                 logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
+                                                auditLogger.log(
+                                                    TerminalChanged(
+                                                        oldTerminalId = heldTerminal?.terminalId,
+                                                        oldTerminalName = heldTerminal?.terminalName,
+                                                        newTerminalId = terminalId,
+                                                        newTerminalName = selectedTerminal?.terminalName,
+                                                        deviceKey = claimDeviceKey
+                                                    )
+                                                )
 
                                                 try {
                                                     // Update local terminals list - mark selected as active, others as inactive
@@ -618,6 +638,7 @@ class ProfileViewModel @Inject constructor(
                 repository.deleteProfile()
                     .onSuccess {
                         logger.i("Profile delete success")
+                        logAccountDeleted()
                         _deleteUiState.value = ProfileDeleteUiState.Success
                     }
                     .onFailure { e ->
@@ -627,6 +648,53 @@ class ProfileViewModel @Inject constructor(
                     }
             }
         }
+
+    // Records left on the device that never reached the PMS go on the audit event.
+    private suspend fun logAccountDeleted() {
+        try {
+            auditLogger.log(
+                AccountDeleted(
+                    userId = preferenceHelper.getUserId(),
+                    email = email.ifBlank { preferenceHelper.getLoggedInEmail() },
+                    unsyncedDispenseIds = dispenseTxnDao.getPendingHl7TxnOnce().map { it.txnId },
+                    unsyncedBatchIds = stockBatchDao.getUnsyncedCompletedBatchesOnce().map { it.batchId }
+                )
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("Failed to read unsynced records for the account-deleted audit event", e, event = LogEvent.AUDIT_TRAIL_WRITE_FAILED)
+        }
+    }
+
+    // Runs before the local save overwrites the old values. A failed read only costs the audit event.
+    private suspend fun logProfileUpdated(localId: Long, request: ProfileUpdateRequest) {
+        try {
+            val previousUser = if (localId != 0L) userDao.getByLocalId(localId) else null
+            val changes = profileChanges(previousUser, preferenceHelper.getPharmacyType(), request)
+            if (changes.isNotEmpty()) auditLogger.log(ProfileUpdated(changes))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("Failed to read old profile values for the audit event", e, event = LogEvent.AUDIT_TRAIL_WRITE_FAILED)
+        }
+    }
+
+    // Only the fields this save changed, old value from Room / prefs and new value from the request.
+    private fun profileChanges(
+        previousUser: UserEntity?,
+        previousPharmacyType: String?,
+        request: ProfileUpdateRequest
+    ): List<FieldChange> = listOf(
+        FieldChange("first_name", previousUser?.fName, request.fName),
+        FieldChange("last_name", previousUser?.lName, request.lName),
+        FieldChange("pharmacy_name", previousUser?.pharmacyName, request.pharmacyName),
+        FieldChange("pharmacy_id", previousUser?.pharmacyId, request.pharmacyId),
+        FieldChange("phone_number", previousUser?.phoneNumber, request.phoneNumber),
+        FieldChange("country", previousUser?.country, request.country),
+        FieldChange("state", previousUser?.state, request.state),
+        FieldChange("pharmacy_type", previousPharmacyType, request.pharmacyType)
+    ).filter { it.old != it.new }
 
     // ─────────────────────────── Friendly Error Mapping ───────────────────────────
     private fun getFriendlyErrorMessage(exception: Throwable): String {

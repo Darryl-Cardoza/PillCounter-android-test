@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import app.cash.turbine.test
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.common.NetworkUtils
@@ -89,7 +90,10 @@ class VerifyPinViewModelTest {
 
         every { context.getString(any()) } returns "msg"
 
-        viewModel = VerifyPinViewModel(repository, context, prefs, deviceKeyProvider, sessionHealthController)
+        viewModel = VerifyPinViewModel(
+            repository, context, prefs, deviceKeyProvider, sessionHealthController,
+            mockk<AuditLogger>(relaxed = true)
+        )
     }
 
     @After

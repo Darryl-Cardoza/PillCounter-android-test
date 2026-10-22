@@ -1,6 +1,10 @@
 package com.dispensesure.retail.feature.history.data
 
 import app.cash.turbine.test
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.BatchDeleted
+import com.dispensesure.retail.core.audit.model.HistoryBulkDeleted
+import com.dispensesure.retail.core.room.models.dtos.RecordSyncState
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
@@ -38,11 +42,55 @@ class HistoryRepositoryTest {
     private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
 
+    private val auditLogger: AuditLogger = mockk(relaxed = true)
+
     private lateinit var repository: HistoryRepository
 
     @Before
     fun setup() {
-        repository = HistoryRepository(dispenseTxnDao, stockBatchDao, stockTxnDao, regionProvider)
+        repository = HistoryRepository(dispenseTxnDao, stockBatchDao, stockTxnDao, regionProvider, auditLogger)
+    }
+
+    @Test
+    fun `bulk dispense delete logs the deleted and unsynced ids`() = runTest {
+        coEvery { dispenseTxnDao.deleteTransactionsByDateReturningSyncStates(any(), any(), any(), any()) } returns listOf(
+            RecordSyncState(id = 1L, isSynced = true, isCompleted = true),
+            RecordSyncState(id = 2L, isSynced = false, isCompleted = true),
+            RecordSyncState(id = 3L, isSynced = null, isCompleted = false)
+        )
+
+        repository.deleteTransactionsForDate(today, today, null, 1L)
+
+        verify {
+            auditLogger.log(match {
+                it is HistoryBulkDeleted && it.count == 3 && it.txnIds == listOf(1L, 2L, 3L) &&
+                    it.unsyncedIds == listOf(2L) && it.statusFilter == "ALL"
+            })
+        }
+    }
+
+    @Test
+    fun `bulk dispense delete with nothing matching logs nothing`() = runTest {
+        coEvery { dispenseTxnDao.deleteTransactionsByDateReturningSyncStates(any(), any(), any(), any()) } returns emptyList()
+
+        repository.deleteTransactionsForDate(today, today, null, 1L)
+
+        verify(exactly = 0) { auditLogger.log(any()) }
+    }
+
+    @Test
+    fun `bulk batch delete logs the batch ids and the unsynced ones`() = runTest {
+        coEvery { stockBatchDao.getBatchIdsByDate(any(), any(), any(), any(), any(), any()) } returns listOf(5L, 6L)
+        coEvery { stockBatchDao.getSyncStatesByIds(listOf(5L, 6L), any()) } returns listOf(
+            RecordSyncState(id = 5L, isSynced = false, isCompleted = true),
+            RecordSyncState(id = 6L, isSynced = true, isCompleted = true)
+        )
+
+        repository.deleteBatchesForDateRange(today, today, null, 1L)
+
+        verify {
+            auditLogger.log(match { it is BatchDeleted && it.batchIds == listOf(5L, 6L) && it.unsyncedIds == listOf(5L) })
+        }
     }
 
     @After
@@ -106,11 +154,9 @@ class HistoryRepositoryTest {
     // HIST_REPO_005
     @Test
     fun `deleteTransactionsForDate delegates to DAO`() = runTest {
-        coJustRun { dispenseTxnDao.deleteTransactionsByDate(any(), any(), any(), any(), any(), any()) }
-
         repository.deleteTransactionsForDate(today, today, null, 1L)
 
-        coVerify(exactly = 1) { dispenseTxnDao.deleteTransactionsByDate(any(), any(), null, 1L, any(), any()) }
+        coVerify(exactly = 1) { dispenseTxnDao.deleteTransactionsByDateReturningSyncStates(any(), any(), null, 1L) }
     }
 
     // HIST_REPO_006
@@ -144,10 +190,11 @@ class HistoryRepositoryTest {
         var capturedStart = 0L
         var capturedEnd = 0L
         coEvery {
-            dispenseTxnDao.deleteTransactionsByDate(any(), any(), any(), any(), any(), any())
+            dispenseTxnDao.deleteTransactionsByDateReturningSyncStates(any(), any(), any(), any())
         } answers {
             capturedStart = firstArg()
             capturedEnd = secondArg()
+            emptyList()
         }
 
         val start = LocalDate.of(2024, 1, 1)
