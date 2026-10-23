@@ -27,8 +27,10 @@ object DatabaseKeyProvider {
     private const val KEY_DEK_WRAPPED = "dek_wrapped"
     private const val KEY_KEK_ID = "dek_kek_id"
     private const val KEY_KEK_VERSION = "dek_kek_version"
+    private const val KEY_KEK_ALGORITHM = "dek_kek_algorithm"
 
-    private const val BOOTSTRAP_KEK_ID = "local-bootstrap"
+    const val BOOTSTRAP_KEK_ID = "local-bootstrap"
+    private const val BOOTSTRAP_KEK_ALGORITHM = "AES-256-GCM"
     private const val BOOTSTRAP_KEK_ALIAS = "com.dispensesure.retail.dek_bootstrap_kek"
     private const val SERVER_KEK_ALIAS_PREFIX = "com.dispensesure.retail.server_kek_"
 
@@ -71,16 +73,17 @@ object DatabaseKeyProvider {
         val wrappedB64 = prefs.getString(KEY_DEK_WRAPPED)
         val kekId = prefs.getString(KEY_KEK_ID)
         if (wrappedB64 != null && kekId != null) {
-            return KeystoreAesGcm.unwrap(aliasFor(kekId), Base64.decode(wrappedB64, Base64.NO_WRAP))
+            return KeystoreAesGcm.unwrapPcwrp(aliasFor(kekId), Base64.decode(wrappedB64, Base64.NO_WRAP))
         }
         return generateAndBootstrapWrapDek(prefs)
     }
 
     private fun generateAndBootstrapWrapDek(prefs: SecurePreferences): ByteArray {
         val dek = ByteArray(32).also { SecureRandom().nextBytes(it) }
-        val wrapped = KeystoreAesGcm.wrap(BOOTSTRAP_KEK_ALIAS, dek)
+        val wrapped = KeystoreAesGcm.wrapPcwrp(BOOTSTRAP_KEK_ALIAS, dek)
         prefs.putString(KEY_DEK_WRAPPED, Base64.encodeToString(wrapped, Base64.NO_WRAP))
         prefs.putString(KEY_KEK_ID, BOOTSTRAP_KEK_ID)
+        prefs.putString(KEY_KEK_ALGORITHM, BOOTSTRAP_KEK_ALGORITHM)
         prefs.putInt(KEY_KEK_VERSION, 0)
         return dek
     }
@@ -108,8 +111,8 @@ object DatabaseKeyProvider {
             val rawKek = Base64.decode(kekInfo.keyMaterial, Base64.NO_WRAP)
             KeystoreAesGcm.importKeystoreKey(newAlias, rawKek)
 
-            val dek = KeystoreAesGcm.unwrap(aliasFor(oldKekId), Base64.decode(oldWrappedB64, Base64.NO_WRAP))
-            val newWrapped = KeystoreAesGcm.wrap(newAlias, dek)
+            val dek = KeystoreAesGcm.unwrapPcwrp(aliasFor(oldKekId), Base64.decode(oldWrappedB64, Base64.NO_WRAP))
+            val newWrapped = KeystoreAesGcm.wrapPcwrp(newAlias, dek)
 
             // commit() (synchronous) rather than apply(): the old KEK alias is deleted right
             // after this returns, so prefs must durably point at the new alias before that
@@ -118,6 +121,7 @@ object DatabaseKeyProvider {
             prefs.putString(KEY_DEK_WRAPPED, Base64.encodeToString(newWrapped, Base64.NO_WRAP), commit = true)
             prefs.putString(KEY_KEK_ID, kekInfo.keyId, commit = true)
             prefs.putInt(KEY_KEK_VERSION, kekInfo.version, commit = true)
+            prefs.putString(KEY_KEK_ALGORITHM, kekInfo.algorithm, commit = true)
             logger.d("Rotated DB KEK to ${kekInfo.keyId} (version ${kekInfo.version})")
         } catch (e: Exception) {
             logger.e("KEK rotation failed, keeping previous key", e, event = LogEvent.KEK_ROTATE_FAILED)
@@ -135,5 +139,17 @@ object DatabaseKeyProvider {
         } catch (e: Exception) {
             logger.e("Failed to delete old KEK alias after successful rotation", e, event = LogEvent.KEK_ROTATE_FAILED)
         }
+    }
+
+    /** The wrap the DEK is stored under now, or null before the first DEK exists. */
+    fun currentWrap(context: Context): DekWrap? = synchronized(lock) {
+        val prefs = SecurePreferences(context, PREFS_NAME)
+        val wrappedB64 = prefs.getString(KEY_DEK_WRAPPED) ?: return null
+        DekWrap(
+            wrappedDek = Base64.decode(wrappedB64, Base64.NO_WRAP),
+            kekKeyId = prefs.getString(KEY_KEK_ID) ?: return null,
+            kekVersion = prefs.getInt(KEY_KEK_VERSION, -1),
+            kekAlgorithm = prefs.getString(KEY_KEK_ALGORITHM) ?: return null
+        )
     }
 }

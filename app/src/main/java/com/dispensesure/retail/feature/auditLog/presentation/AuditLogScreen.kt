@@ -32,13 +32,14 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.constants.LocalDimens
 import com.dispensesure.retail.ui.theme.LocalExtendedColors
 
-/** Debug-only list of decrypted audit records, newest first, with Export and Run integrity check actions. */
+/** Debug-only list of audit records, newest first, with Run integrity check, Upload now and Export actions. */
 @Composable
 fun AuditLogScreen(
     navController: NavController,
     viewModel: AuditLogViewModel = hiltViewModel()
 ) {
     val formattedEntries by viewModel.formattedEntriesNewestFirst.collectAsState()
+    val uploadStatus by viewModel.uploadStatus.collectAsState()
     val extendedColors = LocalExtendedColors.current
     val dimens = LocalDimens.current
     val context = LocalContext.current
@@ -78,9 +79,24 @@ fun AuditLogScreen(
             TextButton(onClick = viewModel::runIntegrityCheck) {
                 Text(stringResource(R.string.audit_log_run_integrity_check))
             }
+            TextButton(onClick = {
+                viewModel.uploadNow()
+                showToast(context, R.string.audit_log_upload_requested)
+            }) {
+                Text(stringResource(R.string.audit_log_upload_now))
+            }
             TextButton(onClick = viewModel::export) {
                 Text(stringResource(R.string.audit_log_export))
             }
+        }
+
+        uploadStatus?.let { status ->
+            Text(
+                text = stringResource(R.string.audit_log_upload_status, status.waitingCount, status.preparedCount, status.failedCount),
+                color = extendedColors.textColor,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = dimens.pagePadding)
+            )
         }
 
         if (formattedEntries.isEmpty()) {

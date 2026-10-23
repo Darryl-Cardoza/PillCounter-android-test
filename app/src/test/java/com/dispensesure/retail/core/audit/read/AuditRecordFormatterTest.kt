@@ -31,7 +31,7 @@ class AuditRecordFormatterTest {
             │ data      failed_checks=[EMULATOR]  installer=unknown
             └──
         """.trimIndent()
-        assertEquals(expected, AuditRecordFormatter.format(AuditLogEntry.Record(record)))
+        assertEquals(expected, AuditRecordFormatter.format(record))
     }
 
     @Test
@@ -41,15 +41,9 @@ class AuditRecordFormatterTest {
             userId = null, email = null, operatorProfileId = null, operatorName = null, deviceKey = null, terminalId = null,
             appVersion = "2.4.1 (241)", tag = "X", result = AuditResult.SUCCESS, data = buildJsonObject { }
         )
-        val text = AuditRecordFormatter.format(AuditLogEntry.Record(record))
+        val text = AuditRecordFormatter.format(record)
         assertTrue(text.contains("✔ SUCCESS"))
         assertTrue(text.contains("│ user      —   operator  —"))
         assertTrue(text.contains("│ data      —"))
-    }
-
-    @Test
-    fun `unreadable entries render as warnings`() {
-        assertEquals("⚠ unreadable line 4 in audit-logs.log", AuditRecordFormatter.format(AuditLogEntry.UnreadableLine("audit-logs.log", 4)))
-        assertEquals("⚠ unreadable file audit-logs-1.unreadable (older key)", AuditRecordFormatter.format(AuditLogEntry.UnreadableFile("audit-logs-1.unreadable")))
     }
 }

@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.security
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -10,6 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.security.KeyStore
 import java.security.SecureRandom
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * Exercises [KeystoreAesGcm] against a real Android Keystore. Runs on-device because
@@ -114,5 +116,26 @@ class KeystoreAesGcmInstrumentedTest {
         val alias = testAlias("never_created")
         KeystoreAesGcm.deleteKeystoreKey(alias) // must not throw
         assertFalse(KeystoreAesGcm.keystoreKeyExists(alias))
+    }
+
+    @Test
+    fun wrapPcwrp_under_an_imported_kek_opens_with_the_raw_kek() {
+        val alias = testAlias("pcwrp_import")
+        val rawKek = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val serverCopyOfKek = rawKek.copyOf()
+        KeystoreAesGcm.importKeystoreKey(alias, rawKek)
+        val dek = ByteArray(32).also { SecureRandom().nextBytes(it) }
+
+        val wrapped = KeystoreAesGcm.wrapPcwrp(alias, dek)
+
+        assertEquals(66, wrapped.size)
+        // What the backend does with its own copy of the KEK.
+        assertArrayEquals(dek, Pcwrp.open(SecretKeySpec(serverCopyOfKek, "AES"), wrapped))
+        assertArrayEquals(dek, KeystoreAesGcm.unwrapPcwrp(alias, wrapped))
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun unwrapPcwrp_throws_when_alias_does_not_exist() {
+        KeystoreAesGcm.unwrapPcwrp(testAlias("missing_pcwrp"), ByteArray(66))
     }
 }

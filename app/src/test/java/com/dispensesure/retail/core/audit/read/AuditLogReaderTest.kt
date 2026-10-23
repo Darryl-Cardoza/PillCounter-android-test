@@ -1,23 +1,27 @@
 package com.dispensesure.retail.core.audit.read
 
-import com.dispensesure.retail.core.audit.crypto.AuditRecordCipher
+import com.dispensesure.retail.core.audit.AuditLogConfig
 import com.dispensesure.retail.core.audit.model.AuditJson
 import com.dispensesure.retail.core.audit.model.AuditRecord
 import com.dispensesure.retail.core.audit.model.AuditResult
 import com.dispensesure.retail.core.audit.store.AuditLogFileStore
+import com.dispensesure.retail.core.audit.store.AuditOutbox
+import com.dispensesure.retail.core.audit.store.InMemorySegmentSlot
+import com.dispensesure.retail.core.audit.store.MutableTestClock
 import kotlinx.serialization.json.buildJsonObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
-import javax.crypto.spec.SecretKeySpec
+import java.time.Instant
 
 class AuditLogReaderTest {
 
     private val directory = File(System.getProperty("java.io.tmpdir"), "audit_reader_test_${System.nanoTime()}")
-    private val cipher = AuditRecordCipher { SecretKeySpec(ByteArray(32) { it.toByte() }, "AES") }
-    private val fileStore = AuditLogFileStore(directory)
-    private val reader = AuditLogReader(fileStore, cipher)
+
+    private fun newFileStore(maxFileBytes: Long = AuditLogConfig.MAX_FILE_BYTES) = AuditLogFileStore(
+        directory, InMemorySegmentSlot(), AuditOutbox(directory),
+        MutableTestClock(Instant.parse("2026-10-21T10:00:00Z")), maxFileBytes
+    )
 
     private fun record(seq: Long) = AuditRecord(
         eventId = "e-$seq", seq = seq, timestamp = "2026-10-21T00:00:00Z", sessionId = "s-1",
@@ -26,33 +30,22 @@ class AuditLogReaderTest {
     )
 
     @Test
-    fun `reads records oldest first and flags a bad line`() {
-        fileStore.append(cipher.encrypt(AuditJson.encodeRecord(record(1))))
-        fileStore.append("v1:not-valid")
-        fileStore.append(cipher.encrypt(AuditJson.encodeRecord(record(2))))
+    fun `reads records oldest first and skips a line cut by a kill`() {
+        val fileStore = newFileStore()
+        fileStore.append(AuditJson.encodeRecord(record(1)))
+        fileStore.append("{cut by a kill")
+        fileStore.append(AuditJson.encodeRecord(record(2)))
 
-        val entries = reader.readAllOldestFirst()
-
-        assertEquals(
-            listOf(
-                AuditLogEntry.Record(record(1)),
-                AuditLogEntry.UnreadableLine("audit-logs.log", 2),
-                AuditLogEntry.Record(record(2))
-            ),
-            entries
-        )
+        assertEquals(listOf(record(1), record(2)), AuditLogReader(fileStore).readAllOldestFirst())
     }
 
     @Test
-    fun `unreadable files are listed first`() {
-        fileStore.append(cipher.encrypt(AuditJson.encodeRecord(record(1))))
-        fileStore.markAllUnreadable()
-        fileStore.append(cipher.encrypt(AuditJson.encodeRecord(record(2))))
+    fun `rotated files are read before the current one`() {
+        // A 1-byte cap rotates on every append after the first.
+        val fileStore = newFileStore(maxFileBytes = 1)
+        fileStore.append(AuditJson.encodeRecord(record(1)))
+        fileStore.append(AuditJson.encodeRecord(record(2)))
 
-        val entries = reader.readAllOldestFirst()
-
-        assertEquals(2, entries.size)
-        assertTrue(entries.first() is AuditLogEntry.UnreadableFile)
-        assertEquals(AuditLogEntry.Record(record(2)), entries.last())
+        assertEquals(listOf(record(1), record(2)), AuditLogReader(fileStore).readAllOldestFirst())
     }
 }

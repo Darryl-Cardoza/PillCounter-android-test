@@ -8,6 +8,7 @@ import com.dispensesure.retail.core.audit.model.OfflineModeExited
 import com.dispensesure.retail.core.audit.model.OfflineTrigger
 import com.dispensesure.retail.core.audit.model.ServerConfigChanged
 import com.dispensesure.retail.core.audit.model.ServerSetting
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.health.data.remote.dto.HealthCheckData
 import com.dispensesure.retail.core.health.domain.data.IHealthRepository
 import com.dispensesure.retail.core.health.domain.model.HealthState
@@ -75,6 +76,7 @@ class SessionHealthControllerTest {
     }
 
     private val auditLogger = mockk<AuditLogger>(relaxed = true)
+    private val auditLogUploader = mockk<AuditLogUploader>(relaxed = true)
 
     private fun newController(): SessionHealthController =
         SessionHealthController(
@@ -83,6 +85,7 @@ class SessionHealthControllerTest {
             Lazy { dispenseHl7Repository },
             Lazy { stockHl7Repository },
             auditLogger,
+            Lazy { auditLogUploader },
         )
 
     // ─────────────────────── offline periods (audit) ───────────────────────
@@ -114,6 +117,21 @@ class SessionHealthControllerTest {
 
         verify { auditLogger.log(match { it is OfflineModeExited && it.endedBy == OfflineEndedBy.BACK_ONLINE }) }
         verify { preferenceHelper.clearOfflineStartedAt() }
+    }
+
+    @Test
+    fun backOnline_asksForAnAuditUpload() = runTest {
+        coEvery { healthRepository.checkHealth() } returns Result.failure(IOException("no net"))
+        val controller = newController()
+        controller.checkHealth(force = true)
+        coEvery { healthRepository.checkHealth() } returns Result.success(
+            HealthCheckData(isHealthy = true, checks = null, checkedAt = "2026-08-24T12:00:00Z")
+        )
+
+        controller.checkHealth(force = true)
+
+        // The collector runs on the controller's own Default-dispatcher scope.
+        verify(timeout = 3_000) { auditLogUploader.requestUpload() }
     }
 
     @Test

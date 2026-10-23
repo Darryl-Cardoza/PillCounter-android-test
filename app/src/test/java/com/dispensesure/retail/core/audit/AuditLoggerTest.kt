@@ -1,11 +1,14 @@
 package com.dispensesure.retail.core.audit
 
-import com.dispensesure.retail.core.audit.crypto.AuditRecordCipher
 import com.dispensesure.retail.core.audit.model.AuditJson
 import com.dispensesure.retail.core.audit.model.AuditResult
 import com.dispensesure.retail.core.audit.model.DeviceIntegrityCheckFailed
 import com.dispensesure.retail.core.audit.store.AuditLogFileStore
+import com.dispensesure.retail.core.audit.store.AuditOutbox
 import com.dispensesure.retail.core.audit.store.AuditSequenceCounter
+import com.dispensesure.retail.core.audit.store.InMemorySegmentSlot
+import com.dispensesure.retail.core.audit.store.MutableTestClock
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
@@ -14,36 +17,41 @@ import com.dispensesure.retail.core.tourguide.TourSection
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import dagger.Lazy
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.spyk
+import io.mockk.verify
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.io.IOException
+import java.time.Instant
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
-import javax.crypto.spec.SecretKeySpec
 import javax.inject.Provider
 
 class AuditLoggerTest {
 
     private val directory = File(System.getProperty("java.io.tmpdir"), "audit_logger_test_${System.nanoTime()}")
-    private val testKey = SecretKeySpec(ByteArray(32) { it.toByte() }, "AES")
-    private val cipher = AuditRecordCipher { testKey }
     private val writerThreadName = "audit-test-writer"
     private val writerDispatcher =
         Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, writerThreadName).apply { isDaemon = true }
         }.asCoroutineDispatcher()
 
+    private val clock = MutableTestClock(Instant.parse("2026-10-21T10:00:00Z"))
+    private val segmentSlot = InMemorySegmentSlot()
+    private fun newFileStore() = AuditLogFileStore(directory, segmentSlot, AuditOutbox(directory), clock)
+
     private val appendThreads = Collections.synchronizedList(mutableListOf<Thread>())
-    private val fileStore = spyk(AuditLogFileStore(directory)).also { store ->
+    private val fileStore = spyk(newFileStore()).also { store ->
         every { store.append(any()) } answers {
             appendThreads += Thread.currentThread()
             callOriginal()
@@ -66,16 +74,19 @@ class AuditLoggerTest {
     private var nextSeq = 0L
     private val sequenceCounter = mockk<AuditSequenceCounter>().also { every { it.next() } answers { ++nextSeq } }
 
+    private val uploader = mockk<AuditLogUploader>(relaxed = true)
+
     private val integrityEvent = DeviceIntegrityCheckFailed(listOf("EMULATOR"), emptyList(), "unknown")
 
     private fun createLogger(
-        recordCipher: AuditRecordCipher = cipher,
         sessionLockProvider: Provider<SessionLockController> = Provider { sessionLockController },
         nameProvider: Provider<OperatorNameProvider> = Provider { operatorNameProvider }
     ) = AuditLogger(
-        fileStore, recordCipher, sequenceCounter, preferenceHelper, deviceKeyProvider,
-        sessionLockProvider, nameProvider, writerDispatcher
+        fileStore, sequenceCounter, preferenceHelper, deviceKeyProvider,
+        sessionLockProvider, nameProvider, Lazy { uploader }, writerDispatcher
     )
+
+    private fun recordAt(line: String) = AuditJson.decodeRecord(line)
 
     private fun awaitUntil(description: String, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + 3_000
@@ -86,20 +97,26 @@ class AuditLoggerTest {
         error("Timed out waiting for $description")
     }
 
-    private fun currentFileLines(): List<String> {
-        val file = File(directory, "audit-logs.log")
-        return if (file.exists()) file.readLines().filter { it.isNotBlank() } else emptyList()
-    }
+    private fun writtenLines(): List<String> =
+        newFileStore().readableFilesOldestFirst().flatMap { it.readLines() }.filter { it.isNotBlank() }
 
     private fun awaitLines(count: Int): List<String> {
-        awaitUntil("$count audit lines") { currentFileLines().size >= count }
-        return currentFileLines()
+        awaitUntil("$count audit lines") { writtenLines().size >= count }
+        return writtenLines()
+    }
+
+    @Test
+    fun `lines are plain JSON records`() {
+        createLogger().log(integrityEvent)
+        val line = awaitLines(1).single()
+        assertTrue(line.startsWith("{"))
+        assertEquals("DEVICE_INTEGRITY_CHECK_FAILED", recordAt(line).tag)
     }
 
     @Test
     fun `record carries the common fields, tag, result and data`() {
         createLogger().log(integrityEvent)
-        val record = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single()))
+        val record = recordAt(awaitLines(1).single())
 
         assertEquals("DEVICE_INTEGRITY_CHECK_FAILED", record.tag)
         assertEquals(AuditResult.FAILURE, record.result)
@@ -116,7 +133,7 @@ class AuditLoggerTest {
     @Test
     fun `operator name comes from the same snapshot as the operator id`() {
         createLogger().log(integrityEvent)
-        val record = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single()))
+        val record = recordAt(awaitLines(1).single())
         assertEquals(7L, record.operatorProfileId)
         assertEquals("Asha Rao", record.operatorName)
         coVerify { operatorNameProvider.nameFor(7L, 42L) }
@@ -126,7 +143,7 @@ class AuditLoggerTest {
     fun `a name lookup that fails leaves only the name out`() {
         coEvery { operatorNameProvider.nameFor(any(), any()) } throws IllegalStateException("db closed")
         createLogger().log(integrityEvent)
-        val record = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single()))
+        val record = recordAt(awaitLines(1).single())
         assertEquals(7L, record.operatorProfileId)
         assertEquals(null, record.operatorName)
     }
@@ -140,14 +157,14 @@ class AuditLoggerTest {
         every { preferenceHelper.isUserLoggedIn() } returns false
         writerHeld.countDown()
         auditLogger.log(integrityEvent)
-        assertEquals("1042", AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).userId)
+        assertEquals("1042", recordAt(awaitLines(1).single()).userId)
     }
 
     @Test
     fun `logged out at start means records have no user`() {
         every { preferenceHelper.isUserLoggedIn() } returns false
         createLogger().log(integrityEvent)
-        val record = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single()))
+        val record = recordAt(awaitLines(1).single())
         assertEquals(null, record.userId)
         assertEquals(null, record.email)
     }
@@ -162,7 +179,7 @@ class AuditLoggerTest {
         auditLogger.onSessionEnded()
         auditLogger.log(integrityEvent)
 
-        val userIds = awaitLines(3).map { AuditJson.decodeRecord(cipher.decrypt(it)).userId }
+        val userIds = awaitLines(3).map { recordAt(it).userId }
         assertEquals(listOf(null, "9", null), userIds)
     }
 
@@ -172,14 +189,14 @@ class AuditLoggerTest {
         val auditLogger = createLogger()
         auditLogger.onSessionStarted(userId = null, email = "a@b.c")
         auditLogger.log(integrityEvent)
-        assertEquals("a@b.c", AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).email)
+        assertEquals("a@b.c", recordAt(awaitLines(1).single()).email)
     }
 
     @Test
     fun `records are written in call order with increasing seq`() {
         val auditLogger = createLogger()
         repeat(5) { auditLogger.log(integrityEvent) }
-        val seqs = awaitLines(5).map { AuditJson.decodeRecord(cipher.decrypt(it)).seq }
+        val seqs = awaitLines(5).map { recordAt(it).seq }
         assertEquals(listOf(1L, 2L, 3L, 4L, 5L), seqs)
     }
 
@@ -195,13 +212,16 @@ class AuditLoggerTest {
 
     @Test
     fun `a failed write is dropped and the next event still writes`() {
-        var keyCalls = 0
-        val flakyCipher = AuditRecordCipher { if (keyCalls++ == 0) error("key unavailable") else testKey }
-        val auditLogger = createLogger(flakyCipher)
+        var appendCalls = 0
+        every { fileStore.append(any()) } answers {
+            appendThreads += Thread.currentThread()
+            if (appendCalls++ == 0) throw IOException("disk full") else callOriginal()
+        }
+        val auditLogger = createLogger()
         auditLogger.log(integrityEvent)
         auditLogger.log(integrityEvent)
         // seq 1 was used by the dropped event, so the gap shows the loss.
-        assertEquals(2L, AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).seq)
+        assertEquals(2L, recordAt(awaitLines(1).single()).seq)
     }
 
     @Test
@@ -217,62 +237,35 @@ class AuditLoggerTest {
         auditLogger.logOutsideTour(integrityEvent)
 
         // Records are written in call order, so a kept tour event would be the first line.
-        val firstRecord = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).first()))
+        val firstRecord = recordAt(awaitLines(1).first())
         assertEquals("[\"EMULATOR\"]", firstRecord.data["failed_checks"].toString())
     }
 
     @Test
-    fun `files from an older key are moved aside before the first write`() {
-        val oldCipher = AuditRecordCipher { SecretKeySpec(ByteArray(32) { 9 }, "AES") }
-        AuditLogFileStore(directory).append(oldCipher.encrypt("{}"))
-
-        createLogger().log(integrityEvent)
-
-        // The old line sits in the current file until the worker moves it, so wait for the move.
-        awaitUntil("old file moved aside") { AuditLogFileStore(directory).unreadableFiles().size == 1 }
-        val newRecord = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single()))
-        assertEquals("DEVICE_INTEGRITY_CHECK_FAILED", newRecord.tag)
-    }
-
-    @Test
-    fun `a cut-off current line with readable rotated files moves nothing aside`() {
-        directory.mkdirs()
-        File(directory, "audit-logs-1.log").writeText(cipher.encrypt("{}") + "\n")
-        // Killed mid-write: no newline at the end.
-        File(directory, "audit-logs.log").writeText(cipher.encrypt("{}").dropLast(10))
-
-        createLogger().log(integrityEvent)
-
+    fun `a new UTC day closes the old file and asks for an upload`() {
+        val auditLogger = createLogger()
+        auditLogger.log(integrityEvent)
+        awaitLines(1)
+        clock.instant = Instant.parse("2026-10-22T00:00:01Z")
+        auditLogger.log(integrityEvent)
         awaitLines(2)
-        assertTrue(AuditLogFileStore(directory).unreadableFiles().isEmpty())
-        assertTrue(File(directory, "audit-logs-1.log").exists())
+        verify(timeout = 3_000) { uploader.requestUpload() }
+        assertEquals(1, newFileStore().closedFilesOldestFirst().size)
     }
 
     @Test
-    fun `a cut-off only line still lets the next record write`() {
-        directory.mkdirs()
-        File(directory, "audit-logs.log").writeText(cipher.encrypt("{}").dropLast(10))
-
-        createLogger().log(integrityEvent)
-
-        awaitUntil("new record") { currentFileLines().any { runCatching { cipher.decrypt(it) }.isSuccess } }
-    }
-
-    @Test
-    fun `a key that fails to load moves nothing aside`() {
-        AuditLogFileStore(directory).append(cipher.encrypt("{}"))
-        var keyCalls = 0
-        val flakyCipher = AuditRecordCipher { if (keyCalls++ == 0) error("keystore") else testKey }
-
-        createLogger(flakyCipher).log(integrityEvent)
-
-        awaitLines(2)
-        assertTrue(AuditLogFileStore(directory).unreadableFiles().isEmpty())
+    fun `closing for upload moves the writer on and asks for an upload`() {
+        val auditLogger = createLogger()
+        auditLogger.log(integrityEvent)
+        awaitLines(1)
+        auditLogger.closeFileForUpload(onlyIfDayEnded = false)
+        verify(timeout = 3_000) { uploader.requestUpload() }
+        assertEquals(1, newFileStore().closedFilesOldestFirst().size)
     }
 
     @Test
     fun `an operator id that cannot be read is left out`() {
         createLogger(sessionLockProvider = Provider { error("not ready") }).log(integrityEvent)
-        assertEquals(null, AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).operatorProfileId)
+        assertEquals(null, recordAt(awaitLines(1).single()).operatorProfileId)
     }
 }

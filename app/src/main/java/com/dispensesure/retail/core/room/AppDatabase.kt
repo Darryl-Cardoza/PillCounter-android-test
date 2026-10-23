@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.room
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import com.dispensesure.retail.core.room.dao.DekVersionDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
@@ -14,6 +15,7 @@ import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.di.StockBatchConverters
 import com.dispensesure.retail.core.room.di.StringListConverter
+import com.dispensesure.retail.core.room.models.DekVersionEntity
 import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.StockBottleInfoEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
@@ -56,9 +58,10 @@ import com.dispensesure.retail.core.room.models.UserEntity
         StockTxnEntity::class,
         StockBottleInfoEntity::class,
         FaceProfileEntity::class,
-        FaceEmbeddingEntity::class
+        FaceEmbeddingEntity::class,
+        DekVersionEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(
@@ -93,4 +96,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     /** DAO for managing [FaceEmbeddingEntity] records. */
     abstract fun faceEmbeddingDao(): FaceEmbeddingDao
+
+    /** DAO for the DB DEK's wrapped values ([DekVersionEntity]). */
+    abstract fun dekVersionDao(): DekVersionDao
 }

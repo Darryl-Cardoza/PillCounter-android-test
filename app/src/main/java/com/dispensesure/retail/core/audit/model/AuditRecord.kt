@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
-/** One line of the audit file before encryption: the fields every event shares, plus its tag and data. */
+/** One line of the audit file: the fields every event shares, plus its tag and data. */
 @Serializable
 data class AuditRecord(
     @SerialName("event_id") val eventId: String,

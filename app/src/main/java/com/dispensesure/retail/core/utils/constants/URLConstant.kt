@@ -58,6 +58,12 @@ object URLConstant {
     /** API endpoint for shipping a device log entry to the backend's log/Datadog ingest pipeline. */
     const val MOBILE_LOGS = "/mobile/logs"
 
+    /** API endpoint for uploading one prepared audit log file (multipart). */
+    const val AUDIT_LOGS = "/audit/logs"
+
+    /** API endpoint for registering this device's wrapped DEK (JSON). */
+    const val DEVICE_KEYS = "/mobile/devices/keys"
+
     /** Common HTTP Content-Type header value for all JSON-based API calls. */
     const val CONTENT_TYPE = "application/json"
 }

@@ -7,6 +7,9 @@ import com.dispensesure.retail.core.audit.AuditLogConfig
 import com.dispensesure.retail.core.audit.DeviceIntegrityAuditor
 import com.dispensesure.retail.core.audit.read.AuditLogReader
 import com.dispensesure.retail.core.audit.read.AuditRecordFormatter
+import com.dispensesure.retail.core.audit.store.AuditLogFileStore
+import com.dispensesure.retail.core.audit.store.AuditOutbox
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,12 +26,15 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
-/** Debug viewer: decrypts the audit files on IO and exports them as decorated text. */
+/** Debug viewer: reads the audit files on IO and exports them as decorated text. */
 @HiltViewModel
 class AuditLogViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val auditLogReader: AuditLogReader,
     private val deviceIntegrityAuditor: DeviceIntegrityAuditor,
+    private val auditLogUploader: AuditLogUploader,
+    private val fileStore: AuditLogFileStore,
+    private val outbox: AuditOutbox,
     private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -45,13 +51,29 @@ class AuditLogViewModel @Inject constructor(
     // True when a check failed and DEVICE_INTEGRITY_CHECK_FAILED was logged.
     val integrityCheckResults: Flow<Boolean> = integrityCheckResultChannel.receiveAsFlow()
 
+    data class UploadStatus(val waitingCount: Int, val preparedCount: Int, val failedCount: Int)
+
+    private val _uploadStatus = MutableStateFlow<UploadStatus?>(null)
+    val uploadStatus: StateFlow<UploadStatus?> = _uploadStatus.asStateFlow()
+
     init {
         viewModelScope.launch {
             _formattedEntriesNewestFirst.value = withContext(ioDispatcher) {
                 auditLogReader.readAllOldestFirst().map(AuditRecordFormatter::format).asReversed()
             }
         }
+        viewModelScope.launch {
+            _uploadStatus.value = withContext(ioDispatcher) {
+                UploadStatus(
+                    waitingCount = fileStore.closedFilesOldestFirst().size,
+                    preparedCount = outbox.segmentsOldestFirst().size,
+                    failedCount = outbox.failedCount()
+                )
+            }
+        }
     }
+
+    fun uploadNow() = auditLogUploader.closeAndUploadNow()
 
     fun export() {
         viewModelScope.launch {

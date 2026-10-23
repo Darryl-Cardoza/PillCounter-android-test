@@ -39,6 +39,7 @@ import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.audit.DeviceIntegrityAuditor
 import com.dispensesure.retail.core.audit.model.SessionEndReason
 import com.dispensesure.retail.core.audit.model.SessionEnded
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.auth.AuthEvent
 import com.dispensesure.retail.core.auth.AuthEventBus
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
@@ -117,6 +118,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var sessionHealthController: SessionHealthController
+
+    @Inject
+    lateinit var auditLogUploader: AuditLogUploader
 
     @Inject
     lateinit var authEventBus: AuthEventBus
@@ -516,6 +520,8 @@ class MainActivity : ComponentActivity() {
         // user action. Cheap: /health is on an isolated stack with 15s timeouts.
         if (::sessionHealthController.isInitialized && preferenceHelper.isUserLoggedIn()) {
             sessionHealthController.onForegroundResume()
+            // Also sends any closed audit log files.
+            auditLogUploader.requestUpload()
         }
     }
 

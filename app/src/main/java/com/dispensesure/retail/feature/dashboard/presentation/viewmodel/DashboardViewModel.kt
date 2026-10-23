@@ -4,12 +4,14 @@ package com.dispensesure.retail.feature.dashboard.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.key.DekVersionRecorder
 import com.dispensesure.retail.core.audit.model.CertPinChoice
 import com.dispensesure.retail.core.audit.model.DataPurged
 import com.dispensesure.retail.core.audit.model.PmsCertPinMismatch
 import com.dispensesure.retail.core.audit.model.PurgeReason
 import com.dispensesure.retail.core.audit.model.ServerConfigChanged
 import com.dispensesure.retail.core.audit.model.ServerSetting
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.di.DefaultDispatcher
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.region.RegionProvider
@@ -99,6 +101,8 @@ class DashboardViewModel @Inject constructor(
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
     private val regionProvider: RegionProvider,
     private val auditLogger: AuditLogger,
+    private val auditLogUploader: AuditLogUploader,
+    private val dekVersionRecorder: DekVersionRecorder,
 ) : ViewModel() {
 
     /** Logger instance for this ViewModel. */
@@ -566,8 +570,14 @@ class DashboardViewModel @Inject constructor(
                             // version than what's currently stored (no-op otherwise, since
                             // auth/me is polled repeatedly with an unchanged KEK).
                             detail.kek?.let { kekInfo ->
+                                // Records the current (e.g. bootstrap) wrap before the server KEK replaces it.
+                                deviceKeyProvider.getDeviceKey()?.let { deviceKey ->
+                                    dekVersionRecorder.recordCurrentWrap(deviceKey)
+                                }
                                 DatabaseKeyProvider.rotateKekIfNewer(preferenceHelper.getContext(), kekInfo)
                             }
+                            // The token is known good here: send closed audit files.
+                            auditLogUploader.requestUpload()
                         }
 
                         // Check if profile is incomplete
