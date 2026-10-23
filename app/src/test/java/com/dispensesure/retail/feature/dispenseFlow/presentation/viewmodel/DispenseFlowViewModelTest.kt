@@ -28,6 +28,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -720,6 +721,28 @@ class DispenseFlowViewModelTest {
             assertEquals(0, vm.uiState.value.rxDrugNotFoundToastTick)
         }
 
+    @Test
+    fun `onRxBarcodeRead standalone server drug with no name still opens the sheet`() =
+        runTest(testDispatcher) {
+            every { preferenceHelper.isStandaloneMode() } returns true
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns null
+            coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
+            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
+                brandName = null, genericName = null, ndc = "NDC123",
+                is_drug_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
+            )
+            coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 77L
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.showRxDetails)
+            assertEquals(0, vm.uiState.value.rxDrugNotFoundToastTick)
+            assertEquals("Unknown Drug", vm.uiState.value.drugName)
+        }
+
     // ───────────────────────────── onRxBarcodeRead: already-completed Rx guard ─────────────────────────────
 
     @Test
@@ -1014,6 +1037,21 @@ class DispenseFlowViewModelTest {
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertEquals("ndcfail", vm.uiState.value.error)
+    }
+
+    @Test
+    fun `onNdcBarcodeRead server failure shows error and logs once`() = runTest(testDispatcher) {
+        val vm = ndcVm()
+        advanceUntilIdle()
+        coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
+        coEvery { drugRepository.getDrugInfoByNdc(any()) } throws RuntimeException("offline")
+        vm.onNdcBarcodeRead("gtin", null)
+        advanceUntilIdle()
+        assertEquals("offline", vm.uiState.value.error)
+        assertFalse(vm.uiState.value.isLoading)
+        // DrugResolver logs the failure; the view model must not log it again.
+        verify(exactly = 0) { android.util.Log.e(any(), "NDC barcode processing failed", any()) }
     }
 
     @Test

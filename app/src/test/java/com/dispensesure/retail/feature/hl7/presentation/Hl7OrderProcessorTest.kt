@@ -53,7 +53,7 @@ class Hl7OrderProcessorTest {
         every { context.getString(any()) } returns "x"
         every { context.getString(any(), *anyVararg()) } returns "x"
         every { preferenceHelper.getLocalId() } returns 1L
-        coEvery { drugMasterDao.getDrugByNdc(NDC) } returns DrugMasterEntity(ndc = NDC, drugName = DRUG_NAME)
+        coEvery { drugMasterDao.getDrugByNdc(NDC) } returns DrugMasterEntity(drugId = DRUG_ID, ndc = NDC, drugName = DRUG_NAME)
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns DRUG_ID
         coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns NEW_TXN_ID
         // Relaxed lookups would return a fake row; default to "nothing saved yet".
@@ -62,7 +62,7 @@ class Hl7OrderProcessorTest {
         coEvery { pillCountTxnDao.getMostRecentByRxNo(any()) } returns null
 
         processor = Hl7OrderProcessor(
-            context, pillCountTxnDao, drugMasterDao, preferenceHelper,
+            context, pillCountTxnDao, preferenceHelper,
             DrugResolver(drugMasterDao, drugRepository, drugImageDownloader), notifier, hl7Repository,
         )
     }

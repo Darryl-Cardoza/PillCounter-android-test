@@ -502,7 +502,7 @@ class Hl7Repository @Inject constructor(
             }
         }
 
-        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
+        val drugId = finalDrug.drugId
 
         // Priority from ZPR segment, if the sender included one alongside the order packet
         val priority = TxnPriority.fromString(
@@ -592,7 +592,7 @@ class Hl7Repository @Inject constructor(
             }
         }
 
-        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
+        val drugId = finalDrug.drugId
 
         // Priority from ZPR segment, if the sender included one alongside the order packet
         val priority = TxnPriority.fromString(
@@ -881,7 +881,7 @@ class Hl7Repository @Inject constructor(
             }
         }
 
-        val newDrugId = drugMasterDao.upsertPreservingId(resolvedDrug)
+        val newDrugId = resolvedDrug.drugId
 
         // 3. Parse priority from ZPR segment
         val newPriority = TxnPriority.fromString(

@@ -2,7 +2,6 @@ package com.dispensesure.retail.feature.hl7.presentation
 
 import android.content.Context
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.PillCountTxnEntity
@@ -30,7 +29,6 @@ import javax.inject.Singleton
 class Hl7OrderProcessor @Inject constructor(
     @ApplicationContext private val context: Context,
     private val pillCountTxnDao: PillCountTxnDao,
-    private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
     private val drugResolver: DrugResolver,
     private val notifier: Hl7Notifier,
@@ -99,7 +97,7 @@ class Hl7OrderProcessor @Inject constructor(
         }
         val existing = matched?.takeUnless { it.isFinished() }
         val finalDrug = resolveDrug(hl7Ndc, hl7DrugName) ?: return
-        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
+        val drugId = finalDrug.drugId
 
         val txnId: Long
         if (existing != null) {
@@ -196,7 +194,7 @@ class Hl7OrderProcessor @Inject constructor(
         }
 
         val finalDrug = resolveDrug(hl7Ndc, hl7DrugName) ?: return
-        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
+        val drugId = finalDrug.drugId
 
         val txnId: Long
         if (existing != null) {

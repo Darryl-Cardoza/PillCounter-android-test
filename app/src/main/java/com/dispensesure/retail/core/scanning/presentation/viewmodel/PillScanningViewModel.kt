@@ -54,9 +54,7 @@ import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
-import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
-import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.data.NavigationEvent
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
@@ -118,8 +116,6 @@ class PillScanningViewModel @Inject constructor(
     private val modelLoader: PillDetectionModelLoader,
     private val performanceLogger: PerformanceLogger,
     private val scanDecoder: ScanDecoder,
-    private val drugRepository: IDrugRepository,
-    private val drugImageDownloader: DrugImageDownloader,
     private val hl7Repository: Hl7Repository,
     private val appDatabase: AppDatabase,
 ) : AndroidViewModel(app) {

@@ -16,9 +16,7 @@ import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
-import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
-import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
@@ -82,8 +80,6 @@ class PillScanningViewModelEventTest {
     private val modelLoader: PillDetectionModelLoader = mockk(relaxed = true)
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
-    private val drugRepository: IDrugRepository = mockk(relaxed = true)
-    private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
     private val batchDao: BatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
@@ -125,8 +121,6 @@ class PillScanningViewModelEventTest {
             modelLoader = modelLoader,
             performanceLogger = performanceLogger,
             scanDecoder = ScanDecoder(barcodeDecoder),
-            drugRepository = drugRepository,
-            drugImageDownloader = drugImageDownloader,
             hl7Repository = hl7Repository,
             appDatabase = appDatabase,
         )

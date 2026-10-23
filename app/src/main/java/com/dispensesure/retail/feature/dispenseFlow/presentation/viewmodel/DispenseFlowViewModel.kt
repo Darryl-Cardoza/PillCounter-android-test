@@ -431,7 +431,10 @@ class DispenseFlowViewModel @Inject constructor(
         bucket: String?,
         targetCount: Int,
     ) {
-        val drug = (drugResolver.resolve(parsedNdc) as? DrugLookup.Found)?.drug
+        val drug = (drugResolver.resolve(
+            parsedNdc,
+            nameIfMissing = DrugResolver.UNKNOWN_DRUG_NAME,
+        ) as? DrugLookup.Found)?.drug
         // No drug to verify the label against, so reject the scan instead of
         // staging a blank Rx.
         if (drug == null) {
@@ -626,7 +629,9 @@ class DispenseFlowViewModel @Inject constructor(
                     is DrugLookup.Found -> applyContainerDrug(lookup, expectedNdc)
                     DrugLookup.NoName, DrugLookup.NotFound ->
                         _uiState.update { it.copy(isLoading = false, showNdcNotFoundDialog = true) }
-                    is DrugLookup.Failed -> throw lookup.error
+                    // DrugResolver already logged the failure, so don't rethrow into the catch below.
+                    is DrugLookup.Failed ->
+                        _uiState.update { it.copy(isLoading = false, error = lookup.error.message) }
                 }
             } catch (e: CancellationException) {
                 _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
