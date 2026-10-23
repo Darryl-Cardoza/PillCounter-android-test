@@ -472,8 +472,9 @@ class DispenseMessageBuilderTest {
 
         assertTrue("ZDS segment must be present", raw.lineSequence().any { it.startsWith("ZDS|") })
         assertTrue("MSH must carry DISPENSESURE sending app", raw.contains("DISPENSESURE"))
-        assertTrue("RXD must be present", raw.lineSequence().any { it.startsWith("RXD|") })
-        assertTrue("PID must carry rxNo", raw.contains("RX-NATIVE-1"))
+        // NATIVE format: MSH + ZDS only — no PID, ORC or RXD
+        assertFalse("RXD must NOT be present in NATIVE", raw.lineSequence().any { it.startsWith("RXD|") })
+        assertFalse("PID must NOT be present in NATIVE", raw.lineSequence().any { it.startsWith("PID|") })
     }
 
     @Test
@@ -489,7 +490,7 @@ class DispenseMessageBuilderTest {
         )
 
         val zds = raw.lineSequence().first { it.startsWith("ZDS|") }.split("|")
-        assertEquals("DISPENSE", zds[1])
+        assertEquals("DR", zds[1])
     }
 
     @Test
@@ -505,7 +506,7 @@ class DispenseMessageBuilderTest {
         )
 
         val zds = raw.lineSequence().first { it.startsWith("ZDS|") }.split("|")
-        assertTrue("ZDS fillStatus should be COMPLETE", zds.any { it == "COMPLETE" })
+        assertTrue("ZDS fillStatus should be Complete", zds.any { it == "Complete" })
     }
 
     @Test
@@ -526,8 +527,8 @@ class DispenseMessageBuilderTest {
             isNdcVerified = false, config = nativeConfig(),
         )
 
-        assertTrue("verified flag should appear in verified message", verified.contains("VERIFIED"))
-        assertTrue("UNVERIFIED flag should appear in unverified message", unverified.contains("UNVERIFIED"))
+        assertTrue("verified flag V should appear in verified message", verified.contains("|V|") || verified.contains("|V\r"))
+        assertTrue("unverified flag N should appear in unverified message", unverified.contains("|N|") || unverified.contains("|N\r"))
     }
 
     @Test
@@ -585,7 +586,7 @@ class DispenseMessageBuilderTest {
     }
 
     @Test
-    fun `buildDispenseMessage DISPENSESURE_NATIVE RXD carries dispensed quantity`() {
+    fun `buildDispenseMessage DISPENSESURE_NATIVE ZDS carries dispensed quantity`() {
         val details = listOf(
             detail(countId = 1L, pillCount = 12, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name),
             detail(countId = 2L, pillCount = 3, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name),
@@ -599,8 +600,113 @@ class DispenseMessageBuilderTest {
             config = nativeConfig(),
         )
 
-        val rxd = raw.lineSequence().first { it.startsWith("RXD|") }.split("|")
-        assertEquals("15", rxd[4])
+        // NATIVE emits MSH + ZDS only; dispensedQuantity is in ZDS not RXD
+        assertFalse("RXD must NOT be present in NATIVE", raw.lineSequence().any { it.startsWith("RXD|") })
+        val zds = raw.lineSequence().first { it.startsWith("ZDS|") }.split("|")
+        assertEquals("15", zds[13]) // ZDS-13 is dispensedQuantity (0=ZDS, 1=flowType, …, 12=fillNumber, 13=dispensedQuantity)
+    }
+
+    // ============================ EYECON — segment-strip ============================
+
+    @Test
+    fun `buildDispenseMessage for EYECON emits MSH and ZUI only — no ORC PID RXD NTE OBX ZSN ZSV`() {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 20, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name, imagePath = "/a/img.png"),
+        )
+        val txn = txn(txnId = 321L, rxNo = "RX-EC1", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn,
+            txnDetails = details,
+            drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
+            drugName = "Atorvastatin",
+            pharmacistName = "Jane Doe",
+            pharmacistGivenName = "Jane",
+            pharmacistFamilyName = "Doe",
+            isNdcVerified = true,
+            config = HL7Config.current(
+                selectedTerminalName = "PILLCOUNTER",
+                pmsHostName = "PMS",
+                hl7Format = Hl7Format.EYECON,
+                sendingApplicationName = Hl7Format.EYECON.sendingApplication,
+            ),
+        )
+
+        assertTrue("MSH must be present", raw.lineSequence().any { it.startsWith("MSH|") })
+        assertTrue("ZUI must be present", raw.lineSequence().any { it.startsWith("ZUI|") })
+        assertFalse("ORC must NOT be present for EYECON", raw.lineSequence().any { it.startsWith("ORC|") })
+        assertFalse("PID must NOT be present for EYECON", raw.lineSequence().any { it.startsWith("PID|") })
+        assertFalse("RXD must NOT be present for EYECON", raw.lineSequence().any { it.startsWith("RXD|") })
+        assertFalse("NTE must NOT be present for EYECON", raw.lineSequence().any { it.startsWith("NTE|") })
+        assertFalse("OBX must NOT be present for EYECON", raw.lineSequence().any { it.startsWith("OBX|") })
+        assertFalse("ZSN must NOT be present for EYECON", raw.lineSequence().any { it.startsWith("ZSN|") })
+        assertFalse("ZSV must NOT be present for EYECON", raw.lineSequence().any { it.startsWith("ZSV|") })
+    }
+
+    // ============================ VIVID — segment-strip ============================
+
+    @Test
+    fun `buildDispenseMessage for VIVID emits MSH and ZUI only — no ORC PID RXD NTE OBX ZSN ZSV`() {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 15, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name),
+        )
+        val txn = txn(txnId = 654L, rxNo = "RX-V1", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn,
+            txnDetails = details,
+            drugCode = "11111-222-33",
+            scannedDrugCode = "11111-222-33",
+            drugName = "Drug",
+            pharmacistName = null,
+            config = HL7Config.current(
+                selectedTerminalName = "PILLCOUNTER",
+                pmsHostName = "PMS",
+                hl7Format = Hl7Format.VIVID,
+                sendingApplicationName = Hl7Format.VIVID.sendingApplication,
+            ),
+        )
+
+        assertTrue("MSH must be present", raw.lineSequence().any { it.startsWith("MSH|") })
+        assertTrue("ZUI must be present", raw.lineSequence().any { it.startsWith("ZUI|") })
+        assertFalse("ORC must NOT be present for VIVID", raw.lineSequence().any { it.startsWith("ORC|") })
+        assertFalse("PID must NOT be present for VIVID", raw.lineSequence().any { it.startsWith("PID|") })
+        assertFalse("RXD must NOT be present for VIVID", raw.lineSequence().any { it.startsWith("RXD|") })
+        assertFalse("NTE must NOT be present for VIVID", raw.lineSequence().any { it.startsWith("NTE|") })
+        assertFalse("OBX must NOT be present for VIVID", raw.lineSequence().any { it.startsWith("OBX|") })
+        assertFalse("ZSN must NOT be present for VIVID", raw.lineSequence().any { it.startsWith("ZSN|") })
+        assertFalse("ZSV must NOT be present for VIVID", raw.lineSequence().any { it.startsWith("ZSV|") })
+    }
+
+    // ============================ DISPENSESURE_STANDARD — full segment set ============================
+
+    @Test
+    fun `buildDispenseMessage for DISPENSESURE_STANDARD emits ORC RXD OBX — full segment set`() {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 10, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name, imagePath = "/a/img.png"),
+        )
+        val txn = txn(txnId = 300L, rxNo = "RX-STD-1", note = "std note")
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn,
+            txnDetails = details,
+            drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
+            drugName = "Metformin",
+            pharmacistName = "Alice Smith",
+            config = HL7Config.current(
+                selectedTerminalName = "PILLCOUNTER",
+                pmsHostName = "PMS",
+                hl7Format = Hl7Format.DISPENSESURE_STANDARD,
+                sendingApplicationName = Hl7Format.DISPENSESURE_STANDARD.sendingApplication,
+            ),
+        )
+
+        assertTrue("MSH must be present", raw.lineSequence().any { it.startsWith("MSH|") })
+        assertTrue("ORC must be present in STANDARD", raw.lineSequence().any { it.startsWith("ORC|") })
+        assertTrue("RXD must be present in STANDARD", raw.lineSequence().any { it.startsWith("RXD|") })
+        assertTrue("OBX must be present in STANDARD", raw.lineSequence().any { it.startsWith("OBX|") })
     }
 
     @Test

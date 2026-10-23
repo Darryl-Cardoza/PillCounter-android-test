@@ -574,6 +574,7 @@
     <string name="hl7_notification_no_processable_orders">HL7 message %1$s received but contained no processable orders</string>
     <string name="hl7_notification_structural_validation_failed">HL7 message %1$s rejected — structural validation failed: %2$s</string>
     <string name="hl7_notification_business_validation_failed">HL7 message %1$s rejected — %2$s</string>
+    <string name="hl7_notification_message_rejected">HL7 message %1$s rejected</string>
 
     <!-- ================== GLOVE DETECTION ================== -->
     <string name="cd_gloves_detected">Gloves detected</string>

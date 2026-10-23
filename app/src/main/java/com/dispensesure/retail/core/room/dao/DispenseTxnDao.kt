@@ -283,6 +283,17 @@ interface DispenseTxnDao {
         return cancelledTxnIds
     }
 
+    @Query("SELECT txnId FROM dispense_txn WHERE transactionOrderId = :orderId AND isDeleted = 0")
+    suspend fun getActiveTxnIdsByOrderId(orderId: String): List<Long>
+
+    /** Soft-deletes by transactionOrderId and returns the cancelled txn ids, for ZDR CA. */
+    @Transaction
+    suspend fun cancelActiveTxnsByOrderId(orderId: String): List<Long> {
+        val cancelledTxnIds = getActiveTxnIdsByOrderId(orderId)
+        softDeleteByOrderId(orderId)
+        return cancelledTxnIds
+    }
+
     /** Status of an order's active txns before a release changes it, for ORDER_RELEASED. */
     @Query("SELECT status FROM dispense_txn WHERE transactionOrderId = :orderId AND isDeleted = 0 AND status IN ('PARTIAL', 'ON_HOLD') LIMIT 1")
     suspend fun getActiveStatusByOrderId(orderId: String): CountStatus?

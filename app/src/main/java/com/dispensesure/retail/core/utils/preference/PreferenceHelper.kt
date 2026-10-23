@@ -659,7 +659,7 @@ class PreferenceHelper @Inject constructor(
     }
 
     /**
-     * Returns the persisted HL7 version, defaulting to "2.5" if not yet configured.
+     * Returns the persisted HL7 version, defaulting to "2.3.1" if not yet configured.
      */
     fun getHl7Version(): String {
         val version = prefs.getString(KEY_HL7_VERSION) ?: DEFAULT_HL7_VERSION

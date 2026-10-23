@@ -524,28 +524,44 @@ class DispenseHl7Repository @Inject constructor(
      * [ZDRSegment.orderReferenceNumber] as the order-id for hold/release/discontinue,
      * matching the same DAO methods used by the standard ORC flow.
      */
-    internal suspend fun handleZdrDispenseRequest(message: HL7Message) {
-        val zdr = message.segment<ZDRSegment>(ZDRSegment.NAME)
-        if (zdr == null) {
-            logger.w("handleZdrDispenseRequest: no ZDR segment found — ignoring message")
+    /** NW/RF: fire-and-forget — caller dispatches async and returns AA immediately. */
+    internal suspend fun handleZdrNewOrRefill(message: HL7Message) {
+        val zdr = message.segment<ZDRSegment>(ZDRSegment.NAME) ?: run {
+            logger.w("handleZdrNewOrRefill: no ZDR segment — ignoring")
             return
         }
-
         val messageControlId = message.header?.messageControlId.orEmpty().takeIf { it.isNotBlank() }
         val orderAction = zdr.orderAction?.uppercase().orEmpty()
         val rxNo = zdr.rxNumber?.takeIf { it.isNotBlank() }
         val orderId = zdr.orderReferenceNumber?.takeIf { it.isNotBlank() }
-
-        logger.i("ZDR received | action=$orderAction | rxNo=$rxNo | orderId=$orderId | msgId=${messageControlId.orEmpty()}")
-
+        logger.i("ZDR NW/RF received | action=$orderAction | rxNo=$rxNo | orderId=$orderId | msgId=${messageControlId.orEmpty()}")
         when (orderAction) {
             "NW" -> handleZdrNewOrder(zdr, message, messageControlId, rxNo, orderId)
             "RF" -> handleZdrRefill(zdr, message, messageControlId, rxNo, orderId)
-            "CA" -> handleZdrCancel(rxNo)
-            "HD" -> handleZdrHold(orderId ?: rxNo)
-            "RL" -> handleZdrRelease(orderId ?: rxNo)
-            "DC" -> handleZdrDiscontinue(orderId ?: rxNo)
-            else -> logger.w("ZDR: unhandled orderAction='$orderAction' for rxNo=$rxNo — ignoring")
+            else -> logger.w("ZDR: unexpected action='$orderAction' in handleZdrNewOrRefill — ignoring")
+        }
+    }
+
+    /**
+     * CA/HD/RL/DC: runs synchronously so the caller can return NACK when no txn is found.
+     * Returns true if the action was applied to at least one row, false if the order was
+     * not found (orderId blank or no matching txn) — caller should send AE ACK on false.
+     */
+    internal suspend fun handleZdrStatusChange(message: HL7Message): Boolean {
+        val zdr = message.segment<ZDRSegment>(ZDRSegment.NAME) ?: run {
+            logger.w("handleZdrStatusChange: no ZDR segment — ignoring")
+            return false
+        }
+        val orderAction = zdr.orderAction.uppercase().orEmpty()
+        val orderId = zdr.orderReferenceNumber.takeIf { it.isNotBlank() }
+        val rxNo = zdr.rxNumber.takeIf { it.isNotBlank() }
+        logger.i("ZDR status-change received | action=$orderAction | orderId=$orderId | rxNo=$rxNo")
+        return when (orderAction) {
+            "CA" -> handleZdrCancel(orderId)
+            "HD" -> handleZdrHold(orderId)
+            "RL" -> handleZdrRelease(orderId)
+            "DC" -> handleZdrDiscontinue(orderId)
+            else -> { logger.w("ZDR: unhandled status-change action='$orderAction' — ignoring"); false }
         }
     }
 
@@ -580,8 +596,12 @@ class DispenseHl7Repository @Inject constructor(
                 continue
             }
 
-            // Resend guard: same Rx + same fill + same msgId that's already finished → ignore
-            val matched = if (rxNo != null) dispenseTxnDao.getByRxNoAndFillNo(rxNo, fillNo) else null
+            // Resend guard: prefer transactionOrderId (ZDR-15) — unique per order; fall back to rxNo+fillNo
+            val matched = when {
+                !orderId.isNullOrBlank() -> dispenseTxnDao.getByTransactionOrderId(orderId)
+                rxNo != null -> dispenseTxnDao.getByRxNoAndFillNo(rxNo, fillNo)
+                else -> null
+            }
             if (matched?.isZdrFinished() == true &&
                 zdrFindResend(rxNo, messageControlId)?.isZdrFinished() == true) {
                 logger.w("ZDR NW: resend of msgId=$messageControlId for rxNo=$rxNo already finished — ignoring")
@@ -688,7 +708,12 @@ class DispenseHl7Repository @Inject constructor(
                 continue
             }
 
-            val matched = if (rxNo != null) dispenseTxnDao.getByRxNoAndFillNo(rxNo, fillNo) else null
+            // Prefer transactionOrderId (ZDR-15) — unique per order; fall back to rxNo+fillNo
+            val matched = when {
+                !orderId.isNullOrBlank() -> dispenseTxnDao.getByTransactionOrderId(orderId)
+                rxNo != null -> dispenseTxnDao.getByRxNoAndFillNo(rxNo, fillNo)
+                else -> null
+            }
             if (matched?.isZdrFinished() == true &&
                 zdrFindResend(rxNo, messageControlId)?.isZdrFinished() == true) {
                 logger.w("ZDR RF: resend of msgId=$messageControlId for rxNo=$rxNo fillNo=$fillNo already finished — ignoring")
@@ -739,44 +764,101 @@ class DispenseHl7Repository @Inject constructor(
         }
     }
 
-    private suspend fun handleZdrCancel(rxNo: String?) {
-        if (rxNo.isNullOrBlank()) {
-            logger.w("ZDR CA: no rxNo — ignoring")
-            return
+    internal suspend fun handleZdrChangeOrder(message: HL7Message): Boolean {
+        val zdr = message.segment<ZDRSegment>(ZDRSegment.NAME) ?: run {
+            logger.w("ZDR XO: no ZDR segment in message")
+            return false
         }
-        logger.i("ZDR CA for rxNo=$rxNo — soft-deleting transaction")
-        auditLogger.log(com.dispensesure.retail.core.audit.model.OrderCancelled(txnIds = dispenseTxnDao.cancelActiveTxnsByRxNo(rxNo)))
+        val orderId = zdr.orderReferenceNumber?.takeIf { it.isNotBlank() } ?: run {
+            logger.w("ZDR XO: blank ZDR-15 orderReferenceNumber — cannot match txn")
+            return false
+        }
+        val existing = dispenseTxnDao.getByTransactionOrderId(orderId) ?: run {
+            logger.w("ZDR XO: no txn found for transactionOrderId=$orderId")
+            return false
+        }
+        val newQty = zdr.quantityToDispense?.trim()?.toDoubleOrNull()?.toInt()
+        if (newQty == null || newQty <= 0) {
+            logger.w("ZDR XO: invalid quantity='${zdr.quantityToDispense}' for orderId=$orderId")
+            return false
+        }
+        val ndc = zdr.drugs.firstOrNull()?.ndc?.trim()
+        if (ndc.isNullOrBlank()) {
+            logger.w("ZDR XO: blank NDC for orderId=$orderId")
+            return false
+        }
+        val finalDrug = zdrResolveDrug(ndc, zdr.drugs.firstOrNull()?.name) ?: return false
+        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
+        dispenseTxnDao.updateFromHl7Edit(
+            txnId = existing.txnId,
+            drugId = drugId,
+            targetCount = newQty,
+            priority = zdrPriority(zdr.priority),
+            status = null,
+        )
+        logger.i("ZDR XO: updated txnId=${existing.txnId} orderId=$orderId qty=$newQty ndc=$ndc")
+        return true
     }
 
-    private suspend fun handleZdrHold(orderId: String?) {
+    private suspend fun handleZdrCancel(orderId: String?): Boolean {
         if (orderId.isNullOrBlank()) {
-            logger.w("ZDR HD: no orderId/rxNo — ignoring")
-            return
+            logger.w("ZDR CA: no transactionOrderId — cannot cancel")
+            return false
+        }
+        logger.i("ZDR CA for orderId=$orderId — cancelling active txns")
+        val cancelled = dispenseTxnDao.cancelActiveTxnsByOrderId(orderId)
+        if (cancelled.isEmpty()) {
+            logger.w("ZDR CA: no active txns found for orderId=$orderId")
+            return false
+        }
+        auditLogger.log(com.dispensesure.retail.core.audit.model.OrderCancelled(txnIds = cancelled))
+        return true
+    }
+
+    private suspend fun handleZdrHold(orderId: String?): Boolean {
+        if (orderId.isNullOrBlank()) {
+            logger.w("ZDR HD: no transactionOrderId — cannot hold")
+            return false
         }
         logger.i("ZDR HD for orderId=$orderId — marking ON_HOLD")
         val rowsChanged = dispenseTxnDao.updateStatusByOrderIdIfPartial(orderId, CountStatus.ON_HOLD)
+        if (rowsChanged == 0) {
+            logger.w("ZDR HD: no active PARTIAL txns found for orderId=$orderId")
+            return false
+        }
         auditLogger.log(com.dispensesure.retail.core.audit.model.OrderHeld(orderId = orderId, rowsChanged = rowsChanged))
+        return true
     }
 
-    private suspend fun handleZdrRelease(orderId: String?) {
+    private suspend fun handleZdrRelease(orderId: String?): Boolean {
         if (orderId.isNullOrBlank()) {
-            logger.w("ZDR RL: no orderId/rxNo — ignoring")
-            return
+            logger.w("ZDR RL: no transactionOrderId — cannot release")
+            return false
         }
         logger.i("ZDR RL for orderId=$orderId — restoring to PARTIAL")
         val oldStatus = dispenseTxnDao.getActiveStatusByOrderId(orderId)
         val rowsChanged = dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold(orderId, CountStatus.PARTIAL)
+        if (rowsChanged == 0) {
+            logger.w("ZDR RL: no active txns found for orderId=$orderId")
+            return false
+        }
         auditLogger.log(com.dispensesure.retail.core.audit.model.OrderReleased(orderId = orderId, oldStatus = oldStatus?.name, rowsChanged = rowsChanged))
+        return true
     }
 
-    private suspend fun handleZdrDiscontinue(orderId: String?) {
+    private suspend fun handleZdrDiscontinue(orderId: String?): Boolean {
         if (orderId.isNullOrBlank()) {
-            logger.w("ZDR DC: no orderId/rxNo — ignoring")
-            return
+            logger.w("ZDR DC: no transactionOrderId — cannot discontinue")
+            return false
         }
         logger.i("ZDR DC for orderId=$orderId — soft-deleting (discontinued)")
         val rowsChanged = dispenseTxnDao.softDeleteByOrderId(orderId)
+        if (rowsChanged == 0) {
+            logger.w("ZDR DC: no active txns found for orderId=$orderId")
+            return false
+        }
         auditLogger.log(com.dispensesure.retail.core.audit.model.OrderDiscontinued(orderId = orderId, rowsChanged = rowsChanged))
+        return true
     }
 
     // ZDR uses the same ORC-7.6 priority codes as the standard flow (S/A=High, R=Medium, T=Low).

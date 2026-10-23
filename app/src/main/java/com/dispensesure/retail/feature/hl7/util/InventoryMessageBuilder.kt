@@ -12,6 +12,70 @@ import java.io.File
 object InventoryMessageBuilder {
 
     // =========================================================
+    // DISPENSESURE_NATIVE INVENTORY ACK (MSH + ZDS, flowType=INVENTORY)
+    // Response to INR^U06 with ZDR(flowType=INVENTORY) — sent immediately after txn creation.
+    // Shape: MSH + ZDS only (matching NATIVE dispense response convention).
+    // =========================================================
+
+    data class ZdrInventoryCount(
+        val ndc: String,
+        val total: Int,
+        val sealed: Int,
+        val sealedBottles: Int,
+        val opened: Int,
+        val openedBottles: Int,
+        val lot: String = "",
+        val expiry: String = "",
+    )
+
+    fun buildZdrInventoryAck(
+        requestMessageId: String,
+        orderReferenceNumber: String = "",
+        ndcs: List<String>,
+        counts: List<ZdrInventoryCount> = emptyList(),
+        config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS"),
+    ): String {
+        val now = hl7TimestampNow()
+        val messageId = "INR-ACK-${System.currentTimeMillis() / 1000}"
+        val hl7 = HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from(config.versionId)))
+        val builder = hl7.build()
+
+        val inventoryCountStrings = counts.map { c ->
+            // Format: ndc^total^sealed^sealedBottles^opened^openedBottles^lot^expiry
+            "${c.ndc}^${c.total}^${c.sealed}^${c.sealedBottles}^${c.opened}^${c.openedBottles}^${c.lot}^${c.expiry}"
+        }
+
+        val message = builder.rdsO13Ds {
+            msh { msh ->
+                msh.sendingApplication = config.sendingApplication
+                msh.sendingFacility = config.sendingFacility
+                msh.receivingApplication = config.receivingApplication
+                msh.receivingFacility = config.receivingFacility
+                msh.dateTimeOfMessage = now
+                msh.messageControlId = messageId
+                msh.processingId = "P"
+                msh.versionId = config.versionId
+            }
+
+            zds { z ->
+                z.flowType = "IR"
+                z.layoutVersion = "1.0"
+                z.responseMessageId = messageId
+                z.requestMessageId = requestMessageId
+                z.responseType = "RE"
+                z.drugs = ndcs
+                z.drugCodeType = "NDC"
+                z.orderReferenceNumber = orderReferenceNumber.takeIf { it.isNotBlank() }
+                z.unitOfMeasure = "TAB"
+                z.inventoryCounts = inventoryCountStrings
+            }
+        }
+
+        // Library emits RDS^O01 for HL7 < 2.5; spec requires RDS^O13 — fix the message type.
+        return message.encode().replace("RDS^O01", "RDS^O13")
+    }
+
+    // =========================================================
     // INVENTORY RESPONSE (INU^U05, INV + ZAD)
     // =========================================================
 

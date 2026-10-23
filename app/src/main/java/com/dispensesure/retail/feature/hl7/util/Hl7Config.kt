@@ -15,8 +15,13 @@ enum class Hl7Format(val sendingApplication: String) {
     companion object {
         val DEFAULT = DISPENSESURE_STANDARD
 
-        fun fromSendingApplication(value: String?): Hl7Format =
-            entries.firstOrNull { it.sendingApplication == value } ?: DEFAULT
+        fun fromSendingApplication(value: String?): Hl7Format {
+            if (value.isNullOrBlank()) return DEFAULT
+            // Exact enum name match first ("DISPENSESURE_NATIVE", "DISPENSESURE_STANDARD", "EYECON", "VIVID")
+            entries.firstOrNull { it.name.equals(value, ignoreCase = true) }?.let { return it }
+            // Legacy: server sends sendingApplication value ("DISPENSESURE" → STANDARD, "EYECON", "VIVID")
+            return entries.firstOrNull { it.sendingApplication.equals(value, ignoreCase = true) } ?: DEFAULT
+        }
     }
 }
 

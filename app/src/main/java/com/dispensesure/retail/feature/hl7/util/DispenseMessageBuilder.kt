@@ -138,6 +138,29 @@ object DispenseMessageBuilder {
         val effectiveExpirationDate = expirationDate ?: firstBottle?.expirationDate
         val effectiveSerialNumber = serialNumber ?: firstBottle?.serialNumber
 
+        if (config.messageFormat in setOf(Hl7Format.EYECON, Hl7Format.VIVID)) {
+            return buildMinimalDispenseMessage(
+                config = config,
+                hl7 = hl7,
+                builder = builder,
+                now = now,
+                messageId = messageId,
+                orderId = orderId,
+                vividOrderId = vividOrderId,
+                totalCount = totalCount,
+                bottles = bottles,
+                txn = txn,
+                txnDetails = txnDetails,
+                drugCode = drugCode,
+                drugName = drugName,
+                pharmacistGivenName = pharmacistGivenName,
+                effectiveLotNumber = effectiveLotNumber,
+                effectiveSerialNumber = effectiveSerialNumber,
+                effectiveExpirationDate = effectiveExpirationDate,
+                isNdcVerified = isNdcVerified,
+            )
+        }
+
         if (config.messageFormat == Hl7Format.DISPENSESURE_NATIVE) {
             return buildDispenseMessageNative(
                 txn = txn,
@@ -173,35 +196,6 @@ object DispenseMessageBuilder {
                 msh.messageControlId = messageId
                 msh.processingId = "P"
                 msh.versionId = config.versionId
-            }
-
-            when (config.messageFormat) {
-                // Field mapping verified against Vivid's response-parse spec (ZUI-1 drugId,
-                // ZUI-2 VerifiedBy truncated to 10 chars, ZUI-4 RxNo-RefillNo composite,
-                // ZUI-6 qtyDispensed, ZUI-7 fill status, ZUI-9/10/11 lot/serial/expiry).
-                // ZUI-8 (Base64 tray image log) populated below via drugImages.
-                Hl7Format.VIVID -> zui { z ->
-                    z.ndc = drugCode.replace("-", "")
-                    z.vividUserName = pharmacistGivenName.orEmpty().take(10)
-                    z.transactionOrderId = orderId
-                    z.rxNumber = vividOrderId
-                    z.dispensedQuantity = totalCount.toString()
-                    z.transactionStatus = ZuiTransactionStatus.DONE
-                    z.drugImage = buildZuiImagePayload(txnId = txn.txnId, bottles = bottles, details = txnDetails)
-                        ?.joinToString("^") { group -> group.joinToString("&") }
-                    z.drugLotNumber = effectiveLotNumber
-                    z.drugSerialNumber = effectiveSerialNumber
-                    z.drugExpirationDate = effectiveExpirationDate
-                }
-                Hl7Format.EYECON -> {
-                    // EyeCon uses a 25-field fixed ZUI layout that the ZUIDispenseBuilder
-                    // (11 fields max) cannot express. Use the builder for ZUI-1 only so the
-                    // segment appears in the encoded message, then replace the whole line with
-                    // the correct 25-field segment in buildEyeConZuiSegment below.
-                    val eyeConNdc = drugCode.replace("-", "")
-                    zui { z -> z.ndc = eyeConNdc }
-                }
-                else -> Unit
             }
 
             orc { orc ->
@@ -310,11 +304,61 @@ object DispenseMessageBuilder {
             }
         }
 
+        return message.encode()
+    }
+
+    private fun buildMinimalDispenseMessage(
+        config: HL7Config,
+        hl7: HL7,
+        builder: org.rite.hl7.builder.HL7Builder,
+        now: String,
+        messageId: String,
+        orderId: String,
+        vividOrderId: String,
+        totalCount: Int,
+        bottles: List<com.dispensesure.retail.core.scanning.domain.model.DispenseBottle>,
+        txn: DispenseTxnEntity,
+        txnDetails: List<DispenseCountEntity>,
+        drugCode: String,
+        drugName: String,
+        pharmacistGivenName: String?,
+        effectiveLotNumber: String?,
+        effectiveSerialNumber: String?,
+        effectiveExpirationDate: String?,
+        isNdcVerified: Boolean,
+    ): String {
+        val message = builder.rdsO13 {
+            msh { msh ->
+                msh.sendingApplication = config.sendingApplication
+                msh.sendingFacility = config.sendingFacility
+                msh.receivingApplication = config.receivingApplication
+                msh.receivingFacility = config.receivingFacility
+                msh.dateTimeOfMessage = now
+                msh.messageControlId = messageId
+                msh.processingId = "P"
+                msh.versionId = config.versionId
+            }
+
+            when (config.messageFormat) {
+                Hl7Format.VIVID -> zui { z ->
+                    z.ndc = drugCode.replace("-", "")
+                    z.vividUserName = pharmacistGivenName.orEmpty().take(10)
+                    z.transactionOrderId = orderId
+                    z.rxNumber = vividOrderId
+                    z.dispensedQuantity = totalCount.toString()
+                    z.transactionStatus = ZuiTransactionStatus.DONE
+                    z.drugImage = buildZuiImagePayload(txnId = txn.txnId, bottles = bottles, details = txnDetails)
+                        ?.joinToString("^") { group -> group.joinToString("&") }
+                    z.drugLotNumber = effectiveLotNumber
+                    z.drugSerialNumber = effectiveSerialNumber
+                    z.drugExpirationDate = effectiveExpirationDate
+                }
+                Hl7Format.EYECON -> zui { z -> z.ndc = drugCode.replace("-", "") }
+                else -> Unit
+            }
+        }
+
         var encoded = message.encode()
-        // The library HL7-escapes '^' and '&' inside field strings to '\S\' and '\T\'.
-        // ZUI-8 carries multi-group image data joined by '^' (groups) and '&' (parts within a
-        // group) — these must be real HL7 separator characters, not escaped literals.
-        // Unescape only within the ZUI segment line so other segments aren't affected.
         if (config.messageFormat == Hl7Format.VIVID) {
             encoded = encoded.replace(Regex("(ZUI\\|[^\r\n]*)")) { match ->
                 match.value.replace("\\S\\", "^").replace("\\T\\", "&")
@@ -336,7 +380,6 @@ object DispenseMessageBuilder {
                 fillStatus = "complete",
                 stockBottleBarcodeNdc = eyeConNdc,
             )
-            // Replace the stub ZUI line the builder emitted with the full 25-field segment.
             encoded.replace(Regex("ZUI\\|[^\r\n]*"), zuiSegment)
         } else {
             encoded
@@ -381,35 +424,12 @@ object DispenseMessageBuilder {
                 msh.versionId = config.versionId
             }
 
-            pid { pid ->
-                pid.patientId = orderId
-            }
-
-            orc { orc ->
-                orc.orderControl = "RE"
-                orc.placerOrderNumber = orderId
-                orc.orderingProviderId = pharmacistName?.takeIf { it.isNotBlank() }
-            }
-
-            rxd { rxd ->
-                rxd.dispenseGiveCode = drugCode
-                rxd.dispenseGiveName = drugName
-                rxd.dispenseGiveCodeSystem = "NDC"
-                rxd.dateTimeDispensed = now
-                rxd.actualDispenseAmount = totalCount.toString()
-                rxd.actualDispenseUnits = "TAB"
-                rxd.prescriptionNumber = orderId
-                rxd.dispensingProviderFamilyName = pharmacistFamilyName
-                rxd.dispensingProviderGivenName = pharmacistGivenName
-                rxd.dispenseSubIdCounter = "1"
-            }
-
             zds { z ->
-                z.flowType = "DISPENSE"
+                z.flowType = "DR"
                 z.layoutVersion = "1.0"
                 z.responseMessageId = messageId
                 z.requestMessageId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() }
-                z.responseType = "COMPLETE"
+                z.responseType = "RE"
                 z.drugs = listOf(drugCode)
                 z.drugCodeType = "NDC"
                 z.operatorFamilyName = pharmacistFamilyName
@@ -418,13 +438,13 @@ object DispenseMessageBuilder {
                 z.orderReferenceNumber = txn.transactionOrderId
                 z.fillNumber = txn.refillNo
                 z.dispensedQuantity = totalCount.toString()
-                z.fillStatus = "COMPLETE"
+                z.fillStatus = "Complete"
                 z.startTime = now
                 z.finishTime = now
                 z.transactionId = txn.txnId.toString()
                 z.note = txn.note
                 z.unitOfMeasure = "TAB"
-                z.verificationStatus = if (isNdcVerified) "VERIFIED" else "UNVERIFIED"
+                z.verificationStatus = if (isNdcVerified) "V" else "N"
                 z.requestedNdc = drugCode
                 z.dispensedNdc = scannedDrugCode
                 z.controlledSubstanceFlag = if (isControlledSubstance) "Y" else "N"
@@ -433,7 +453,8 @@ object DispenseMessageBuilder {
             }
         }
 
-        return message.encode()
+        // Library emits RDS^O01 for HL7 < 2.5; spec requires RDS^O13 — fix the message type.
+        return message.encode().replace("RDS^O01", "RDS^O13")
     }
 
     /**

@@ -37,12 +37,13 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
 /**
- * Tests for [DispenseHl7Repository.handleZdrDispenseRequest].
+ * Tests for [DispenseHl7Repository.handleZdrNewOrRefill].
  *
  * Covers the full ZDR lifecycle (NW/RF/CA/HD/RL/DC), multi-drug messages, priority,
  * resend guards, refill exhaustion, and drug-not-found paths — all mirroring the
@@ -105,9 +106,12 @@ class DispenseHl7RepositoryZdrTest {
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 99L
         coEvery { dispenseTxnDao.upsertPreservingId(any()) } returns 200L
         coEvery { dispenseTxnDao.getByRxNoAndFillNo(any(), any()) } returns null
+        coEvery { dispenseTxnDao.getByTransactionOrderId(any()) } returns null
+        coEvery { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), null) } returns Unit
         coEvery { dispenseTxnDao.getByRxNoAndMessageControlId(any(), any()) } returns null
         coEvery { dispenseTxnDao.getMostRecentByRxNo(any()) } returns null
         coEvery { dispenseTxnDao.cancelActiveTxnsByRxNo(any()) } returns emptyList()
+        coEvery { dispenseTxnDao.cancelActiveTxnsByOrderId(any()) } returns emptyList()
         coEvery { dispenseTxnDao.updateStatusByOrderIdIfPartial(any(), any(), any()) } returns 1
         coEvery { dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold(any(), any(), any()) } returns 1
         coEvery { dispenseTxnDao.softDeleteByOrderId(any(), any()) } returns 1
@@ -180,7 +184,7 @@ class DispenseHl7RepositoryZdrTest {
     fun `NW single drug inserts one txn`() = runTest(testDispatcher) {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
 
-        createRepo().handleZdrDispenseRequest(zdrMsg())
+        createRepo().handleZdrNewOrRefill(zdrMsg())
 
         coVerify(exactly = 1) { dispenseTxnDao.upsertPreservingId(any()) }
     }
@@ -191,7 +195,7 @@ class DispenseHl7RepositoryZdrTest {
         val slot = slot<DispenseTxnEntity>()
         coEvery { dispenseTxnDao.upsertPreservingId(capture(slot)) } returns 200L
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(rxNumber = "RX-CAPTURED"))
+        createRepo().handleZdrNewOrRefill(zdrMsg(rxNumber = "RX-CAPTURED"))
 
         assertEquals("RX-CAPTURED", slot.captured.rxNo)
     }
@@ -202,7 +206,7 @@ class DispenseHl7RepositoryZdrTest {
         val slot = slot<DispenseTxnEntity>()
         coEvery { dispenseTxnDao.upsertPreservingId(capture(slot)) } returns 200L
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(quantity = "45"))
+        createRepo().handleZdrNewOrRefill(zdrMsg(quantity = "45"))
 
         assertEquals(45, slot.captured.targetCount)
     }
@@ -213,7 +217,7 @@ class DispenseHl7RepositoryZdrTest {
         val slot = slot<DispenseTxnEntity>()
         coEvery { dispenseTxnDao.upsertPreservingId(capture(slot)) } returns 200L
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(controlId = "MSG-CTRL-99"))
+        createRepo().handleZdrNewOrRefill(zdrMsg(controlId = "MSG-CTRL-99"))
 
         assertEquals("MSG-CTRL-99", slot.captured.hl7MessageControlId)
     }
@@ -224,7 +228,7 @@ class DispenseHl7RepositoryZdrTest {
         val slot = slot<DispenseTxnEntity>()
         coEvery { dispenseTxnDao.upsertPreservingId(capture(slot)) } returns 200L
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(priority = "S"))
+        createRepo().handleZdrNewOrRefill(zdrMsg(priority = "S"))
 
         assertEquals(com.dispensesure.retail.core.room.models.enums.TxnPriority.High, slot.captured.priority)
     }
@@ -235,7 +239,7 @@ class DispenseHl7RepositoryZdrTest {
         val slot = slot<DispenseTxnEntity>()
         coEvery { dispenseTxnDao.upsertPreservingId(capture(slot)) } returns 200L
 
-        createRepo().handleZdrDispenseRequest(zdrMsg())
+        createRepo().handleZdrNewOrRefill(zdrMsg())
 
         assertTrue(slot.captured.isComingFromHL7 == true)
         assertEquals(CountStatus.PARTIAL, slot.captured.status)
@@ -246,7 +250,7 @@ class DispenseHl7RepositoryZdrTest {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
         coEvery { dispenseTxnDao.upsertPreservingId(any()) } returns 300L
 
-        createRepo().handleZdrDispenseRequest(zdrMsg())
+        createRepo().handleZdrNewOrRefill(zdrMsg())
 
         coVerify(exactly = 1) { notifier.show(title = any(), message = any(), dispenseTxnId = 300L) }
     }
@@ -255,7 +259,7 @@ class DispenseHl7RepositoryZdrTest {
     fun `NW zero quantity is rejected — no txn inserted`() = runTest(testDispatcher) {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(quantity = "0"))
+        createRepo().handleZdrNewOrRefill(zdrMsg(quantity = "0"))
 
         coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
     }
@@ -264,10 +268,11 @@ class DispenseHl7RepositoryZdrTest {
     fun `NW resend of finished txn is ignored`() = runTest(testDispatcher) {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
         val finished = DispenseTxnEntity(txnId = 1L, status = CountStatus.COMPLETED, rxNo = "RX-001", refillNo = "1")
-        coEvery { dispenseTxnDao.getByRxNoAndFillNo("RX-001", "1") } returns finished
+        // Code prefers transactionOrderId (ZDR-15) when present; zdrMsg() has orderId="ORDER-001"
+        coEvery { dispenseTxnDao.getByTransactionOrderId("ORDER-001") } returns finished
         coEvery { dispenseTxnDao.getByRxNoAndMessageControlId("RX-001", "MSG001") } returns finished
 
-        createRepo().handleZdrDispenseRequest(zdrMsg())
+        createRepo().handleZdrNewOrRefill(zdrMsg())
 
         coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
     }
@@ -276,9 +281,10 @@ class DispenseHl7RepositoryZdrTest {
     fun `NW open existing txn is updated not re-inserted`() = runTest(testDispatcher) {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
         val open = DispenseTxnEntity(txnId = 55L, status = CountStatus.PARTIAL, rxNo = "RX-001", refillNo = "1")
-        coEvery { dispenseTxnDao.getByRxNoAndFillNo("RX-001", "1") } returns open
+        // Code prefers transactionOrderId (ZDR-15) when present; zdrMsg() has orderId="ORDER-001"
+        coEvery { dispenseTxnDao.getByTransactionOrderId("ORDER-001") } returns open
 
-        createRepo().handleZdrDispenseRequest(zdrMsg())
+        createRepo().handleZdrNewOrRefill(zdrMsg())
 
         coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
         coVerify(exactly = 1) { dispenseTxnDao.updateFromHl7Edit(55L, any(), any(), any(), any(), any()) }
@@ -291,7 +297,7 @@ class DispenseHl7RepositoryZdrTest {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug("00527-8113-37", "DRUG A", 11L)
         coEvery { drugMasterDao.getDrugByNdc("60505008404", any()) } returns drug("60505008404", "DRUG B", 12L)
 
-        createRepo().handleZdrDispenseRequest(zdrMsgMultiDrug())
+        createRepo().handleZdrNewOrRefill(zdrMsgMultiDrug())
 
         coVerify(exactly = 2) { dispenseTxnDao.upsertPreservingId(any()) }
     }
@@ -305,7 +311,7 @@ class DispenseHl7RepositoryZdrTest {
         )
         coEvery { drugMasterDao.getDrugByNdc("60505008404", any()) } returns drug("60505008404", "DRUG B", 12L)
 
-        createRepo().handleZdrDispenseRequest(msg)
+        createRepo().handleZdrNewOrRefill(msg)
 
         coVerify(exactly = 1) { dispenseTxnDao.upsertPreservingId(any()) }
     }
@@ -318,7 +324,7 @@ class DispenseHl7RepositoryZdrTest {
         val slot = slot<DispenseTxnEntity>()
         coEvery { dispenseTxnDao.upsertPreservingId(capture(slot)) } returns 210L
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(action = "RF", fillNumber = "2"))
+        createRepo().handleZdrNewOrRefill(zdrMsg(action = "RF", fillNumber = "2"))
 
         assertEquals("2", slot.captured.refillNo)
         coVerify(exactly = 1) { dispenseTxnDao.upsertPreservingId(any()) }
@@ -336,7 +342,7 @@ class DispenseHl7RepositoryZdrTest {
             "${mshSegment("RDE", "O11", "MSG-RF")}\r" +
                 "ZDR|D|1.0|MSG-RF|RF|00527-8113-37^DRUG A|NDC|DOE^JANE|||PAT|||AB|RX-001|ORDER-001|30||R|5|A||TAB|||"
         )
-        createRepo().handleZdrDispenseRequest(msg)
+        createRepo().handleZdrNewOrRefill(msg)
 
         assertEquals("4", slot.captured.refillNo) // prevRefill 3 + 1
     }
@@ -345,7 +351,7 @@ class DispenseHl7RepositoryZdrTest {
     fun `RF with refillsAllowed zero shows exhausted notification and no txn`() = runTest(testDispatcher) {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(action = "RF", fillNumber = "2", refillsAllowed = "0"))
+        createRepo().handleZdrNewOrRefill(zdrMsg(action = "RF", fillNumber = "2", refillsAllowed = "0"))
 
         coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
         coVerify(exactly = 1) { notifier.show(title = any(), message = any()) }
@@ -355,10 +361,11 @@ class DispenseHl7RepositoryZdrTest {
     fun `RF resend of finished fill is ignored`() = runTest(testDispatcher) {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
         val finished = DispenseTxnEntity(txnId = 9L, status = CountStatus.COMPLETED, rxNo = "RX-001", refillNo = "2")
-        coEvery { dispenseTxnDao.getByRxNoAndFillNo("RX-001", "2") } returns finished
+        // Code prefers transactionOrderId (ZDR-15) when present; zdrMsg() has orderId="ORDER-001"
+        coEvery { dispenseTxnDao.getByTransactionOrderId("ORDER-001") } returns finished
         coEvery { dispenseTxnDao.getByRxNoAndMessageControlId("RX-001", "MSG001") } returns finished
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(action = "RF", fillNumber = "2"))
+        createRepo().handleZdrNewOrRefill(zdrMsg(action = "RF", fillNumber = "2"))
 
         coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
     }
@@ -366,24 +373,25 @@ class DispenseHl7RepositoryZdrTest {
     // ════════════════════ CA — cancel ════════════════════
 
     @Test
-    fun `CA cancels active txns by rxNo`() = runTest(testDispatcher) {
-        coEvery { dispenseTxnDao.cancelActiveTxnsByRxNo("RX-001") } returns listOf(77L)
+    fun `CA cancels active txns by orderId`() = runTest(testDispatcher) {
+        coEvery { dispenseTxnDao.cancelActiveTxnsByOrderId("ORDER-001") } returns listOf(77L)
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(action = "CA"))
+        createRepo().handleZdrStatusChange(zdrMsg(action = "CA"))
 
-        coVerify(exactly = 1) { dispenseTxnDao.cancelActiveTxnsByRxNo("RX-001") }
+        coVerify(exactly = 1) { dispenseTxnDao.cancelActiveTxnsByOrderId("ORDER-001") }
         verify { auditLogger.log(match { it is OrderCancelled && it.txnIds == listOf(77L) }) }
     }
 
     @Test
-    fun `CA without rxNo is ignored`() = runTest(testDispatcher) {
+    fun `CA without orderId returns false`() = runTest(testDispatcher) {
         val msg = parseHl7Message(
             "${mshSegment("RDE", "O11", "MSG-CA-NORX")}\r" +
                 "ZDR|D|1.0|MSG-CA-NORX|CA|00527-8113-37^DRUG|NDC|DOE^JANE|||PAT|||AB|||30|1|R|5|A||TAB|||"
         )
-        createRepo().handleZdrDispenseRequest(msg)
+        val result = createRepo().handleZdrStatusChange(msg)
 
-        coVerify(exactly = 0) { dispenseTxnDao.cancelActiveTxnsByRxNo(any()) }
+        assertFalse(result)
+        coVerify(exactly = 0) { dispenseTxnDao.cancelActiveTxnsByOrderId(any()) }
     }
 
     // ════════════════════ HD — hold ════════════════════
@@ -392,21 +400,21 @@ class DispenseHl7RepositoryZdrTest {
     fun `HD marks order ON_HOLD by orderId`() = runTest(testDispatcher) {
         coEvery { dispenseTxnDao.updateStatusByOrderIdIfPartial("ORDER-001", CountStatus.ON_HOLD, any()) } returns 1
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(action = "HD"))
+        createRepo().handleZdrStatusChange(zdrMsg(action = "HD"))
 
         coVerify(exactly = 1) { dispenseTxnDao.updateStatusByOrderIdIfPartial("ORDER-001", CountStatus.ON_HOLD, any()) }
         verify { auditLogger.log(match { it is OrderHeld && it.orderId == "ORDER-001" }) }
     }
 
     @Test
-    fun `HD falls back to rxNo when orderId absent`() = runTest(testDispatcher) {
+    fun `HD without orderId returns false`() = runTest(testDispatcher) {
         val msg = parseHl7Message(
             "${mshSegment("RDE", "O11", "MSG-HD")}\r" +
                 "ZDR|D|1.0|MSG-HD|HD|00527-8113-37^DRUG|NDC|DOE^JANE|||PAT|||AB|RX-HOLD||30|1|R|5|A||TAB|||"
         )
-        createRepo().handleZdrDispenseRequest(msg)
+        val result = createRepo().handleZdrStatusChange(msg)
 
-        coVerify(exactly = 1) { dispenseTxnDao.updateStatusByOrderIdIfPartial("RX-HOLD", CountStatus.ON_HOLD, any()) }
+        assertFalse(result)
     }
 
     // ════════════════════ RL — release ════════════════════
@@ -415,7 +423,7 @@ class DispenseHl7RepositoryZdrTest {
     fun `RL restores order to PARTIAL by orderId`() = runTest(testDispatcher) {
         coEvery { dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold("ORDER-001", CountStatus.PARTIAL, any()) } returns 1
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(action = "RL"))
+        createRepo().handleZdrStatusChange(zdrMsg(action = "RL"))
 
         coVerify { dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold("ORDER-001", CountStatus.PARTIAL, any()) }
         verify { auditLogger.log(match { it is OrderReleased && it.orderId == "ORDER-001" }) }
@@ -427,20 +435,165 @@ class DispenseHl7RepositoryZdrTest {
     fun `DC soft-deletes by orderId`() = runTest(testDispatcher) {
         coEvery { dispenseTxnDao.softDeleteByOrderId("ORDER-001", any()) } returns 1
 
-        createRepo().handleZdrDispenseRequest(zdrMsg(action = "DC"))
+        createRepo().handleZdrStatusChange(zdrMsg(action = "DC"))
 
         coVerify { dispenseTxnDao.softDeleteByOrderId("ORDER-001", any()) }
         verify { auditLogger.log(match { it is OrderDiscontinued && it.orderId == "ORDER-001" }) }
+    }
+
+    // ════════════════════ RL — blank orderId ════════════════════
+
+    @Test
+    fun `RL without orderId returns false`() = runTest(testDispatcher) {
+        val msg = parseHl7Message(
+            "${mshSegment("RDE", "O11", "MSG-RL-NOID")}\r" +
+                "ZDR|D|1.0|MSG-RL-NOID|RL|00527-8113-37^DRUG|NDC|DOE^JANE|||PAT|||AB|RX-RL||30|1|R|5|A||TAB|||"
+        )
+        val result = createRepo().handleZdrStatusChange(msg)
+
+        assertFalse(result)
+        coVerify(exactly = 0) { dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold(any(), any(), any()) }
+    }
+
+    // ════════════════════ DC — blank orderId ════════════════════
+
+    @Test
+    fun `DC without orderId returns false`() = runTest(testDispatcher) {
+        val msg = parseHl7Message(
+            "${mshSegment("RDE", "O11", "MSG-DC-NOID")}\r" +
+                "ZDR|D|1.0|MSG-DC-NOID|DC|00527-8113-37^DRUG|NDC|DOE^JANE|||PAT|||AB|RX-DC||30|1|R|5|A||TAB|||"
+        )
+        val result = createRepo().handleZdrStatusChange(msg)
+
+        assertFalse(result)
+        coVerify(exactly = 0) { dispenseTxnDao.softDeleteByOrderId(any(), any()) }
+    }
+
+    // ════════════════════ XO — change order ════════════════════
+
+    @Test
+    fun `XO updates existing txn when found by transactionOrderId`() = runTest(testDispatcher) {
+        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
+        val existing = DispenseTxnEntity(txnId = 88L, status = CountStatus.PARTIAL, rxNo = "RX-001", refillNo = "1")
+        coEvery { dispenseTxnDao.getByTransactionOrderId("ORDER-001") } returns existing
+
+        val result = createRepo().handleZdrChangeOrder(zdrMsg(action = "XO"))
+
+        assertTrue(result)
+        coVerify(exactly = 1) { dispenseTxnDao.updateFromHl7Edit(88L, any(), any(), any(), null, any()) }
+    }
+
+    @Test
+    fun `XO returns false when transactionOrderId not found in DB`() = runTest(testDispatcher) {
+        coEvery { dispenseTxnDao.getByTransactionOrderId("ORDER-001") } returns null
+
+        val result = createRepo().handleZdrChangeOrder(zdrMsg(action = "XO"))
+
+        assertFalse(result)
+        coVerify(exactly = 0) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `XO with blank orderId returns false`() = runTest(testDispatcher) {
+        val msg = parseHl7Message(
+            "${mshSegment("RDE", "O11", "MSG-XO-NOID")}\r" +
+                "ZDR|D|1.0|MSG-XO-NOID|XO|00527-8113-37^DRUG|NDC|DOE^JANE|||PAT|||AB|RX-XO||30|1|R|5|A||TAB|||"
+        )
+        val result = createRepo().handleZdrChangeOrder(msg)
+
+        assertFalse(result)
+        coVerify(exactly = 0) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `XO with blank NDC returns false`() = runTest(testDispatcher) {
+        val existing = DispenseTxnEntity(txnId = 91L, status = CountStatus.PARTIAL, rxNo = "RX-001", refillNo = "1")
+        coEvery { dispenseTxnDao.getByTransactionOrderId("ORDER-001") } returns existing
+        // message with blank drug NDC
+        val msg = parseHl7Message(
+            "${mshSegment("RDE", "O11", "MSG-XO-NONDC")}\r" +
+                "ZDR|D|1.0|MSG-XO-NONDC|XO|^DRUG NAME|NDC|DOE^JANE|||PAT|||AB|RX-001|ORDER-001|30|1|R|5|A||TAB|||"
+        )
+        val result = createRepo().handleZdrChangeOrder(msg)
+
+        assertFalse(result)
+        coVerify(exactly = 0) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `XO with zero quantity returns false`() = runTest(testDispatcher) {
+        val existing = DispenseTxnEntity(txnId = 92L, status = CountStatus.PARTIAL, rxNo = "RX-001", refillNo = "1")
+        coEvery { dispenseTxnDao.getByTransactionOrderId("ORDER-001") } returns existing
+
+        val result = createRepo().handleZdrChangeOrder(zdrMsg(action = "XO", quantity = "0"))
+
+        assertFalse(result)
+        coVerify(exactly = 0) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `XO decimal quantity is truncated to int`() = runTest(testDispatcher) {
+        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
+        val existing = DispenseTxnEntity(txnId = 93L, status = CountStatus.PARTIAL, rxNo = "RX-001", refillNo = "1")
+        coEvery { dispenseTxnDao.getByTransactionOrderId("ORDER-001") } returns existing
+        val qtySlot = slot<Int>()
+        coEvery { dispenseTxnDao.updateFromHl7Edit(any(), any(), capture(qtySlot), any(), null, any()) } returns Unit
+
+        createRepo().handleZdrChangeOrder(zdrMsg(action = "XO", quantity = "30.7"))
+
+        assertEquals(30, qtySlot.captured)
+    }
+
+    // ════════════════════ NW/RF — fallback to rxNo when orderId absent ════════════════════
+
+    @Test
+    fun `NW with blank orderId falls back to rxNo+fillNo lookup`() = runTest(testDispatcher) {
+        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
+        // No orderId in ZDR-15 -> fallback to rxNo+fillNo
+        val msg = parseHl7Message(
+            "${mshSegment("RDE", "O11", "MSG-NW-NOID")}\r" +
+                "ZDR|D|1.0|MSG-NW-NOID|NW|00527-8113-37^DRUG A|NDC|DOE^JANE|||PAT|||AB|RX-NOID||60|1|R|5|A||TAB|||"
+        )
+        createRepo().handleZdrNewOrRefill(msg)
+
+        // Fallback path queries rxNo+fillNo when orderId absent
+        coVerify { dispenseTxnDao.getByRxNoAndFillNo("RX-NOID", any()) }
+    }
+
+    @Test
+    fun `RF with blank orderId falls back to rxNo+fillNo lookup`() = runTest(testDispatcher) {
+        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
+        val msg = parseHl7Message(
+            "${mshSegment("RDE", "O11", "MSG-RF-NOID")}\r" +
+                "ZDR|D|1.0|MSG-RF-NOID|RF|00527-8113-37^DRUG A|NDC|DOE^JANE|||PAT|||AB|RX-NOID||60|1|R|5|A||TAB|||"
+        )
+        createRepo().handleZdrNewOrRefill(msg)
+
+        coVerify { dispenseTxnDao.getByRxNoAndFillNo("RX-NOID", any()) }
+    }
+
+    // ════════════════════ RF — update open existing txn ════════════════════
+
+    @Test
+    fun `RF open existing txn is updated not re-inserted`() = runTest(testDispatcher) {
+        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
+        val open = DispenseTxnEntity(txnId = 66L, status = CountStatus.PARTIAL, rxNo = "RX-001", refillNo = "2")
+        coEvery { dispenseTxnDao.getByTransactionOrderId("ORDER-001") } returns open
+
+        createRepo().handleZdrNewOrRefill(zdrMsg(action = "RF", fillNumber = "2"))
+
+        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
+        coVerify(exactly = 1) { dispenseTxnDao.updateFromHl7Edit(66L, any(), any(), any(), any(), any()) }
     }
 
     // ════════════════════ unknown action ════════════════════
 
     @Test
     fun `unknown orderAction is ignored — no DB writes`() = runTest(testDispatcher) {
-        createRepo().handleZdrDispenseRequest(zdrMsg(action = "XX"))
+        createRepo().handleZdrNewOrRefill(zdrMsg(action = "XX"))
 
         coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
-        coVerify(exactly = 0) { dispenseTxnDao.cancelActiveTxnsByRxNo(any()) }
+        coVerify(exactly = 0) { dispenseTxnDao.cancelActiveTxnsByOrderId(any()) }
     }
 
     // ════════════════════ drug not found ════════════════════
@@ -449,7 +602,7 @@ class DispenseHl7RepositoryZdrTest {
     fun `NW drug not found — no txn, shows notification`() = runTest(testDispatcher) {
         coEvery { iDrugRepository.getDrugInfoByNdc(any()) } returns null
 
-        createRepo().handleZdrDispenseRequest(zdrMsg())
+        createRepo().handleZdrNewOrRefill(zdrMsg())
 
         coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
         coVerify(exactly = 1) { notifier.show(title = any(), message = any()) }
@@ -463,7 +616,7 @@ class DispenseHl7RepositoryZdrTest {
             "${mshSegment("RDE", "O11", "MSG-NOZDR")}\r" +
                 "ORC|NW|ORDER-001|RX-001||||||||NPI1234"
         )
-        createRepo().handleZdrDispenseRequest(msg)
+        createRepo().handleZdrNewOrRefill(msg)
 
         coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
     }
