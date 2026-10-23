@@ -29,6 +29,7 @@ import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.segment.ORCSegment
 import org.rite.hl7.model.segment.RXESegment
 import org.rite.hl7.model.segment.ZADSegment
+import org.rite.hl7.model.segment.ZDRSegment
 import org.rite.hl7.model.segment.ZNISegment
 import org.rite.hl7.model.segment.ZUISegment
 import org.rite.hl7.validation.AckBuilder
@@ -118,9 +119,17 @@ class Hl7EventHandler @Inject constructor(
         val rxe = parsed.segment<RXESegment>(RXESegment.NAME)
         val hasZui = parsed.segment<ZUISegment>(ZUISegment.NAME) != null
         val hasZni = parsed.segment<ZNISegment>(ZNISegment.NAME) != null
+        val zdr = parsed.segment<ZDRSegment>(ZDRSegment.NAME)
         val orderControl = orc?.orderControl?.uppercase()
 
         return when {
+            // ZDR native dispense order (DISPENSESURE_NATIVE format) — one txn per drug
+            zdr != null && zdr.flowType == ZDRSegment.FlowType.DISPENSE -> {
+                auditLogger.log(PmsOrderReceived(messageId = msgId.ifBlank { null }, orderControl = orderControl, format = "ZDR"))
+                scope.launch { dispenseHl7Repository.handleZdrDispenseRequest(parsed) }
+                buildSuccessAck(parsed)
+            }
+
             // ZUI and ZNI order-packet formats bypass the new RDE parser — handled in repository
             hasZui -> {
                 auditLogger.log(PmsOrderReceived(messageId = msgId.ifBlank { null }, orderControl = orderControl, format = "ZUI"))
