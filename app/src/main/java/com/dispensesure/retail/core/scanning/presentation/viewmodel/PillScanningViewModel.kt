@@ -65,14 +65,15 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -116,13 +117,14 @@ class PillScanningViewModel @Inject constructor(
     private val _navigationEvent = Channel<NavigationEvent>()
     val navigationEvent = _navigationEvent.receiveAsFlow()
 
-    private val _cameraPaused = MutableStateFlow(false)
-    val cameraPaused = _cameraPaused.asStateFlow()
+    val cameraPaused: StateFlow<Boolean> = engine.state
+        .map { engineState -> engineState.isCameraPaused }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** Public read-only flow for observing recent detection counts. */
     val lastTenDetections: StateFlow<ArrayDeque<Int>> = engine.lastTenDetections
 
-    val addPopEvents: Flow<Int> = engine.events.filterIsInstance<EngineEvent.AddPop>().map { addPop -> addPop.count }
+    val addPopEvents: Flow<Int> = engine.addPops
 
     private val _currentStep = MutableStateFlow(StepState.TARGET_VERIFICATION)
     val currentStep = _currentStep.asStateFlow()
@@ -231,13 +233,15 @@ class PillScanningViewModel @Inject constructor(
     private val _txnInfo = MutableStateFlow<DispenseTxnDetail?>(null)
     val txnInfo: StateFlow<DispenseTxnDetail?> = _txnInfo
 
-    // Mirror of [EngineState.glovesDetected].
-    private val _glovesDetected = MutableStateFlow(false)
-    val glovesDetected: StateFlow<Boolean> = _glovesDetected.asStateFlow()
+    // From [EngineState.glovesDetected].
+    val glovesDetected: StateFlow<Boolean> = engine.state
+        .map { engineState -> engineState.glovesDetected }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     // ── NEW: expose tray detections so the UI can draw the tray boundary ──────
-    private val _trayDetections = MutableStateFlow<List<TrayDetection>>(emptyList())
-    val trayDetections: StateFlow<List<TrayDetection>> = _trayDetections.asStateFlow()
+    val trayDetections: StateFlow<List<TrayDetection>> = engine.state
+        .map { engineState -> engineState.trayDetections }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private var observeTxnDetailsJob: Job? = null
     private var stockCountBaseTotal: Int = -1
@@ -264,7 +268,7 @@ class PillScanningViewModel @Inject constructor(
     private val _isSoundOverride = MutableStateFlow(preferenceHelper.isSoundOverride())
     val isSoundEnabled: StateFlow<Boolean> = _isSoundOverride.asStateFlow()
 
-    // Must stay below _uiState, _cameraPaused, _glovesDetected and _trayDetections: the first copy runs here.
+    // Must stay below _uiState: the first copy runs here.
     init {
         mirrorEngineState()
         viewModelScope.launch { engine.events.collect { engineEvent -> onEngineEvent(engineEvent) } }
@@ -286,9 +290,6 @@ class PillScanningViewModel @Inject constructor(
                         pendingTrayColorForClassification = engineState.pendingTrayColor,
                     )
                 }
-                _trayDetections.value = engineState.trayDetections
-                _glovesDetected.value = engineState.glovesDetected
-                _cameraPaused.value = engineState.isCameraPaused
             }
         }
     }
@@ -298,7 +299,6 @@ class PillScanningViewModel @Inject constructor(
         when (event) {
             EngineEvent.GlovesConfirmed -> saveGlovesPresent()
             is EngineEvent.HazardousTrayResult -> saveHazardousTrayDetected(event.detected)
-            is EngineEvent.AddPop -> Unit
         }
     }
 
@@ -633,9 +633,7 @@ class PillScanningViewModel @Inject constructor(
     }
 
     /** Loads the ML models once the preview size is known; see [PillCountingEngine.start]. */
-    fun initializeInterpreter(
-        retryCount: Int = 1, viewWidth: Int, viewHeight: Int
-    ) = engine.start(viewWidth, viewHeight)
+    fun initializeInterpreter() = engine.start()
 
     /** Loads the glove model for a hazardous drug; see [PillCountingEngine.loadGloveModel]. */
     fun loadGloveModelAndRebuildAnalyzer() = engine.loadGloveModel()

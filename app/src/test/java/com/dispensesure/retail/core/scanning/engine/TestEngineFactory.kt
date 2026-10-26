@@ -29,7 +29,7 @@ class TestEngineFactory(
 
     override fun create(scope: CoroutineScope): PillCountingEngine =
         PillCountingEngine(
-            scope = scope,
+            parentScope = scope,
             context = context,
             modelLoader = modelLoader,
             performanceLogger = performanceLogger,
@@ -54,8 +54,7 @@ fun PillCountingEngine.feedGloveFrameForTest(confidence: Float) = processDetecti
     trayDetections = emptyList(),
     gloveDetections = listOf(GloveDetection(RectF(), confidence, classId = 0, className = "gloves")),
     bitmap = mockk(relaxed = true),
-    matrix = mockk(relaxed = true),
-    previewWidth = 1, previewHeight = 1, imageWidth = 1, imageHeight = 1,
+    imageWidth = 1, imageHeight = 1,
 )
 
 /** One analyzed frame with a complete tray of [color] in view. */
@@ -65,8 +64,7 @@ fun PillCountingEngine.feedTrayFrameForTest(color: TrayColor) = processDetection
     trayDetections = listOf(TrayDetection(RectF(), 0.9f, trayColor = color)),
     gloveDetections = emptyList(),
     bitmap = mockk(relaxed = true),
-    matrix = mockk(relaxed = true),
-    previewWidth = 1, previewHeight = 1, imageWidth = 1, imageHeight = 1,
+    imageWidth = 1, imageHeight = 1,
 )
 
 private fun engineField(name: String) =

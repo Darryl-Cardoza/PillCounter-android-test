@@ -38,6 +38,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -47,6 +48,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -95,7 +97,7 @@ class PillCountingEngineTest {
         every { preferenceHelper.getHazardousTrayColor() } returns null
         engineScope = CoroutineScope(SupervisorJob() + mainDispatcherRule.testDispatcher)
         engine = PillCountingEngine(
-            scope = engineScope,
+            parentScope = engineScope,
             context = context,
             modelLoader = modelLoader,
             performanceLogger = performanceLogger,
@@ -115,6 +117,12 @@ class PillCountingEngineTest {
         val reportedEvents = mutableListOf<EngineEvent>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { engine.events.toList(reportedEvents) }
         return reportedEvents
+    }
+
+    private fun TestScope.collectAddPops(): List<Int> {
+        val poppedCounts = mutableListOf<Int>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { engine.addPops.toList(poppedCounts) }
+        return poppedCounts
     }
 
     private fun captureWithFrame(frame: Bitmap = mockk(relaxed = true), count: Int = 5): CaptureResult.Captured {
@@ -143,9 +151,9 @@ class PillCountingEngineTest {
 
     @Test
     fun `start loads the pill and tray models without the glove model, once`() = runTest {
-        engine.start(previewWidth = 100, previewHeight = 100)
+        engine.start()
         runCurrent()
-        engine.start(previewWidth = 100, previewHeight = 100)
+        engine.start()
         runCurrent()
 
         coVerify(exactly = 1) { modelLoader.getOrLoadInterpreters(includeGlove = false) }
@@ -285,6 +293,21 @@ class PillCountingEngineTest {
     }
 
     @Test
+    fun `the idle pause swaps in a new empty recent-counts deque`() = runTest {
+        engine.processDetections(
+            count = 3, detections = emptyList(), trayDetections = emptyList(), gloveDetections = emptyList(),
+            bitmap = mockk(relaxed = true), imageWidth = 1, imageHeight = 1,
+        )
+        val countsBeforePause = engine.lastTenDetections.value
+
+        advanceTimeBy(IDLE_TIMEOUT_MS + 1_000)
+
+        assertTrue(engine.lastTenDetections.value.isEmpty())
+        assertNotSame(countsBeforePause, engine.lastTenDetections.value)
+        assertEquals(listOf(3), countsBeforePause.toList())
+    }
+
+    @Test
     fun `resumeLiveCounting unpauses, hides the idle overlay and re-arms the watchdog`() = runTest {
         advanceTimeBy(IDLE_TIMEOUT_MS + 1_000)
         assertTrue(engine.state.value.showIdleOverlay)
@@ -373,7 +396,7 @@ class PillCountingEngineTest {
 
     @Test
     fun `a capture takes the frame at the tap, pops +N and starts the cooldown`() = runTest {
-        val reportedEvents = collectEvents()
+        val poppedCounts = collectAddPops()
         val frame = mockk<Bitmap>(relaxed = true)
 
         val captured = captureWithFrame(frame, count = 5)
@@ -382,7 +405,7 @@ class PillCountingEngineTest {
         assertEquals(5, captured.count)
         assertNull(engine.frameForTest())
         assertTrue(engine.state.value.isAddCooldown)
-        assertEquals(listOf<EngineEvent>(EngineEvent.AddPop(5)), reportedEvents)
+        assertEquals(listOf(5), poppedCounts)
     }
 
     @Test
@@ -425,6 +448,18 @@ class PillCountingEngineTest {
 
         assertEquals(CaptureResult.Rejected(CaptureResult.Reason.Duplicate), result)
         verify { secondFrame.recycle() }
+    }
+
+    @Test
+    fun `a duplicate Add does not pop +N`() = runTest {
+        val poppedCounts = collectAddPops()
+        captureWithFrame(count = 5)
+        advanceTimeBy(ADD_COOLDOWN_MS + 1)
+        engine.putFrameForTest(mockk(relaxed = true))
+
+        engine.captureCount(5)
+
+        assertEquals(listOf(5), poppedCounts)
     }
 
     @Test
@@ -512,6 +547,37 @@ class PillCountingEngineTest {
         verify { HelperFunctions.saveBitmapToFile(any(), any(), any(), any(), grayscale = true) }
     }
 
+    @Test
+    fun `saveCountPhoto recycles the photo with the strip`() = runTest {
+        stubPhotoWrites()
+        val photoWithStrip = mockk<Bitmap>(relaxed = true)
+        every { OverlayUtils.drawDetectionsOnBitmap(any(), any(), any(), any(), any(), any()) } returns photoWithStrip
+
+        engine.saveCountPhoto(captureWithFrame(), label, keepRawCrop = false)
+
+        verify { photoWithStrip.recycle() }
+    }
+
+    @Test
+    fun `saveCountPhoto recycles the frame once when drawing fell back to it`() = runTest {
+        stubPhotoWrites() // drawing returns the input bitmap
+        val frame = mockk<Bitmap>(relaxed = true)
+
+        engine.saveCountPhoto(captureWithFrame(frame), label, keepRawCrop = false)
+
+        verify(exactly = 1) { frame.recycle() }
+    }
+
+    @Test
+    fun `saveCountPhoto refreshes the location even when the save throws`() = runTest {
+        stubPhotoWrites()
+        coEvery { userDao.getByUserId(any()) } throws IllegalStateException("db closed")
+
+        runCatching { engine.saveCountPhoto(captureWithFrame(), label, keepRawCrop = false) }
+
+        coVerify(timeout = 3000) { locationProvider.getCurrentLocationAsString() }
+    }
+
     // ─────────────────────────── gloves ───────────────────────────
 
     @Test
@@ -557,6 +623,15 @@ class PillCountingEngineTest {
         verify { preferenceHelper.setHazardousTrayColor("RED") }
         assertNull(engine.state.value.pendingTrayColor)
         assertEquals(listOf<EngineEvent>(EngineEvent.HazardousTrayResult(true)), reportedEvents)
+    }
+
+    @Test
+    fun `a tray result reported before anyone collects is still delivered`() = runTest {
+        engine.classifyTray(TrayColor.RED, isHazardous = false)
+
+        val reportedEvents = collectEvents()
+
+        assertEquals(listOf<EngineEvent>(EngineEvent.HazardousTrayResult(false)), reportedEvents)
     }
 
     @Test
@@ -636,8 +711,7 @@ class PillCountingEngineTest {
 
         engine.processDetections(
             count = 3, detections = emptyList(), trayDetections = emptyList(), gloveDetections = emptyList(),
-            bitmap = frame, matrix = mockk(relaxed = true),
-            previewWidth = 1, previewHeight = 1, imageWidth = 1, imageHeight = 1,
+            bitmap = frame, imageWidth = 1, imageHeight = 1,
         )
 
         verify { frame.recycle() }
@@ -673,5 +747,14 @@ class PillCountingEngineTest {
         engine.close()
 
         verify { performanceLogger.generateSummaryReport() }
+    }
+
+    @Test
+    fun `close stops the idle watchdog but leaves the parent scope running`() = runTest {
+        engine.close()
+        advanceTimeBy(IDLE_TIMEOUT_MS * 2)
+
+        assertFalse(engine.state.value.showIdleOverlay)
+        assertTrue(engineScope.isActive)
     }
 }

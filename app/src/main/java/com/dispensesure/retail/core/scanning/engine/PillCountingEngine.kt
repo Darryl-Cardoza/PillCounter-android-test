@@ -3,7 +3,6 @@ package com.dispensesure.retail.core.scanning.engine
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -18,6 +17,7 @@ import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.scanning.logic.Detection
 import com.dispensesure.retail.core.scanning.logic.GloveDetection
+import com.dispensesure.retail.core.scanning.logic.LoadedModels
 import com.dispensesure.retail.core.scanning.logic.PillAnalyzer
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.TrayColor
@@ -41,13 +41,19 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,7 +66,7 @@ import kotlin.math.min
  * Knows nothing about dispense or stock. Each flow view model creates one and calls [close].
  */
 class PillCountingEngine @AssistedInject constructor(
-    @Assisted private val scope: CoroutineScope,
+    @Assisted parentScope: CoroutineScope,
     @ApplicationContext private val context: Context,
     private val modelLoader: PillDetectionModelLoader,
     private val performanceLogger: PerformanceLogger,
@@ -74,6 +80,8 @@ class PillCountingEngine @AssistedInject constructor(
         fun create(scope: CoroutineScope): PillCountingEngine
     }
 
+    // Child of the flow VM's scope, so close() can stop every engine job without touching the VM.
+    private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private val logger = AppLogger("PillCountingEngine")
     private var currentFrameBitmap: Bitmap? = null
     // Frames are swapped on Dispatchers.Default and taken on Main; guards both.
@@ -81,9 +89,9 @@ class PillCountingEngine @AssistedInject constructor(
     // Last looked-up location for the photo strip; Add never waits for a fresh one.
     @Volatile private var cachedLocation: String? = null
     private var locationJob: Job? = null
-    private var lastTransformationMatrix: Matrix? = null
     @Volatile private var isAnalyzingFrame = false
-    private var isPaused = false
+    // Set on Main, read on the analyzer thread.
+    @Volatile private var isPaused = false
     private var idleJob: Job? = null
     // Bumped on counting activity. Atomic because the analyzer thread and Main
     // both bump it.
@@ -97,9 +105,13 @@ class PillCountingEngine @AssistedInject constructor(
     private val _state = MutableStateFlow(EngineState())
     val state: StateFlow<EngineState> = _state.asStateFlow()
 
-    // Room for a burst, so tryEmit never drops a gloves or tray result.
-    private val _events = MutableSharedFlow<EngineEvent>(extraBufferCapacity = 16)
-    val events: SharedFlow<EngineEvent> = _events.asSharedFlow()
+    // One reader, the flow VM. Unlimited, so a gloves or tray save is never dropped.
+    private val _events = Channel<EngineEvent>(Channel.UNLIMITED)
+    val events: Flow<EngineEvent> = _events.receiveAsFlow()
+
+    // The +N pop for the screen. Losing one is harmless, and it never holds up a save.
+    private val _addPops = MutableSharedFlow<Int>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val addPops: SharedFlow<Int> = _addPops.asSharedFlow()
 
     private val _modelState = MutableStateFlow<ModelState>(ModelState.Idle)
 
@@ -110,16 +122,12 @@ class PillCountingEngine @AssistedInject constructor(
 
     private var cameraHelper: CameraHelper? = null
 
-    // --- Duplicate prevention ---
-    private var currentScanId: Long = 0L
-
     // Last frame that showed a complete tray. Drives the AE/AWB lock release
     // delay so a flickering tray gate can't cause lock/unlock churn.
     private var lastCompleteTrayMs: Long = 0L
 
     // --- Duplicate prevention ---
     private var lastAddedScanSignature: String? = null
-    private var lastAddClickTime: Long = 0L
     private var addCooldownJob: Job? = null
 
     // ── Glove detection control: stop running glove model once gloves are detected ──
@@ -138,7 +146,7 @@ class PillCountingEngine @AssistedInject constructor(
     private var hazardousTrayPopupEnabled = false
     // Prevents saving hazardousTrayDetected to DB more than once per transaction.
     private var hazardousTrayResultSaved = false
-    // Remembered so resetIdleOverlay() can restore detection without re-calling setHazardousTransaction.
+    // Remembered so resumeFromIdle() can restore detection without re-calling configureHazardous.
     private var lastHazardousByDrug = false
     // Tracks colors already prompted this session to avoid repeated popups per color.
     private val promptedTrayColors = mutableSetOf<TrayColor>()
@@ -148,9 +156,6 @@ class PillCountingEngine @AssistedInject constructor(
     private var isHazardousTxn = false
     // Prevents the "using hazardous tray" toast from firing on every frame for non-hazardous txns.
     private var hazardousTrayToastShown = false
-
-    private var lastPreviewWidth = 0
-    private var lastPreviewHeight = 0
 
     // Performance monitoring
     private var performanceMonitorJob: Job? = null
@@ -202,9 +207,7 @@ class PillCountingEngine @AssistedInject constructor(
     /** Model initialization states */
     private sealed class ModelState {
         object Idle : ModelState()
-        object Loading : ModelState()
         data class Ready(val analyzer: PillAnalyzer) : ModelState()
-        data class Error(val message: String, val cause: Throwable? = null) : ModelState()
     }
 
     init {
@@ -241,51 +244,24 @@ class PillCountingEngine @AssistedInject constructor(
      * Now calls [PillDetectionModelLoader.getOrLoadInterpreters] which returns
      * both the pill and tray interpreters loaded in parallel.
      */
-    fun start(previewWidth: Int, previewHeight: Int) {
-        lastPreviewWidth = previewWidth
-        lastPreviewHeight = previewHeight
-
+    fun start() {
         if (_modelState.value is ModelState.Ready) {
             logger.w("Interpreter already initialized, skipping reinitialization.")
             return
         }
 
         scope.launch {
-            _modelState.value = ModelState.Loading
-
             try {
                 // Load pill + tray only; glove is deferred until a hazardous drug is confirmed.
                 val loadedModels = modelLoader.getOrLoadInterpreters(includeGlove = false)
 
-                val pillAnalyzer = PillAnalyzer(
-                    pillInterpreter  = loadedModels.pillInterpreter,
-                    traySegDetector = loadedModels.traySegDetector,
-                    gloveInterpreter = loadedModels.gloveInterpreter,
-                    performanceLogger = performanceLogger,
-                    shouldRunGloveDetection = { shouldRunGloveDetection },
-                    shouldDetectTrayColor = { isTrayColorDetectionEnabled },
-                    onResult = { count, detections, trayDetections, gloveDetections, bitmap, matrix, imageWidth, imageHeight ->
-                        processDetections(
-                            count           = count,
-                            detections      = detections,
-                            trayDetections  = trayDetections,
-                            gloveDetections = gloveDetections,
-                            bitmap          = bitmap,
-                            matrix          = matrix,
-                            previewWidth    = previewWidth,
-                            previewHeight   = previewHeight,
-                            imageWidth      = imageWidth,
-                            imageHeight     = imageHeight
-                        )
-                    }
-                )
-
-                _modelState.value = ModelState.Ready(pillAnalyzer)
+                _modelState.value = ModelState.Ready(buildAnalyzer(loadedModels))
                 logger.i("Pill + tray interpreters initialized (glove deferred).")
 
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 logger.e("Interpreter init failed", error, event = LogEvent.MODEL_LOAD_FAILED)
-                _modelState.value = ModelState.Error("Interpreter initialization failed", error)
             }
         }
     }
@@ -293,8 +269,6 @@ class PillCountingEngine @AssistedInject constructor(
     /**
      * Loads the glove detection model and rebuilds [PillAnalyzer] to include it.
      * Called only when the confirmed drug is hazardous and the COUNTING stage begins.
-     * Starts a 20-second timeout: if gloves are not confirmed by then, the model is
-     * unloaded automatically to free memory.
      * No-op if glove is already loaded.
      */
     fun loadGloveModel() {
@@ -306,33 +280,11 @@ class PillCountingEngine @AssistedInject constructor(
         scope.launch {
             try {
                 val loadedModels = modelLoader.getOrLoadInterpreters(includeGlove = true)
-                val previewWidthAtLoad = lastPreviewWidth
-                val previewHeightAtLoad = lastPreviewHeight
 
-                val pillAnalyzer = PillAnalyzer(
-                    pillInterpreter  = loadedModels.pillInterpreter,
-                    traySegDetector = loadedModels.traySegDetector,
-                    gloveInterpreter = loadedModels.gloveInterpreter,
-                    performanceLogger = performanceLogger,
-                    shouldRunGloveDetection = { shouldRunGloveDetection },
-                    onResult = { count, detections, trayDetections, gloveDetections, bitmap, matrix, imageWidth, imageHeight ->
-                        processDetections(
-                            count           = count,
-                            detections      = detections,
-                            trayDetections  = trayDetections,
-                            gloveDetections = gloveDetections,
-                            bitmap          = bitmap,
-                            matrix          = matrix,
-                            previewWidth    = previewWidthAtLoad,
-                            previewHeight   = previewHeightAtLoad,
-                            imageWidth      = imageWidth,
-                            imageHeight     = imageHeight
-                        )
-                    }
-                )
-
-                _modelState.value = ModelState.Ready(pillAnalyzer)
+                _modelState.value = ModelState.Ready(buildAnalyzer(loadedModels))
                 logger.i("Glove model loaded — analyzer rebuilt for hazardous drug.")
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 logger.e("Glove model load failed", error, event = LogEvent.MODEL_LOAD_FAILED)
             }
@@ -345,33 +297,32 @@ class PillCountingEngine @AssistedInject constructor(
      */
     private suspend fun unloadGloveAndRebuildAnalyzer() {
         modelLoader.unloadGloveModel()
+        // The loader returns no glove interpreter for includeGlove = false.
         val loadedModels = modelLoader.getOrLoadInterpreters(includeGlove = false)
-        val previewWidthAtLoad = lastPreviewWidth
-        val previewHeightAtLoad = lastPreviewHeight
-        val pillAnalyzer = PillAnalyzer(
-            pillInterpreter  = loadedModels.pillInterpreter,
-            traySegDetector = loadedModels.traySegDetector,
-            gloveInterpreter = null,
-            performanceLogger = performanceLogger,
-            shouldRunGloveDetection = { shouldRunGloveDetection },
-            onResult = { count, detections, trayDetections, gloveDetections, bitmap, matrix, imageWidth, imageHeight ->
-                processDetections(
-                    count           = count,
-                    detections      = detections,
-                    trayDetections  = trayDetections,
-                    gloveDetections = gloveDetections,
-                    bitmap          = bitmap,
-                    matrix          = matrix,
-                    previewWidth    = previewWidthAtLoad,
-                    previewHeight   = previewHeightAtLoad,
-                    imageWidth      = imageWidth,
-                    imageHeight     = imageHeight
-                )
-            }
-        )
-        _modelState.value = ModelState.Ready(pillAnalyzer)
+        _modelState.value = ModelState.Ready(buildAnalyzer(loadedModels))
         logger.i("Analyzer rebuilt without glove model")
     }
+
+    /** The only place a [PillAnalyzer] is built, so every rebuild gets the same callbacks. */
+    private fun buildAnalyzer(loadedModels: LoadedModels): PillAnalyzer = PillAnalyzer(
+        pillInterpreter  = loadedModels.pillInterpreter,
+        traySegDetector = loadedModels.traySegDetector,
+        gloveInterpreter = loadedModels.gloveInterpreter,
+        performanceLogger = performanceLogger,
+        shouldRunGloveDetection = { shouldRunGloveDetection },
+        shouldDetectTrayColor = { isTrayColorDetectionEnabled },
+        onResult = { count, detections, trayDetections, gloveDetections, bitmap, _, imageWidth, imageHeight ->
+            processDetections(
+                count           = count,
+                detections      = detections,
+                trayDetections  = trayDetections,
+                gloveDetections = gloveDetections,
+                bitmap          = bitmap,
+                imageWidth      = imageWidth,
+                imageHeight     = imageHeight
+            )
+        }
+    )
 
     // ------------------------------------------------------------------------
     // Frame Processing and Detection Logic
@@ -390,9 +341,6 @@ class PillCountingEngine @AssistedInject constructor(
         trayDetections: List<TrayDetection>,
         gloveDetections: List<GloveDetection>,
         bitmap: Bitmap,
-        matrix: Matrix,
-        previewWidth: Int,
-        previewHeight: Int,
         imageWidth: Int,
         imageHeight: Int
     ) {
@@ -401,14 +349,12 @@ class PillCountingEngine @AssistedInject constructor(
             return
         }
 
-        currentScanId++
         synchronized(frameLock) {
             currentFrameBitmap?.recycle()
             currentFrameBitmap = bitmap
         }
-        lastTransformationMatrix = Matrix(matrix)
 
-        logger.d("Frame analyzed | count=$count | scanId=$currentScanId")
+        logger.d("Frame analyzed | count=$count")
 
         // ── Publish tray & glove detections for the UI overlay ───────────────
         _state.update { it.copy(trayDetections = trayDetections, gloveDetections = gloveDetections) }
@@ -510,7 +456,7 @@ class PillCountingEngine @AssistedInject constructor(
                 scope.launch {
                     try {
                         unloadGloveAndRebuildAnalyzer()
-                        _events.tryEmit(EngineEvent.GlovesConfirmed)
+                        _events.trySend(EngineEvent.GlovesConfirmed)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Exception) {
@@ -553,7 +499,8 @@ class PillCountingEngine @AssistedInject constructor(
 
     // Fired by the watchdog after a window with no count change.
     private fun pauseAndClearBuffers() {
-        _lastTenDetections.value.clear()
+        // A new deque, so the flow emits and the analyzer's copy never sees it change.
+        _lastTenDetections.value = ArrayDeque()
         resetCountConfirmation()
         lastCompleteTrayMs = 0L
         cameraHelper?.setAeAwbLock(false)
@@ -667,14 +614,14 @@ class PillCountingEngine @AssistedInject constructor(
     fun resumeFromIdle() {
         _state.update { it.copy(showIdleOverlay = false, pendingTrayColor = null) }
 
-        _lastTenDetections.value.clear()
+        _lastTenDetections.value = ArrayDeque()
         resetCountConfirmation()
         lastCompleteTrayMs = 0L
         cameraHelper?.setAeAwbLock(false)
         lastAddedScanSignature = null
         _state.update { it.copy(trayDetections = emptyList(), gloveDetections = emptyList()) }
 
-        // Restore detection flags using the drug flag remembered from setHazardousTransaction().
+        // Restore detection flags using the drug flag remembered from configureHazardous().
         // Do NOT reset hazardousTrayResultSaved — the transaction is the same, result already saved.
         val globalSettingOn = preferenceHelper.isHazardousDrugEnabled()
         isTrayColorDetectionEnabled = true
@@ -700,7 +647,7 @@ class PillCountingEngine @AssistedInject constructor(
 
     fun onFilteredPills(filtered: List<DetectedPill>) {
         // The Canvas overlay calls this from inside its draw block on every recompose.
-        // Without a dedupe, every frame triggers a new _uiState emission, which
+        // Without a dedupe, every frame triggers a new state emission, which
         // triggers another recompose, which redraws the Canvas — a tight loop that
         // burns frame budget on weak devices. Compare references first (cheap),
         // and only escalate to a structural compare when the reference differs.
@@ -713,10 +660,6 @@ class PillCountingEngine @AssistedInject constructor(
         _state.update { it.copy(filteredPills = filtered) }
     }
 
-    /**
-     * Called when the COUNTING stage begins. Enables tray color detection and caches
-     * the current hazardous/non-hazardous color lists from preferences.
-     */
     /**
      * Called when COUNTING stage begins.
      *
@@ -736,7 +679,7 @@ class PillCountingEngine @AssistedInject constructor(
         hazardousTrayToastShown = false
         cachedHazardousColor = preferenceHelper.getHazardousTrayColor()
 
-        logger.d("=== setHazardousTransaction ===")
+        logger.d("=== configureHazardous ===")
         logger.d("  drugFlag=$isHazardousDrug  globalSettingOn=$globalSettingOn")
         logger.d("  detectionEnabled=$isTrayColorDetectionEnabled  popupEnabled=$hazardousTrayPopupEnabled  hazardousColor=$cachedHazardousColor")
 
@@ -768,7 +711,7 @@ class PillCountingEngine @AssistedInject constructor(
     private fun reportHazardousTrayResult(detected: Boolean) {
         if (hazardousTrayResultSaved) return
         hazardousTrayResultSaved = true
-        _events.tryEmit(EngineEvent.HazardousTrayResult(detected))
+        _events.trySend(EngineEvent.HazardousTrayResult(detected))
     }
 
     /**
@@ -810,7 +753,6 @@ class PillCountingEngine @AssistedInject constructor(
         }
         val filteredPills = _state.value.filteredPills
         val trays = _state.value.trayDetections
-        _events.tryEmit(EngineEvent.AddPop(count))
 
         val pillLayoutSignature = _state.value.detectedPills.joinToString(separator = "|") { pill ->
             "${"%.3f".format(pill.x)}-${"%.3f".format(pill.y)}"
@@ -824,9 +766,9 @@ class PillCountingEngine @AssistedInject constructor(
 
         startAddCooldown()
 
-        lastAddClickTime = System.currentTimeMillis()
         lastAddedScanSignature = pillLayoutSignature
         noteActivity()
+        _addPops.tryEmit(count)
         return CaptureResult.Captured(count, frame, filteredPills, trays)
     }
 
@@ -839,101 +781,107 @@ class PillCountingEngine @AssistedInject constructor(
         label: PhotoLabel,
         keepRawCrop: Boolean,
     ): SavedPhoto = withContext(Dispatchers.IO) {
-        val userId = preferenceHelper.getUserId().orEmpty()
-        val loggedInUser = userDao.getByUserId(userId)
-        // No lookup finished yet: show the fallback rather than wait.
-        val location = cachedLocation ?: context.getString(R.string.location_unavailable)
+        try {
+            val userId = preferenceHelper.getUserId().orEmpty()
+            val loggedInUser = userDao.getByUserId(userId)
+            // No lookup finished yet: show the fallback rather than wait.
+            val location = cachedLocation ?: context.getString(R.string.location_unavailable)
 
-        val countedFrame = captured.frame
+            val countedFrame = captured.frame
 
-        val drugImage = label.drugImagePath?.takeIf { drugImagePath -> drugImagePath.isNotBlank() }
-            ?.let { drugImagePath -> runCatching { BitmapFactory.decodeFile(drugImagePath) }.getOrNull() }
-            ?: drugImagePlaceholder()
+            val drugImage = label.drugImagePath?.takeIf { drugImagePath -> drugImagePath.isNotBlank() }
+                ?.let { drugImagePath -> runCatching { BitmapFactory.decodeFile(drugImagePath) }.getOrNull() }
+                ?: drugImagePlaceholder()
 
-        // Crop to tray + chute when a complete tray is in view; else keep the full frame.
-        val frameWidth = countedFrame.width
-        val frameHeight = countedFrame.height
-        val trayCropRegion = OverlayUtils.savedPhotoCropRegion(captured.trays, frameWidth, frameHeight)
-        val croppedPhoto = if (trayCropRegion != null) {
-            Bitmap.createBitmap(
-                countedFrame, trayCropRegion.left, trayCropRegion.top,
-                trayCropRegion.width(), trayCropRegion.height(),
-            )
-        } else countedFrame
-        val pillsInPhoto = if (trayCropRegion != null) {
-            OverlayUtils.pillsInCrop(captured.filteredPills, trayCropRegion, frameWidth, frameHeight)
-        } else captured.filteredPills
-
-        val photoInfo = PhotoInfo(
-            drugName = label.drugName,
-            drugImage = drugImage,
-            isStockCount = label.isStockCount,
-            requestedNdc = label.requestedNdc,
-            dispensedNdc = label.dispensedNdc,
-            lotNumber = label.lotNumber,
-            serialNumber = label.serialNumber,
-            expirationDate = label.expirationDate,
-            count = captured.count,
-            rxRefill = label.rxRefill,
-            stepLabel = label.stepLabel,
-            userName = listOfNotNull(loggedInUser?.fName, loggedInUser?.lName).joinToString(" "),
-            location = location,
-            timestamp = System.currentTimeMillis(),
-        )
-        val photoWithStrip = try {
-            OverlayUtils.drawDetectionsOnBitmap(
-                bitmap = croppedPhoto,
-                detectedPills = pillsInPhoto,
-                info = photoInfo,
-                res = context.resources,
-                scaleRefSide = min(frameWidth, frameHeight),
-                // Same breakpoint as UserInterfaceUtils.isTablet(), read outside Compose.
-                isPhone = context.resources.configuration.smallestScreenWidthDp <
-                    UserInterfaceUtils.TABLET_BREAKPOINT_DP,
-            )
-        } catch (error: Exception) {
-            logger.e("Overlay drawing failed, using bitmap without overlay", error, event = LogEvent.PILL_COUNT_FAILED)
-            croppedPhoto
-        }
-        drugImage?.recycle()
-
-        val fileTimestamp = System.currentTimeMillis()
-        val photoPath = try {
-            if (!photoWithStrip.isRecycled) {
-                saveBitmapToFile(
-                    context,
-                    photoWithStrip,
-                    "txn_detail_$fileTimestamp.jpg",
-                    "transaction_details",
-                    grayscale = isGrayscale(),
+            // Crop to tray + chute when a complete tray is in view; else keep the full frame.
+            val frameWidth = countedFrame.width
+            val frameHeight = countedFrame.height
+            val trayCropRegion = OverlayUtils.savedPhotoCropRegion(captured.trays, frameWidth, frameHeight)
+            val croppedPhoto = if (trayCropRegion != null) {
+                Bitmap.createBitmap(
+                    countedFrame, trayCropRegion.left, trayCropRegion.top,
+                    trayCropRegion.width(), trayCropRegion.height(),
                 )
-            } else null
-        } catch (error: Exception) {
-            logger.e("Failed saving bitmap", error, event = LogEvent.FILE_WRITE_ERROR)
-            null
-        }
-        // The crop with nothing drawn on it, when the caller needs it.
-        val rawPhotoPath = if (keepRawCrop) {
-            try {
-                if (!croppedPhoto.isRecycled) {
+            } else countedFrame
+            val pillsInPhoto = if (trayCropRegion != null) {
+                OverlayUtils.pillsInCrop(captured.filteredPills, trayCropRegion, frameWidth, frameHeight)
+            } else captured.filteredPills
+
+            val photoInfo = PhotoInfo(
+                drugName = label.drugName,
+                drugImage = drugImage,
+                isStockCount = label.isStockCount,
+                requestedNdc = label.requestedNdc,
+                dispensedNdc = label.dispensedNdc,
+                lotNumber = label.lotNumber,
+                serialNumber = label.serialNumber,
+                expirationDate = label.expirationDate,
+                count = captured.count,
+                rxRefill = label.rxRefill,
+                stepLabel = label.stepLabel,
+                userName = listOfNotNull(loggedInUser?.fName, loggedInUser?.lName).joinToString(" "),
+                location = location,
+                timestamp = System.currentTimeMillis(),
+            )
+            val photoWithStrip = try {
+                OverlayUtils.drawDetectionsOnBitmap(
+                    bitmap = croppedPhoto,
+                    detectedPills = pillsInPhoto,
+                    info = photoInfo,
+                    res = context.resources,
+                    scaleRefSide = min(frameWidth, frameHeight),
+                    // Same breakpoint as UserInterfaceUtils.isTablet(), read outside Compose.
+                    isPhone = context.resources.configuration.smallestScreenWidthDp <
+                        UserInterfaceUtils.TABLET_BREAKPOINT_DP,
+                )
+            } catch (error: Exception) {
+                logger.e("Overlay drawing failed, using bitmap without overlay", error, event = LogEvent.PILL_COUNT_FAILED)
+                croppedPhoto
+            }
+            drugImage?.recycle()
+
+            val fileTimestamp = System.currentTimeMillis()
+            val photoPath = try {
+                if (!photoWithStrip.isRecycled) {
                     saveBitmapToFile(
                         context,
-                        croppedPhoto,
-                        "txn_detail_${fileTimestamp}_raw.jpg",
+                        photoWithStrip,
+                        "txn_detail_$fileTimestamp.jpg",
                         "transaction_details",
+                        grayscale = isGrayscale(),
                     )
                 } else null
             } catch (error: Exception) {
-                logger.e("Failed saving raw bitmap", error, event = LogEvent.FILE_WRITE_ERROR)
+                logger.e("Failed saving bitmap", error, event = LogEvent.FILE_WRITE_ERROR)
                 null
             }
-        } else null
-        // createBitmap can hand back the source itself when the crop is the whole frame.
-        if (croppedPhoto !== countedFrame && !croppedPhoto.isRecycled) croppedPhoto.recycle()
-        if (!countedFrame.isRecycled) countedFrame.recycle()
+            // The crop with nothing drawn on it, when the caller needs it.
+            val rawPhotoPath = if (keepRawCrop) {
+                try {
+                    if (!croppedPhoto.isRecycled) {
+                        saveBitmapToFile(
+                            context,
+                            croppedPhoto,
+                            "txn_detail_${fileTimestamp}_raw.jpg",
+                            "transaction_details",
+                        )
+                    } else null
+                } catch (error: Exception) {
+                    logger.e("Failed saving raw bitmap", error, event = LogEvent.FILE_WRITE_ERROR)
+                    null
+                }
+            } else null
+            // A new bitmap, unless drawing failed and fell back to the crop (recycled below).
+            if (photoWithStrip !== croppedPhoto && !photoWithStrip.isRecycled) photoWithStrip.recycle()
+            // createBitmap can hand back the source itself when the crop is the whole frame.
+            if (croppedPhoto !== countedFrame && !croppedPhoto.isRecycled) croppedPhoto.recycle()
+            if (!countedFrame.isRecycled) countedFrame.recycle()
 
-        refreshLocation()
-        SavedPhoto(imagePath = photoPath, rawImagePath = rawPhotoPath)
+            SavedPhoto(imagePath = photoPath, rawImagePath = rawPhotoPath)
+        } finally {
+            // Runs on a failed save too, so the next Add still gets a fresh location.
+            refreshLocation()
+        }
     }
 
     /** Disables Add for [ADD_COOLDOWN_MS] while the captured frame is saved. */
@@ -943,7 +891,6 @@ class PillCountingEngine @AssistedInject constructor(
         addCooldownJob = scope.launch {
             delay(ADD_COOLDOWN_MS)
             _state.update { it.copy(isAddCooldown = false) }
-            lastAddClickTime = 0L
         }
     }
 
@@ -1060,8 +1007,8 @@ class PillCountingEngine @AssistedInject constructor(
 
     /** Writes the performance summary and frees the held frame. Models stay loaded in the singleton. */
     fun close() {
-        // Stop performance monitoring
-        performanceMonitorJob?.cancel()
+        // Stops every job the engine started; the parent scope keeps running.
+        scope.cancel()
 
         // Generate final summary report
         try {

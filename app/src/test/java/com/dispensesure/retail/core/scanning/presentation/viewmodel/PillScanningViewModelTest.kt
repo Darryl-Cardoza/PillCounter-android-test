@@ -823,10 +823,12 @@ class PillScanningViewModelTest {
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
     @Test
     fun `Add in a stock session stamps the scanned lot, no Rx, and keeps no raw crop`() = runTest {
         val stampedPhotoInfo = stubPhotoWrites()
-        setPrivateField("isStockCountSession", true)
+        val uiStateFlow = getPrivateField("_uiState") as MutableStateFlow<PillScanningUiState>
+        uiStateFlow.value = uiStateFlow.value.copy(isStockCountSession = true)
         setPrivateField("stockDrugId", 42L)
         setPrivateField("stockBottleId", 0L)
         setPrivateField("stockLotNo", "10522")
