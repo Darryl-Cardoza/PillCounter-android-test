@@ -15,7 +15,6 @@ import com.dispensesure.retail.core.room.models.enums.TxnPriority
  * @property ndc NDC of the counted drug.
  * @property drugType Drug type reported for the NDC.
  * @property bucketId Bucket the count belongs to.
- * @property pillCount The quantity counted for this item.
  * @property target The expected count for this transaction.
  * @property bottlesJson Serialized list of the bottles used in this count.
  * @property date The timestamp when this count was recorded, already formatted.
@@ -33,7 +32,6 @@ data class CountItem(
     val ndc: String?,
     val drugType: String?,
     val bucketId: String?,
-    val pillCount: Int,
     val target: Int,
     val bottlesJson: String?,
     val date: String,

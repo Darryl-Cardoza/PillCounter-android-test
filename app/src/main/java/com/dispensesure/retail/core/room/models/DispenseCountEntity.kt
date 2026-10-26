@@ -11,8 +11,7 @@ import androidx.room.PrimaryKey
  * Each record links to a parent transaction in [DispenseTxnEntity].
  *
  * @property countId      Auto-generated primary key of the count.
- * @property txnId        Foreign key referencing the parent transaction ID (nullable due to SET_NULL).
- * @property txnDetailsNo Sequential number for the detail within a transaction.
+ * @property txnId        Foreign key to the parent transaction; deleted with it (CASCADE).
  * @property pillCount    Number of pills counted in this detail line.
  * @property imagePath    Path/URI to an associated image, if any.
  * @property rawImagePath TARGET_VERIFICATION crop with nothing drawn on it, if any.

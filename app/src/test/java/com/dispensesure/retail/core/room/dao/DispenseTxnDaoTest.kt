@@ -740,102 +740,6 @@ class DispenseTxnDaoTest {
     }
 
     @Test
-    fun `getTransactionsWithDrugByDate filters by date range and null filters match any`() = runTest {
-        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, createdAt = 150L))
-        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, createdAt = 999L))
-
-        dispenseTxnDao.getTransactionsWithDrugByDate(
-            startOfDay = 100L,
-            endOfDay = 200L,
-            status = null
-        ).test {
-            val list = awaitItem()
-            assertEquals(1, list.size)
-        }
-    }
-
-    @Test
-    fun `getTransactionsWithDrugByDate applies a non null status filter`() = runTest {
-        val drugId = drugDao.insertIgnore(
-            DrugMasterEntity(
-                ndc = "N-IMG",
-                drugName = "Imaged",
-                strength = "35 mg/1",
-                dosageForm = "CAPSULE, EXTENDED RELEASE",
-                drugImagePath = "/data/drug/n-img.webp",
-            )
-        )
-        dispenseTxnDao.insertIgnore(
-            baseTxn(
-                drugId = drugId,
-                status = CountStatus.COMPLETED,
-                createdAt = 150L
-            )
-        )
-        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.PARTIAL, createdAt = 150L))
-
-        dispenseTxnDao.getTransactionsWithDrugByDate(
-            startOfDay = 100L,
-            endOfDay = 200L,
-            status = CountStatus.COMPLETED
-        ).test {
-            val list = awaitItem()
-            assertEquals(1, list.size)
-            assertEquals(CountStatus.COMPLETED, list.first().status)
-            assertEquals("/data/drug/n-img.webp", list.first().drugImagePath)
-            assertEquals("35 mg/1", list.first().strength)
-            assertEquals("CAPSULE, EXTENDED RELEASE", list.first().dosageForm)
-        }
-    }
-
-    @Test
-    fun `getTransactionsWithDrugByDate prefers substitute drug columns when isSubstitute is set`() = runTest {
-        val drugId = drugDao.insertIgnore(
-            DrugMasterEntity(
-                ndc = "N-BASE",
-                drugName = "Base",
-                drugType = "BRAND",
-                strength = "10 mg/1",
-                dosageForm = "TABLET",
-                drugImagePath = "/data/drug/base.webp",
-            )
-        )
-        val subDrugId = drugDao.insertIgnore(
-            DrugMasterEntity(
-                ndc = "N-SUB",
-                drugName = "Sub",
-                drugType = "GENERIC",
-                strength = "35 mg/1",
-                dosageForm = "CAPSULE, EXTENDED RELEASE",
-                drugImagePath = "/data/drug/sub.webp",
-            )
-        )
-        dispenseTxnDao.insertIgnore(
-            baseTxn(
-                drugId = drugId,
-                status = CountStatus.COMPLETED,
-                createdAt = 150L,
-                isSubstitute = true,
-                substitutedDrugId = subDrugId,
-            )
-        )
-
-        dispenseTxnDao.getTransactionsWithDrugByDate(
-            startOfDay = 100L,
-            endOfDay = 200L,
-            status = null
-        ).test {
-            val row = awaitItem().first()
-            assertEquals("N-SUB", row.ndc)
-            assertEquals("Sub", row.drugName)
-            assertEquals("GENERIC", row.drugType)
-            assertEquals("35 mg/1", row.strength)
-            assertEquals("CAPSULE, EXTENDED RELEASE", row.dosageForm)
-            assertEquals("/data/drug/sub.webp", row.drugImagePath)
-        }
-    }
-
-    @Test
     fun `getTransactionsForDateRange filters by user step type and status`() = runTest {
         // userLocalId = 3L and 9L are FK-enforced against users.localId — seed both.
         db.userDao().insertIgnore(UserEntity(localId = 3L, userId = "user-3"))
@@ -949,6 +853,56 @@ class DispenseTxnDaoTest {
             assertEquals("/data/drug/n-img.webp", row.drugImagePath)
             assertEquals("35 mg/1", row.strength)
             assertEquals("CAPSULE, EXTENDED RELEASE", row.dosageForm)
+        }
+    }
+
+    @Test
+    fun `getTransactionsForDateRange prefers substitute drug columns when isSubstitute is set`() = runTest {
+        val drugId = drugDao.insertIgnore(
+            DrugMasterEntity(
+                ndc = "N-BASE",
+                drugName = "Base",
+                drugType = "BRAND",
+                strength = "10 mg/1",
+                dosageForm = "TABLET",
+                drugImagePath = "/data/drug/base.webp",
+            )
+        )
+        val subDrugId = drugDao.insertIgnore(
+            DrugMasterEntity(
+                ndc = "N-SUB",
+                drugName = "Sub",
+                drugType = "GENERIC",
+                strength = "35 mg/1",
+                dosageForm = "CAPSULE, EXTENDED RELEASE",
+                drugImagePath = "/data/drug/sub.webp",
+            )
+        )
+        dispenseTxnDao.insertIgnore(
+            baseTxn(
+                userLocalId = 1L,
+                drugId = drugId,
+                status = CountStatus.COMPLETED,
+                createdAt = 150L,
+                isSubstitute = true,
+                substitutedDrugId = subDrugId,
+            )
+        )
+
+        dispenseTxnDao.getTransactionsForDateRange(
+            startDate = 100L,
+            endDate = 200L,
+            stepType = null,
+            status = null,
+            userLocalId = 1L
+        ).test {
+            val row = awaitItem().first()
+            assertEquals("N-SUB", row.ndc)
+            assertEquals("Sub", row.drugName)
+            assertEquals("GENERIC", row.drugType)
+            assertEquals("35 mg/1", row.strength)
+            assertEquals("CAPSULE, EXTENDED RELEASE", row.dosageForm)
+            assertEquals("/data/drug/sub.webp", row.drugImagePath)
         }
     }
 

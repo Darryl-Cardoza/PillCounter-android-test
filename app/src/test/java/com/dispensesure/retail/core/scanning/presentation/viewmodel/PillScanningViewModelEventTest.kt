@@ -369,15 +369,23 @@ class PillScanningViewModelEventTest {
         coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns txnInfo
         viewModel.showTxnInfo(CountType.REGULAR.toString())
         advanceUntilIdle()
-        // A stock session is marked by this flag, set on entry by enterStockCountSession.
-        PillScanningViewModel::class.java.getDeclaredField("isStockCountSession").apply {
-            isAccessible = true
-            setBoolean(viewModel, true)
-        }
+        // A null drug stops startStockCounting, so only the session flag changes.
+        coEvery { drugMasterDao.getDrugById(any()) } returns null
+        viewModel.enterStockCountSession(bottleId = 0L, stockTxnId = 0L, batchId = 0L, drugId = 1L)
 
         viewModel.onEvent(PillScanningEvent.FinalDone(StepState.CONTAINER_INITIATE, totalCount = 5))
 
         assertTrue(viewModel.uiState.value.showEndStockCountDialog)
+    }
+
+    // SCAN_VM_048
+    @Test
+    fun `enterStockCountSession marks the session in uiState`() = runTest {
+        coEvery { drugMasterDao.getDrugById(any()) } returns null
+
+        viewModel.enterStockCountSession(bottleId = 0L, stockTxnId = 0L, batchId = 0L, drugId = 1L)
+
+        assertTrue(viewModel.uiState.value.isStockCountSession)
     }
 
     // SCAN_VM_036
@@ -396,6 +404,26 @@ class PillScanningViewModelEventTest {
 
         // target=10, totalCount=5 → 10 <= 5 is false → sets showErrorMessage
         viewModel.onEvent(PillScanningEvent.FinalDone(StepState.CONTAINER_INITIATE, totalCount = 5))
+
+        assertNotNull(viewModel.uiState.value.showErrorMessage)
+    }
+
+    // SCAN_VM_049
+    @Test
+    fun `FinalDone with TARGET_VERIFICATION and count below target sets showErrorMessage`() = runTest {
+        val txnInfo = DispenseTxnDetail(
+            txnId = 1L, drugName = null, drugId = 1L, ndc = null,
+            targetCount = 10, note = null,
+            createdAt = 0L, bottlesJson = null, totalPillCount = 0,
+            drugType = null,
+            counts = emptyList(), isComingFromHL7 = false,
+        )
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns txnInfo
+        viewModel.showTxnInfo(CountType.FIXED.toString())
+        advanceUntilIdle()
+
+        // target=10, history sums to 0 → error, no step change
+        viewModel.onEvent(PillScanningEvent.FinalDone(StepState.TARGET_VERIFICATION, totalCount = 0))
 
         assertNotNull(viewModel.uiState.value.showErrorMessage)
     }

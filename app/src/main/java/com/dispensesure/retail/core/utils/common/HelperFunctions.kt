@@ -135,20 +135,20 @@ object HelperFunctions {
      * @return Structured [CountBuckets] separating completed/partial dispense counts.
      */
     fun mapCounts(rows: List<DispenseStatusCount>): CountBuckets {
-        var fixedCompleted = 0
-        var fixedPartial = 0
+        var dispenseCompleted = 0
+        var dispensePartial = 0
 
         rows.forEach { row ->
             when (row.status) {
-                CountStatus.COMPLETED -> fixedCompleted = row.cnt
-                CountStatus.PARTIAL -> fixedPartial = row.cnt
+                CountStatus.COMPLETED -> dispenseCompleted = row.cnt
+                CountStatus.PARTIAL -> dispensePartial = row.cnt
                 else -> {}
             }
         }
 
         return CountBuckets(
-            fixedCompleted = fixedCompleted,
-            fixedPartial = fixedPartial
+            dispenseCompleted = dispenseCompleted,
+            dispensePartial = dispensePartial
         )
     }
 

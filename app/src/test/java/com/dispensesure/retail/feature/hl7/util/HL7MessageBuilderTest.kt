@@ -443,7 +443,7 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildDispenseMessage falls back to the step sum when no dispensed row is linked to a bottle`() {
-        // linkDetailToActiveBottle no-ops when the txn has no bottle entry yet, so a bottle
+        // linkCountToActiveBottle no-ops when the txn has no bottle entry yet, so a bottle
         // scanned after the pills were counted holds only the pour-out row. Summing the
         // bottle then gives 0 while the prescribed-count rows are sitting right there.
         val details = listOf(

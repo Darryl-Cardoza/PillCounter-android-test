@@ -49,7 +49,7 @@ class HistoryViewModelTest {
     @Before
     fun setup() {
         every { preferenceHelper.getLocalId() } returns 1L
-        every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns flowOf(emptyList())
+        every { repository.getTransactionsForDateRange(any(), any(), any()) } returns flowOf(emptyList())
         every { repository.getBatchSummaries(any(), any(), any()) } returns flowOf(emptyList())
         viewModel = HistoryViewModel(repository, preferenceHelper)
     }
@@ -73,13 +73,13 @@ class HistoryViewModelTest {
     @Test
     fun `a failed query does not stop later date changes from loading`() = runTest {
         val txns = listOf(txnDto(id = 2L, drugName = "Ibuprofen"))
-        every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns
+        every { repository.getTransactionsForDateRange(any(), any(), any()) } returns
             kotlinx.coroutines.flow.flow { throw IllegalStateException("db down") }
 
         viewModel.counts.test {
             awaitItem()
             advanceUntilIdle()
-            every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns flowOf(txns)
+            every { repository.getTransactionsForDateRange(any(), any(), any()) } returns flowOf(txns)
             viewModel.setDateRange(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 2))
             advanceUntilIdle()
             assertEquals(txns, expectMostRecentItem())
@@ -91,7 +91,7 @@ class HistoryViewModelTest {
     @Test
     fun `counts emits list returned by repository`() = runTest {
         val txns = listOf(txnDto(id = 1L, drugName = "Aspirin"))
-        every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns flowOf(txns)
+        every { repository.getTransactionsForDateRange(any(), any(), any()) } returns flowOf(txns)
 
         viewModel.counts.test {
             awaitItem() // stateIn initial: emptyList
@@ -107,7 +107,7 @@ class HistoryViewModelTest {
     fun `setSearchQuery filters counts by drug name`() = runTest {
         val aspirin = txnDto(id = 1L, drugName = "Aspirin")
         val ibuprofen = txnDto(id = 2L, drugName = "Ibuprofen")
-        every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns flowOf(listOf(aspirin, ibuprofen))
+        every { repository.getTransactionsForDateRange(any(), any(), any()) } returns flowOf(listOf(aspirin, ibuprofen))
 
         viewModel.counts.test {
             awaitItem()
@@ -133,7 +133,7 @@ class HistoryViewModelTest {
     fun `setSearchQuery filters counts by ndc`() = runTest {
         val drug1 = txnDto(id = 1L, ndc = "12345")
         val drug2 = txnDto(id = 2L, ndc = "67890")
-        every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns flowOf(listOf(drug1, drug2))
+        every { repository.getTransactionsForDateRange(any(), any(), any()) } returns flowOf(listOf(drug1, drug2))
 
         viewModel.counts.test {
             awaitItem()
@@ -154,7 +154,7 @@ class HistoryViewModelTest {
     fun `setSearchQuery filters counts by note field`() = runTest {
         val withNote = txnDto(id = 1L, note = "urgent dispense")
         val noNote = txnDto(id = 2L, note = null)
-        every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns flowOf(listOf(withNote, noNote))
+        every { repository.getTransactionsForDateRange(any(), any(), any()) } returns flowOf(listOf(withNote, noNote))
 
         viewModel.counts.test {
             awaitItem()

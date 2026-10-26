@@ -70,20 +70,19 @@ fun CountsSection(
         mutableStateOf(if (initialShowComplete) StatusFilter.COMPLETED else StatusFilter.ALL)
     }
 
-    // ── Dispensed (FIXED) breakdowns ──────────────────────────────────────────
-    val dispensedCounts = counts
-    val completedDispensed = remember(dispensedCounts) {
-        dispensedCounts.filter {
+    // ── Dispensed breakdowns ──────────────────────────────────────────────────
+    val completedDispensed = remember(counts) {
+        counts.filter {
             it.status == CountStatus.COMPLETED || it.status == CountStatus.FORCE_COMPLETED
         }
     }
-    val pendingDispensed = remember(dispensedCounts) {
-        dispensedCounts.filter {
+    val pendingDispensed = remember(counts) {
+        counts.filter {
             it.status != CountStatus.COMPLETED && it.status != CountStatus.FORCE_COMPLETED
         }
     }
     val filteredDispensed = when (statusFilter) {
-        StatusFilter.ALL -> dispensedCounts
+        StatusFilter.ALL -> counts
         StatusFilter.COMPLETED -> completedDispensed
         StatusFilter.PENDING -> pendingDispensed
     }
@@ -98,18 +97,18 @@ fun CountsSection(
     }
 
     // ── Toggle counts (shown in the pill buttons) ─────────────────────────────
-    val dispensedCount = dispensedCounts.size
+    val dispensedCount = counts.size
     val stockCount = batches.size       // number of batches, not REGULAR txns
 
     // ── Status chip counts switch based on which tab is active ────────────────
-    val allCount = if (selectedOption == ToggleOption.STOCK) batches.size else dispensedCounts.size
+    val allCount = if (selectedOption == ToggleOption.STOCK) batches.size else counts.size
     val completedCount =
         if (selectedOption == ToggleOption.STOCK) completedBatches.size else completedDispensed.size
     val pendingCount =
         if (selectedOption == ToggleOption.STOCK) pendingBatches.size else pendingDispensed.size
 
     val isEmpty = when (selectedOption) {
-        ToggleOption.DISPENSED -> dispensedCounts.isEmpty()
+        ToggleOption.DISPENSED -> counts.isEmpty()
         else -> batches.isEmpty()
     }
     val dimens = AppTheme.dimens
@@ -207,7 +206,7 @@ fun CountsSection(
                 if (isSearchActive) {
                     when (selectedOption) {
                         ToggleOption.DISPENSED -> {
-                            items(dispensedCounts, key = { it.txnId }) { rowData ->
+                            items(counts, key = { it.txnId }) { rowData ->
                                 DrugCountRow(
                                     data = DrugCountRowData(
                                         barcodeImage = DispenseBottleJson.decode(rowData.bottlesJson).firstOrNull()?.barcodeImagePath,

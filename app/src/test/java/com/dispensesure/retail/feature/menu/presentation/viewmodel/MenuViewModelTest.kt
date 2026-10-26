@@ -82,8 +82,8 @@ class MenuViewModelTest {
     fun `initial uiState has all counts at zero`() {
         val state = createViewModel().uiState.value
 
-        assertEquals(0, state.fixedCompleted)
-        assertEquals(0, state.fixedPartial)
+        assertEquals(0, state.dispenseCompleted)
+        assertEquals(0, state.dispensePartial)
         assertEquals(0, state.regularPartial)
         assertEquals(0, state.regularCompleted)
         assertEquals(0, state.unsyncedTransactionCount)
@@ -110,8 +110,8 @@ class MenuViewModelTest {
 
         vm.uiState.test {
             val state = awaitItem()
-            assertEquals(11, state.fixedCompleted)
-            assertEquals(7, state.fixedPartial)
+            assertEquals(11, state.dispenseCompleted)
+            assertEquals(7, state.dispensePartial)
             assertEquals(3, state.regularPartial)
             assertEquals(4, state.regularCompleted)
             // combine: 6 dispense + 9 batch = 15
@@ -131,8 +131,8 @@ class MenuViewModelTest {
 
         vm.uiState.test {
             val state = awaitItem()
-            assertEquals(0, state.fixedCompleted)
-            assertEquals(0, state.fixedPartial)
+            assertEquals(0, state.dispenseCompleted)
+            assertEquals(0, state.dispensePartial)
         }
     }
 

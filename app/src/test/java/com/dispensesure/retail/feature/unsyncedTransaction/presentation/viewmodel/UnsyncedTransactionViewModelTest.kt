@@ -116,7 +116,6 @@ class UnsyncedTransactionViewModelTest {
                 assertEquals("ndc-1", item.ndc)
                 assertEquals("tablet", item.drugType)
                 assertEquals("bucket-1", item.bucketId)
-                assertEquals(42, item.pillCount)
                 assertEquals(50, item.target)
                 assertEquals("barcode.png", item.bottlesJson)
                 assertTrue(item.isComingFromHL7)

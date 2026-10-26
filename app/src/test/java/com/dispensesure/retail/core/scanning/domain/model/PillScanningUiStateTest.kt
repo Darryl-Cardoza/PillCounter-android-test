@@ -89,6 +89,7 @@ class PillScanningUiStateTest {
         assertFalse(s.showAddBottleDialog)
         assertFalse(s.showReplaceBottleDialog)
         assertFalse(s.showSkipStepDialog)
+        assertFalse(s.isStockCountSession)
     }
 
     @Test

@@ -105,7 +105,6 @@ class UnsyncedTransactionViewModel @Inject constructor(
         ndc = ndc,
         drugType = drugType,
         bucketId = bucketId,
-        pillCount = totalPillCount,
         target = targetCount ?: 0,
         bottlesJson = bottlesJson,
         date = createdAt.toFormattedDate(),

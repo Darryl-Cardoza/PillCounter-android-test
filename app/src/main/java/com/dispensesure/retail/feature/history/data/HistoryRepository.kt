@@ -5,7 +5,6 @@ import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
-import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 
@@ -82,7 +81,6 @@ class HistoryRepository @Inject constructor(
     fun getTransactionsForDateRange(
         startDate: LocalDate,
         endDate: LocalDate,
-        status: CountStatus?,
         userLocalId: Long
     ): Flow<List<DispenseTxnSummary>> {
 
@@ -103,7 +101,7 @@ class HistoryRepository @Inject constructor(
             startDate = startMillis,
             endDate = endMillis,
             stepType = StepState.TARGET_VERIFICATION,
-            status = status,
+            status = null,
             userLocalId = userLocalId
         )
     }

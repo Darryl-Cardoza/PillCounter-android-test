@@ -193,8 +193,8 @@ class HelperFunctionsTest {
     @Test
     fun mapCounts_emptyRows_returnsZeros() {
         val result = HelperFunctions.mapCounts(emptyList())
-        assertEquals(0, result.fixedCompleted)
-        assertEquals(0, result.fixedPartial)
+        assertEquals(0, result.dispenseCompleted)
+        assertEquals(0, result.dispensePartial)
     }
 
     @Test
@@ -204,8 +204,8 @@ class HelperFunctionsTest {
             DispenseStatusCount(CountStatus.PARTIAL, 2)
         )
         val result = HelperFunctions.mapCounts(rows)
-        assertEquals(1, result.fixedCompleted)
-        assertEquals(2, result.fixedPartial)
+        assertEquals(1, result.dispenseCompleted)
+        assertEquals(2, result.dispensePartial)
     }
 
     @Test
@@ -213,8 +213,8 @@ class HelperFunctionsTest {
         // FORCE_COMPLETED falls through the else -> {} branch
         val rows = listOf(DispenseStatusCount(CountStatus.FORCE_COMPLETED, 99))
         val result = HelperFunctions.mapCounts(rows)
-        assertEquals(0, result.fixedCompleted)
-        assertEquals(0, result.fixedPartial)
+        assertEquals(0, result.dispenseCompleted)
+        assertEquals(0, result.dispensePartial)
     }
 
 }

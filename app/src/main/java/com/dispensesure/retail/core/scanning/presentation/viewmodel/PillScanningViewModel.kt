@@ -183,7 +183,8 @@ class PillScanningViewModel @Inject constructor(
     // A stock loose-count session writes NOTHING to dispense_txn / dispense_count.
     // ADDs are held in the in-memory staging buffer for the whole session and, on Done, the
     // aggregate is written as looseQty onto the active BottleInfo line ([stockBottleId]).
-    private var isStockCountSession = false
+    private val isStockCountSession: Boolean
+        get() = _uiState.value.isStockCountSession
     private var stockBottleId = 0L
     // StockTxn header resolved on the compulsory NDC scan. For the "Scan Pills" (loose) flow the
     // BottleInfo row is not created up front — Done inserts one fresh row per counting session
@@ -234,7 +235,7 @@ class PillScanningViewModel @Inject constructor(
         expNo: String? = null,
         serialNo: String? = null,
     ) {
-        isStockCountSession = true
+        _uiState.update { it.copy(isStockCountSession = true) }
         stockBottleId = bottleId
         stockCountBatchId = batchId
         this.stockTxnId = stockTxnId
@@ -647,8 +648,8 @@ class PillScanningViewModel @Inject constructor(
             }
         } else {
             // Regular dispense flow: each staged detail hits dispense_count, plus a
-            // second write to bump the parent txn's bottle-info list (linkDetailToActiveBottle
-            // decodes, appends the new detail id to the active bottle, then re-encodes and
+            // second write to bump the parent txn's bottle-info list (linkCountToActiveBottle
+            // decodes, appends the new count id to the active bottle, then re-encodes and
             // persists). A process death between those two writes previously left a detail
             // row unreferenced by any bottle. withTransaction wraps the whole flush so either
             // all details + their linkages commit or nothing does.
@@ -656,8 +657,8 @@ class PillScanningViewModel @Inject constructor(
                 val txn = dispenseTxnDao.getById(txnId)
                 val bottles = DispenseBottleJson.decode(txn?.bottlesJson)
                 stagedDetails.forEach { entity ->
-                    val newDetailsId = dispenseCountDao.insert(entity.copy(txnId = txnId))
-                    linkDetailToActiveBottle(txnId, bottles, newDetailsId)
+                    val newCountId = dispenseCountDao.insert(entity.copy(txnId = txnId))
+                    linkCountToActiveBottle(txnId, bottles, newCountId)
                 }
             }
             logger.i("Flushed ${stagedDetails.size} staged details to DB. stagedSum=$stagedSum txnId=$txnId")
@@ -668,21 +669,21 @@ class PillScanningViewModel @Inject constructor(
     }
 
     /**
-     * Appends [newDetailsId] to the currently active (last) bottle's [DispenseBottle.countIds]
+     * Appends [newCountId] to the currently active (last) bottle's [DispenseBottle.countIds]
      * and persists it. No-op if the txn has no bottle entries yet (no bottle scanned before
      * this pill was counted — legacy/no-GS1-scan txns). [bottles] is the list resolved once by
      * the caller (avoids a redundant decode per staged row when flushing several at once);
      * the write itself re-reads+re-writes fresh each call so concurrent appends don't clobber
      * each other.
      */
-    private suspend fun linkDetailToActiveBottle(txnId: Long, bottles: List<DispenseBottle>, newDetailsId: Long) {
+    private suspend fun linkCountToActiveBottle(txnId: Long, bottles: List<DispenseBottle>, newCountId: Long) {
         if (bottles.isEmpty()) return
         val txn = dispenseTxnDao.getById(txnId) ?: return
         val current = DispenseBottleJson.decode(txn.bottlesJson).toMutableList()
         if (current.isEmpty()) return
         val lastIndex = current.lastIndex
         current[lastIndex] = current[lastIndex].copy(
-            countIds = current[lastIndex].countIds + newDetailsId
+            countIds = current[lastIndex].countIds + newCountId
         )
         dispenseTxnDao.updateBottles(txnId, DispenseBottleJson.encode(current))
     }
@@ -1738,8 +1739,8 @@ class PillScanningViewModel @Inject constructor(
                     // per-ADD here to match the per-row insert.
                     // One transaction so a View All delete can't overwrite the bottle list mid-link.
                     appDatabase.withTransaction {
-                        val newDetailsId = dispenseCountDao.insert(detail)
-                        linkDetailToActiveBottle(txnId, bottles, newDetailsId)
+                        val newCountId = dispenseCountDao.insert(detail)
+                        linkCountToActiveBottle(txnId, bottles, newCountId)
                     }
 
                     if (!workingBitmap.isRecycled) workingBitmap.recycle()
@@ -1804,10 +1805,8 @@ class PillScanningViewModel @Inject constructor(
             }
 
             StepState.TARGET_VERIFICATION -> {
-                if (_txnInfo.value != null && !isStockCountSession && _uiState.value.targetCount == _uiState.value.txnDetailHistory.sumOf { it.count }) {
+                if (_txnInfo.value != null && _uiState.value.targetCount == _uiState.value.txnDetailHistory.sumOf { it.count }) {
                     moveNextStep()
-                } else if (isStockCountSession) {
-                    handleDone()
                 } else {
                     _uiState.update { it.copy(showErrorMessage = context.getString(R.string.pills_count_should_be_greater_than_target_count)) }
                 }

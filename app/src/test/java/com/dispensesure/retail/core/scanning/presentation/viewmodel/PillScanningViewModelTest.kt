@@ -24,6 +24,7 @@ import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
+import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
@@ -779,8 +780,10 @@ class PillScanningViewModelTest {
      * withTransaction. Fresh batch (stockCountBatchId == 0L), no pre-existing
      * bottle (stockBottleId == 0L), no pre-existing header (stockTxnId == 0L).
      */
+    @Suppress("UNCHECKED_CAST")
     private fun seedDeferredStockSession() {
-        setPrivateField("isStockCountSession", true)
+        val uiStateFlow = getPrivateField("_uiState") as MutableStateFlow<PillScanningUiState>
+        uiStateFlow.value = uiStateFlow.value.copy(isStockCountSession = true)
         setPrivateField("stockDrugId", 42L)
         setPrivateField("stockBottleId", 0L)
         setPrivateField("stockTxnId", 0L)

@@ -16,7 +16,6 @@ class CountItemTest {
         ndc: String? = "12345-678-90",
         drugType: String? = "Capsule",
         bucketId: String? = "bucket-1",
-        pillCount: Int = 30,
         target: Int = 60,
         bottlesJson: String? = "barcode.png",
         date: String = "2026-06-17",
@@ -30,7 +29,6 @@ class CountItemTest {
         ndc = ndc,
         drugType = drugType,
         bucketId = bucketId,
-        pillCount = pillCount,
         target = target,
         bottlesJson = bottlesJson,
         date = date,
@@ -48,7 +46,6 @@ class CountItemTest {
             ndc = "12345-678-90",
             drugType = "Capsule",
             bucketId = "bucket-1",
-            pillCount = 30,
             target = 60,
             bottlesJson = "barcode.png",
             date = "2026-06-17",
@@ -68,7 +65,6 @@ class CountItemTest {
             ndc = null,
             drugType = null,
             bucketId = null,
-            pillCount = 12,
             target = 24,
             bottlesJson = null,
             date = "2026-01-01",
@@ -83,7 +79,6 @@ class CountItemTest {
         assertNull(item.ndc)
         assertNull(item.drugType)
         assertNull(item.bucketId)
-        assertEquals(12, item.pillCount)
         assertEquals(24, item.target)
         assertNull(item.bottlesJson)
         assertEquals("2026-01-01", item.date)
@@ -114,9 +109,9 @@ class CountItemTest {
     @Test
     fun `copy overrides selected fields and keeps others`() {
         val original = sample(priority = TxnPriority.Low)
-        val copy = original.copy(pillCount = 100, priority = TxnPriority.Medium)
+        val copy = original.copy(target = 100, priority = TxnPriority.Medium)
 
-        assertEquals(100, copy.pillCount)
+        assertEquals(100, copy.target)
         assertEquals(TxnPriority.Medium, copy.priority)
         assertEquals(original.name, copy.name)
         assertEquals(original.id, copy.id)
@@ -130,7 +125,6 @@ class CountItemTest {
             ndc = "ndc",
             drugType = "type",
             bucketId = "bucket",
-            pillCount = 7,
             target = 14,
             bottlesJson = "img",
             date = "date",
@@ -140,7 +134,7 @@ class CountItemTest {
             priority = TxnPriority.Medium
         )
 
-        val (id, name, ndc, drugType, bucketId, pillCount, target, barcodeImage,
+        val (id, name, ndc, drugType, bucketId, target, barcodeImage,
             date, image, isComingFromHL7, isNdcVerified, priority) = item
 
         assertEquals(5L, id)
@@ -148,7 +142,6 @@ class CountItemTest {
         assertEquals("ndc", ndc)
         assertEquals("type", drugType)
         assertEquals("bucket", bucketId)
-        assertEquals(7, pillCount)
         assertEquals(14, target)
         assertEquals("img", barcodeImage)
         assertEquals("date", date)

@@ -9,16 +9,16 @@ class CountBucketsTest {
 
     @Test
     fun getters_returnValues() {
-        val buckets = CountBuckets(fixedCompleted = 1, fixedPartial = 2)
-        assertEquals(1, buckets.fixedCompleted)
-        assertEquals(2, buckets.fixedPartial)
+        val buckets = CountBuckets(dispenseCompleted = 1, dispensePartial = 2)
+        assertEquals(1, buckets.dispenseCompleted)
+        assertEquals(2, buckets.dispensePartial)
     }
 
     @Test
     fun defaultValues_areZero() {
         val buckets = CountBuckets()
-        assertEquals(0, buckets.fixedCompleted)
-        assertEquals(0, buckets.fixedPartial)
+        assertEquals(0, buckets.dispenseCompleted)
+        assertEquals(0, buckets.dispensePartial)
     }
 
     @Test
@@ -36,15 +36,15 @@ class CountBucketsTest {
 
     @Test
     fun toString_containsValues() {
-        assertTrue(CountBuckets(1, 2).toString().contains("fixedCompleted=1"))
+        assertTrue(CountBuckets(1, 2).toString().contains("dispenseCompleted=1"))
     }
 
     @Test
     fun copy_overridesValues() {
         val a = CountBuckets(1, 2)
-        val b = a.copy(fixedPartial = 20)
-        assertEquals(1, b.fixedCompleted)
-        assertEquals(20, b.fixedPartial)
+        val b = a.copy(dispensePartial = 20)
+        assertEquals(1, b.dispenseCompleted)
+        assertEquals(20, b.dispensePartial)
     }
 
     @Test

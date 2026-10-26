@@ -555,61 +555,6 @@ interface DispenseTxnDao {
         updatedAt: Long = System.currentTimeMillis()
     )
 
-    /**
-     * Returns all transactions within a given date range, joined with drug details and totals.
-     *
-     * Useful for generating daily reports or summaries.
-     *
-     * @param startOfDay Start timestamp (inclusive).
-     * @param endOfDay End timestamp (exclusive).
-     * @return A [Flow] emitting a list of [DispenseTxnSummary] for the date window.
-     */
-    @Query(
-        """
-    SELECT
-        txn.txnId,
-        txn.status,
-        COALESCE(SUM(details.pillCount), 0) AS pillCount,
-        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
-             THEN subDrug.drugName ELSE drug.drugName END AS drugName,
-        CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
-             THEN subDrug.ndc ELSE drug.ndc END AS ndc,
-        txn.bottlesJson,
-        txn.createdAt,
-        txn.targetCount,
-        txn.note,
-        txn.bucketId,
-        txn.rxNo,
-        txn.refillNo,
-        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
-             THEN subDrug.drugType ELSE drug.drugType END AS drugType,
-        CASE WHEN txn.isSubstitute = 1 AND subDrug.strength IS NOT NULL
-             THEN subDrug.strength ELSE drug.strength END AS strength,
-        CASE WHEN txn.isSubstitute = 1 AND subDrug.dosageForm IS NOT NULL
-             THEN subDrug.dosageForm ELSE drug.dosageForm END AS dosageForm,
-        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugImagePath IS NOT NULL
-             THEN subDrug.drugImagePath ELSE drug.drugImagePath END AS drugImagePath
-    FROM dispense_txn AS txn
-    LEFT JOIN dispense_count AS details
-           ON txn.txnId = details.txnId
-    LEFT JOIN drug_master AS drug
-           ON txn.drugId = drug.drugId
-    LEFT JOIN drug_master AS subDrug
-           ON txn.substitutedDrugId = subDrug.drugId
-    WHERE txn.createdAt >= :startOfDay
-      AND txn.createdAt < :endOfDay
-      AND txn.isDeleted = 0
-      AND (:status IS NULL OR txn.status = :status)
-    GROUP BY txn.txnId
-    ORDER BY txn.createdAt DESC
-    """
-    )
-    fun getTransactionsWithDrugByDate(
-        startOfDay: Long,
-        endOfDay: Long,
-        status: CountStatus?
-    ): Flow<List<DispenseTxnSummary>>
-
     @Query(
         """
     SELECT

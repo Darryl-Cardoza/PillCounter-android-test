@@ -6,14 +6,12 @@ import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
-import com.dispensesure.retail.core.room.models.enums.CountStatus
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.unmockkAll
-import io.mockk.verify
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -53,25 +51,13 @@ class HistoryRepositoryTest {
     fun `getTransactionsForDateRange delegates to DAO with epoch millis and returns its flow`() = runTest {
         every { dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any()) } returns flowOf(emptyList())
 
-        val flow = repository.getTransactionsForDateRange(today, today, null, 1L)
+        val flow = repository.getTransactionsForDateRange(today, today, 1L)
 
         flow.test {
             val list = awaitItem()
             assertTrue(list.isEmpty())
             cancelAndIgnoreRemainingEvents()
         }
-    }
-
-    // HIST_REPO_002
-    @Test
-    fun `getTransactionsForDateRange passes the status to DAO`() = runTest {
-        every { dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any()) } returns flowOf(emptyList())
-
-        repository.getTransactionsForDateRange(today, today, CountStatus.COMPLETED, 1L)
-            .test { cancelAndIgnoreRemainingEvents() }
-
-        // Verify the status was forwarded
-        verify { dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), CountStatus.COMPLETED, any()) }
     }
 
     // HIST_REPO_003

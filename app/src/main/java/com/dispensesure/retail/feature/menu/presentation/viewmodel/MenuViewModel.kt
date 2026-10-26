@@ -79,8 +79,8 @@ class MenuViewModel @Inject constructor(
                 .collect { counts ->
                     _uiState.update { current ->
                         current.copy(
-                            fixedCompleted = counts.fixedCompleted,
-                            fixedPartial = counts.fixedPartial,
+                            dispenseCompleted = counts.dispenseCompleted,
+                            dispensePartial = counts.dispensePartial,
                         )
                     }
                 }

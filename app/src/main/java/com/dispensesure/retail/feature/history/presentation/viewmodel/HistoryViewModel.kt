@@ -7,7 +7,6 @@ import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.history.data.HistoryRepository
 import com.dispensesure.retail.feature.history.domain.model.HistoryDeleteFilter
-import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.history.domain.model.ToggleOption
 import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
@@ -49,10 +48,6 @@ class HistoryViewModel @Inject constructor(
     val startDate: StateFlow<LocalDate> = _startDate
     val endDate: StateFlow<LocalDate> = _endDate
 
-    // Mode
-    private val _currentMode = MutableStateFlow(HistoryMode.NORMAL)
-    val currentMode: StateFlow<HistoryMode> = _currentMode
-
     // Search query (local filter only)
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
@@ -78,10 +73,9 @@ class HistoryViewModel @Inject constructor(
                 repository.getTransactionsForDateRange(
                     startDate = start,
                     endDate = end,
-                    status = null,
                     userLocalId = preferenceHelper.getLocalId()
                 ).catch { e ->
-                    // Caught per query so a later date/mode change still loads.
+                    // Caught per query so a later date change still loads.
                     logger.e("Observing transactions for date range failed", e, event = LogEvent.HISTORY_LOAD_FAILED)
                     emit(emptyList())
                 }
@@ -146,10 +140,6 @@ class HistoryViewModel @Inject constructor(
             }
         }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    fun setHistoryMode(mode: HistoryMode) {
-        _currentMode.value = mode
-    }
 
     fun selectDate(date: LocalDate) {
         _selectedDate.value = date

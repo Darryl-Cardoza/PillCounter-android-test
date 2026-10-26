@@ -253,12 +253,12 @@ class Hl7Repository @Inject constructor(
                 return
             }
 
-            val txns = stockBottleInfoDao.getByBatchId(batchId)
-            logger.i("txns count = ${txns.size}, txns = $txns")
+            val bottles = stockBottleInfoDao.getByBatchId(batchId)
+            logger.i("bottles count = ${bottles.size}, bottles = $bottles")
 
             val chunks = HL7MessageBuilder.buildInventoryMessageChunks(
                 batch = batch,
-                txns = txns,
+                txns = bottles,
                 config = currentHl7Config()
             )
 

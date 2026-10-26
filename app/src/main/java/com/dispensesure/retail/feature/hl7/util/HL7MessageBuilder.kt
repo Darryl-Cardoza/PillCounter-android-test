@@ -172,10 +172,10 @@ object HL7MessageBuilder {
         // the detail rows — there is no stored pill count on
         // DispenseBottle itself, so this keeps a bottle's reported count correct even if a detail
         // row was deleted/redone after the bottle was scanned.
-        val pillCountByDetailsId = dispensedDetails.associate { it.countId to (it.pillCount ?: 0) }
+        val pillCountByCountId = dispensedDetails.associate { it.countId to (it.pillCount ?: 0) }
         val bottles = DispenseBottleJson.decode(txn.bottlesJson)
         val bottleCounts = bottles.map { bottle ->
-            bottle.countIds.sumOf { id -> pillCountByDetailsId[id] ?: 0 }
+            bottle.countIds.sumOf { id -> pillCountByCountId[id] ?: 0 }
         }
 
         // Must be > 0, not just "bottles exist": a bottle scanned after its pills were counted
