@@ -252,9 +252,9 @@ class PillAnalyzer(
 
             // ── STEP 2b: Detect tray color ────────────────────────────────────────
             // Always runs when trays are present — the classification popup is gated
-            // in processDetections (isTrayColorDetectionEnabled), not here. Keeping
+            // in processDetections (HazardousTrayMonitor.isDetectionEnabled), not here. Keeping
             // detection unconditional avoids a main-thread / background-thread race
-            // where the flag update from setHazardousTransaction() might not be
+            // where the flag update from configureHazardous() might not be
             // visible to this Dispatchers.Default coroutine yet.
             // Each tray crop is downsized to 64×64, so this adds < 2 ms per tray.
             logger.d("PillAnalyzer step2b: trays=${trayDetections.size} shouldDetectTrayColor=${shouldDetectTrayColor()}")

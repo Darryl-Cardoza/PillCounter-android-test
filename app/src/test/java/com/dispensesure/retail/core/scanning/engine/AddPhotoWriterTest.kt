@@ -10,6 +10,7 @@ import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.scanning.logic.TrayClass
 import com.dispensesure.retail.core.scanning.logic.TrayDetection
 import com.dispensesure.retail.core.security.ImageCrypto
+import com.dispensesure.retail.core.utils.common.HelperFunctions
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.OverlayUtils
 import com.dispensesure.retail.core.utils.common.PhotoInfo
@@ -202,6 +203,37 @@ class AddPhotoWriterTest {
             // No lookup has finished yet, so the fallback text is shown.
             assertEquals("Location unavailable", location)
         }
+    }
+
+    @Test
+    fun `the photo with the strip is recycled after the write`() = runTest {
+        val photoWithStrip = solidFrame()
+        every { OverlayUtils.drawDetectionsOnBitmap(any(), any(), any(), any(), any(), any()) } returns photoWithStrip
+
+        addPhotoWriter.write(capturedAdd(solidFrame(), trayAndChute), label, keepRawCrop = false, grayscale = false)
+
+        assertTrue(photoWithStrip.isRecycled)
+    }
+
+    @Test
+    fun `the frame is recycled once when drawing fell back to it`() = runTest {
+        // No tray, so the crop is the frame; drawing returns its input, so all three are one bitmap.
+        mockkObject(HelperFunctions)
+        every { HelperFunctions.saveBitmapToFile(any(), any(), any(), any(), any()) } returns "/photos/txn_detail.jpg"
+        val frame = mockk<Bitmap>(relaxed = true)
+
+        addPhotoWriter.write(capturedAdd(frame), label, keepRawCrop = false, grayscale = false)
+
+        verify(exactly = 1) { frame.recycle() }
+    }
+
+    @Test
+    fun `a failed write still refreshes the location`() = runTest {
+        coEvery { userDao.getByUserId("user-1") } throws IllegalStateException("db closed")
+
+        runCatching { addPhotoWriter.write(capturedAdd(solidFrame()), label, keepRawCrop = false, grayscale = false) }
+
+        coVerify(timeout = 3000) { locationProvider.getCurrentLocationAsString() }
     }
 
     @Test

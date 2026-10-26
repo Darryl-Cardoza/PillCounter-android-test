@@ -299,7 +299,7 @@ class PillScanningViewModel @Inject constructor(
         when (event) {
             EngineEvent.GlovesConfirmed -> saveGlovesPresent()
             is EngineEvent.HazardousTrayResult -> saveHazardousTrayDetected(event.detected)
-            is EngineEvent.Warning -> showToast(context.getString(event.text))
+            is EngineEvent.Warning -> showToast(context.getString(event.messageRes))
         }
     }
 
@@ -661,10 +661,7 @@ class PillScanningViewModel @Inject constructor(
     /** Called when the COUNTING stage begins; see [PillCountingEngine.configureHazardous]. */
     fun setHazardousTransaction(isHazardousByDrug: Boolean) = engine.configureHazardous(isHazardousByDrug)
 
-    /**
-     * Saves the user's classification choice for the pending tray color.
-     * Adds the color to the appropriate preference list and dismisses the popup.
-     */
+    /** Saves the user's popup answer; a yes makes [color] the saved hazardous tray colour. */
     fun classifyTrayColor(color: TrayColor, isHazardous: Boolean) = engine.classifyTray(color, isHazardous)
 
     private fun saveHazardousTrayDetected(detected: Boolean) {

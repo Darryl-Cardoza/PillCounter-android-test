@@ -17,20 +17,16 @@ import com.dispensesure.retail.core.scanning.logic.TrayColor
 import com.dispensesure.retail.core.utils.common.HelperFunctions
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.OverlayUtils
-import com.dispensesure.retail.core.utils.common.PhotoInfo
 import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.util.MainDispatcherRule
-import io.mockk.CapturingSlot
-import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
-import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
@@ -130,8 +126,8 @@ class PillCountingEngineTest {
         return engine.captureCount(count) as CaptureResult.Captured
     }
 
-    /** No placeholder drawable, file writes return "/photos/<name>", the strip drawing is captured. */
-    private fun stubPhotoWrites(): CapturingSlot<PhotoInfo> {
+    /** No placeholder drawable, file writes return "/photos/<name>", the strip drawing returns its input. */
+    private fun stubPhotoWrites() {
         mockkStatic(ContextCompat::class)
         every { ContextCompat.getDrawable(any(), any()) } returns null
         mockkObject(HelperFunctions)
@@ -140,11 +136,7 @@ class PillCountingEngineTest {
             "/photos/$fileName"
         }
         mockkObject(OverlayUtils)
-        val stampedPhotoInfo = slot<PhotoInfo>()
-        every {
-            OverlayUtils.drawDetectionsOnBitmap(any(), any(), capture(stampedPhotoInfo), any(), any(), any())
-        } answers { firstArg() }
-        return stampedPhotoInfo
+        every { OverlayUtils.drawDetectionsOnBitmap(any(), any(), any(), any(), any(), any()) } answers { firstArg() }
     }
 
     // ─────────────────────────── model loading ───────────────────────────
@@ -492,90 +484,13 @@ class PillCountingEngineTest {
     // ─────────────────────────── saveCountPhoto ───────────────────────────
 
     @Test
-    fun `saveCountPhoto writes the photo without a raw crop and recycles the frame`() = runTest {
-        stubPhotoWrites()
-        val frame = mockk<Bitmap>(relaxed = true)
-
-        val photo = engine.saveCountPhoto(captureWithFrame(frame), label, keepRawCrop = false)
-
-        assertTrue(photo.imagePath!!.startsWith("/photos/txn_detail_"))
-        assertNull(photo.rawImagePath)
-        verify { frame.recycle() }
-    }
-
-    @Test
-    fun `saveCountPhoto with keepRawCrop also writes the raw crop`() = runTest {
-        stubPhotoWrites()
-
-        val photo = engine.saveCountPhoto(captureWithFrame(), label, keepRawCrop = true)
-
-        assertTrue(photo.imagePath!!.endsWith(".jpg"))
-        assertTrue(photo.rawImagePath!!.endsWith("_raw.jpg"))
-    }
-
-    @Test
-    fun `saveCountPhoto stamps the label, count, user and location on the strip`() = runTest {
-        val stampedPhotoInfo = stubPhotoWrites()
-        coEvery { userDao.getByUserId(any()) } returns null
-
-        engine.saveCountPhoto(captureWithFrame(count = 7), label, keepRawCrop = false)
-
-        with(stampedPhotoInfo.captured) {
-            assertEquals("Amoxicillin 500 mg", drugName)
-            assertEquals("11111-1111-11", requestedNdc)
-            assertEquals("22222-2222-22", dispensedNdc)
-            assertEquals("L1", lotNumber)
-            assertEquals("S1", serialNumber)
-            assertEquals("04-30-2028", expirationDate)
-            assertEquals("123-2", rxRefill)
-            assertEquals("TARGET_VERIFICATION", stepLabel)
-            assertFalse(isStockCount)
-            assertEquals(7, count)
-            assertEquals("", userName)
-            // No lookup has finished yet, so the fallback text is shown.
-            assertEquals("Location unavailable", location)
-        }
-    }
-
-    @Test
-    fun `saveCountPhoto writes grayscale when the colour setting is off`() = runTest {
+    fun `saveCountPhoto passes grayscale to the writer when the colour setting is off`() = runTest {
         stubPhotoWrites()
         every { preferenceHelper.getIsColorImageEnabled() } returns false
 
         engine.saveCountPhoto(captureWithFrame(), label, keepRawCrop = false)
 
         verify { HelperFunctions.saveBitmapToFile(any(), any(), any(), any(), grayscale = true) }
-    }
-
-    @Test
-    fun `saveCountPhoto recycles the photo with the strip`() = runTest {
-        stubPhotoWrites()
-        val photoWithStrip = mockk<Bitmap>(relaxed = true)
-        every { OverlayUtils.drawDetectionsOnBitmap(any(), any(), any(), any(), any(), any()) } returns photoWithStrip
-
-        engine.saveCountPhoto(captureWithFrame(), label, keepRawCrop = false)
-
-        verify { photoWithStrip.recycle() }
-    }
-
-    @Test
-    fun `saveCountPhoto recycles the frame once when drawing fell back to it`() = runTest {
-        stubPhotoWrites() // drawing returns the input bitmap
-        val frame = mockk<Bitmap>(relaxed = true)
-
-        engine.saveCountPhoto(captureWithFrame(frame), label, keepRawCrop = false)
-
-        verify(exactly = 1) { frame.recycle() }
-    }
-
-    @Test
-    fun `saveCountPhoto refreshes the location even when the save throws`() = runTest {
-        stubPhotoWrites()
-        coEvery { userDao.getByUserId(any()) } throws IllegalStateException("db closed")
-
-        runCatching { engine.saveCountPhoto(captureWithFrame(), label, keepRawCrop = false) }
-
-        coVerify(timeout = 3000) { locationProvider.getCurrentLocationAsString() }
     }
 
     // ─────────────────────────── gloves ───────────────────────────

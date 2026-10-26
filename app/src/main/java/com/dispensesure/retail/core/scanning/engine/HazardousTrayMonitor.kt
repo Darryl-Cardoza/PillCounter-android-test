@@ -31,7 +31,7 @@ class HazardousTrayMonitor {
     // Prevents the "using hazardous tray" toast from firing on every frame for non-hazardous txns.
     private var hazardousTrayToastShown = false
     // Colour on the popup, waiting for the user's answer.
-    private var pendingTrayColor: TrayColor? = null
+    @Volatile private var pendingTrayColor: TrayColor? = null
 
     fun configure(isHazardousDrug: Boolean, hazardousSettingOn: Boolean, savedHazardousColor: String?) {
         lastHazardousByDrug = isHazardousDrug
@@ -55,11 +55,8 @@ class HazardousTrayMonitor {
     }
 
     // ── Tray color classification + hazardousTrayDetected DB save ────────
-    // Runs only for hazardous drug transactions. Saves exactly once per txn.
-    //
-    // Scenario 1 (setting OFF): immediate save — true if in hazardous list, false otherwise.
-    // Scenario 2 (setting ON):  true if in hazardous list (immediate), otherwise show popup;
-    //                           user response (yes/no) determines the saved value.
+    // Hazardous txn: saves the tray result once (setting on: asks if no colour is saved, warns on a wrong tray).
+    // Non-hazardous txn: warns once if the hazardous tray is used.
     /** [trayColor] is the first known tray colour of the frame, null when there is none. */
     fun observe(trayColor: TrayColor?): TrayDecision {
         logger.d(

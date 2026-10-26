@@ -5,19 +5,12 @@ import com.dispensesure.retail.core.scanning.logic.GloveDetection
 /** Locks in "gloves on" after [GLOVE_CONFIRM_FRAMES] strong glove frames in a row. */
 class GloveGate {
 
-    // Consecutive-frame counter guarding against single-frame flicker between
-    // "gloves" and "no_gloves" classes — require several consecutive strong
-    // detections before locking the session state, so one flickery frame
-    // doesn't permanently commit "gloves detected".
     private var consecutiveGloveFrames = 0
-    private var glovesLocked = false
+    @Volatile private var glovesLocked = false
 
     /** True only on the frame gloves lock in; false before and after, until [reset]. */
     fun observe(gloveDetections: List<GloveDetection>): Boolean {
         if (glovesLocked) return false
-        // Require several CONSECUTIVE strong detections before locking the session
-        // state — a single flickery frame (e.g. a bare hand momentarily misclassified
-        // as "gloves") must not permanently commit "gloves detected".
         val strongGloveThisFrame = gloveDetections.any { glove ->
             glove.classId == 0 && glove.confidence >= MIN_GLOVE_CONFIDENCE
         }

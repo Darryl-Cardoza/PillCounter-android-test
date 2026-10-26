@@ -473,13 +473,8 @@ class PillCountingEngine @AssistedInject constructor(
     }
 
     /**
-     * Called when COUNTING stage begins.
-     *
-     * Scenario 1 — setting OFF + drug hazardous:
-     *   Detection runs, no popup. Result saved immediately based on hazardous-list lookup.
-     * Scenario 2 — setting ON + drug hazardous:
-     *   Detection runs, popup shown if color not in hazardous list. Result saved on user response.
-     * If drug is NOT hazardous: nothing runs, no DB write.
+     * Starts tray checks for the COUNTING stage.
+     * Hazardous drug: saves whether the saved hazardous tray was used. Other drugs: warns if it is used.
      */
     fun configureHazardous(isHazardousDrug: Boolean) {
         hazardousTrayMonitor.configure(
@@ -489,10 +484,7 @@ class PillCountingEngine @AssistedInject constructor(
         )
     }
 
-    /**
-     * Saves the user's classification choice for the pending tray color.
-     * Adds the color to the appropriate preference list and dismisses the popup.
-     */
+    /** Saves the user's popup answer; a yes makes [color] the saved hazardous tray colour. */
     fun classifyTray(color: TrayColor, isHazardous: Boolean) {
         if (isHazardous) preferenceHelper.setHazardousTrayColor(color.name)
         applyTrayDecision(hazardousTrayMonitor.classify(color, isHazardous))
