@@ -568,10 +568,11 @@ class DispenseFlowViewModelTest {
     @Test
     fun `onRxBarcodeRead exception sets error`() = runTest(testDispatcher) {
         coEvery { pillCountTxnDao.getActiveByRxNo(any()) } throws RuntimeException("boom")
+        every { appContext.getString(any()) } returns "generic error"
         val vm = createViewModel()
         vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
-        assertEquals("boom", vm.uiState.value.error)
+        assertEquals("generic error", vm.uiState.value.error)
         assertFalse(vm.uiState.value.isLoading)
     }
 
@@ -1034,9 +1035,10 @@ class DispenseFlowViewModelTest {
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin(any()) } throws RuntimeException("ndcfail")
         coEvery { drugMasterDao.getDrugByNdc(any()) } throws RuntimeException("ndcfail")
+        every { appContext.getString(any()) } returns "generic error"
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
-        assertEquals("ndcfail", vm.uiState.value.error)
+        assertEquals("generic error", vm.uiState.value.error)
     }
 
     @Test
@@ -1046,9 +1048,10 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
         coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any()) } throws RuntimeException("offline")
+        every { appContext.getString(any()) } returns "generic error"
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
-        assertEquals("offline", vm.uiState.value.error)
+        assertEquals("generic error", vm.uiState.value.error)
         assertFalse(vm.uiState.value.isLoading)
         // DrugResolver logs the failure; the view model must not log it again.
         verify(exactly = 0) { android.util.Log.e(any(), "NDC barcode processing failed", any()) }

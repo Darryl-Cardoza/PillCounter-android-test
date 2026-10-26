@@ -415,7 +415,7 @@ class DispenseFlowViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 logger.e("RX barcode processing failed", e, event = LogEvent.RX_SCAN_FAILED)
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
+                _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
             }
         }
     }
@@ -631,14 +631,14 @@ class DispenseFlowViewModel @Inject constructor(
                         _uiState.update { it.copy(isLoading = false, showNdcNotFoundDialog = true) }
                     // DrugResolver already logged the failure, so don't rethrow into the catch below.
                     is DrugLookup.Failed ->
-                        _uiState.update { it.copy(isLoading = false, error = lookup.error.message) }
+                        _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
                 }
             } catch (e: CancellationException) {
                 _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
                 throw e
             } catch (e: Exception) {
                 logger.e("NDC barcode processing failed", e, event = LogEvent.NDC_SCAN_FAILED)
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
+                _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
             }
         })
     }
@@ -748,7 +748,7 @@ class DispenseFlowViewModel @Inject constructor(
                 } catch (e: Exception) {
                     // Surface the failure the way the scan-time path used to.
                     logger.e("Standalone dispense txn creation failed", e, event = LogEvent.DISPENSE_FAILED)
-                    _uiState.update { it.copy(error = e.message) }
+                    _uiState.update { it.copy(error = appContext.getString(R.string.error_generic)) }
                 }
             })
             return
