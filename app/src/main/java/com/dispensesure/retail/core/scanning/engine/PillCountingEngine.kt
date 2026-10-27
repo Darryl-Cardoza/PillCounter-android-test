@@ -311,7 +311,7 @@ class PillCountingEngine @AssistedInject constructor(
         performanceLogger = performanceLogger,
         shouldRunGloveDetection = { shouldRunGloveDetection },
         shouldDetectTrayColor = { isTrayColorDetectionEnabled },
-        onResult = { count, detections, trayDetections, gloveDetections, bitmap, _, imageWidth, imageHeight ->
+        onResult = { count, detections, trayDetections, gloveDetections, bitmap, imageWidth, imageHeight ->
             processDetections(
                 count           = count,
                 detections      = detections,

@@ -1013,7 +1013,7 @@ fun DispenseFlowScreen(
                         .tourTarget(ftueState, "camera_preview"),
                     imageFrameWidth = pillState.imageFrameWidth,
                     imageFrameHeight = pillState.imageFrameHeight,
-                    onPreviewSizeKnown = { _, _ ->
+                    onCameraReady = {
                         pillVm.initializeInterpreter()
                     }
                 )

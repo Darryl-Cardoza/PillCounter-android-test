@@ -1,7 +1,6 @@
 ﻿package com.dispensesure.retail.core.scanning.logic
 
 import android.graphics.Bitmap
-import android.graphics.Matrix
 import android.graphics.PointF
 import android.graphics.Rect
 import androidx.camera.core.ImageProxy
@@ -53,7 +52,6 @@ class PillAnalyzer(
         trayRects: List<TrayDetection>,
         gloveDetections: List<GloveDetection>,
         debugBitmap: Bitmap,
-        transformMatrix: Matrix,
         imageWidth: Int,
         imageHeight: Int
     ) -> Unit
@@ -427,7 +425,6 @@ class PillAnalyzer(
                 displayTrayDetections,
                 gloveDetections,
                 originalBitmap,
-                Matrix(),
                 originalWidth,
                 originalHeight
             )
