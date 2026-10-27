@@ -61,7 +61,7 @@ and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/)
   ViewModel, and the count-mode UI.
 - **User flow.** Scan RX → scan/confirm NDC → CameraX preview → TFLite counts
   pills (glove + tray detection) → user ADDs counts → DONE persists a
-  `PillCountTxn` (+ details) to the encrypted DB → optional HL7 RXD/INV emitted.
+  `DispenseTxn` (+ counts) to the encrypted DB → optional HL7 RXD/INV emitted.
 - **Entry points.** `Screen.DispenseFlow.createRoute(scanType, fromHl7, fromResume,
   batchId, bucketId)`. `from_hl7` hydrates from a PMS-created transaction
   (drug/NDC/target prefilled, RX scan skipped). Also entered from resume screens,
@@ -97,7 +97,7 @@ and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/)
 
 ### `dashboard` + `menu`
 
-- Dashboard aggregates count KPIs (from `PillCountTxnDao`/`BatchDao`), user detail
+- Dashboard aggregates count KPIs (from `DispenseTxnDao`/`StockBatchDao`), user detail
   (`IUserDetailAPI`) and terminal config (`ITerminalApi`); has responsive
   `variant/` layouts (phone/tablet × portrait/landscape). Menu is the navigation
   hub with quick stat badges.

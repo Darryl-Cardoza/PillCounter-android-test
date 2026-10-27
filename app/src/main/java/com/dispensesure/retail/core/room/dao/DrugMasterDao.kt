@@ -13,7 +13,7 @@ import com.dispensesure.retail.core.room.models.DrugMasterEntity
  *
  * ### Design Principles
  * - **Stable Primary Key**: `drugId` (PK) is the only FK exposed to other tables
- *   (e.g., [com.dispensesure.retail.core.room.models.PillCountTxnEntity]).
+ *   (e.g., [com.dispensesure.retail.core.room.models.DispenseTxnEntity]).
  * - **Preserve IDs**: All upserts ensure the same `drugId` is reused if an NDC already exists.
  * - **Safe Defaults**:
  *   - Avoid `OnConflictStrategy.REPLACE` (can reset PKs and break FKs).

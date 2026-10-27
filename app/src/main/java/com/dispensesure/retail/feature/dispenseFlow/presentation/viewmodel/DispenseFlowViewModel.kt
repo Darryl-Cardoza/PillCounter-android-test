@@ -9,15 +9,15 @@ import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.data.DrugResolver
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
 import com.dispensesure.retail.core.utils.common.parseScanData
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -69,7 +69,7 @@ class DispenseFlowViewModel @Inject constructor(
     private val drugResolver: DrugResolver,
     private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
-    private val pillCountTxnDao: PillCountTxnDao,
+    private val dispenseTxnDao: DispenseTxnDao,
 ) : ViewModel() {
 
     private val logger = AppLogger("DispenseFlowVM")
@@ -148,7 +148,7 @@ class DispenseFlowViewModel @Inject constructor(
                     _uiState.update { it.copy(initResolved = true) }
                     return@launch
                 }
-                val txn = pillCountTxnDao.getById(txnId)
+                val txn = dispenseTxnDao.getById(txnId)
                 if (txn == null) {
                     logger.w("HL7 init: txn $txnId not found in DB — falling back to PRE_RX")
                     _uiState.update { it.copy(initResolved = true) }
@@ -211,13 +211,13 @@ class DispenseFlowViewModel @Inject constructor(
             _uiState.update { it.copy(initResolved = true) }
             return
         }
-        val txn = pillCountTxnDao.getById(txnId)
+        val txn = dispenseTxnDao.getById(txnId)
         if (txn == null) {
             logger.w("Resume init: txn $txnId not found in DB — falling back to PRE_RX")
             _uiState.update { it.copy(initResolved = true) }
             return
         }
-        pillCountTxnDao.updateGlovesPresent(txnId, false)
+        dispenseTxnDao.updateGlovesPresent(txnId, false)
         val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
 
         if (txn.isNdcVerified == true) {
@@ -313,9 +313,9 @@ class DispenseFlowViewModel @Inject constructor(
                 // COMPLETED status — only falls back to the bare rxNo lookup when the label
                 // doesn't encode a refill number at all.
                 val mostRecentTxn = if (!refillNo.isNullOrBlank()) {
-                    pillCountTxnDao.getByRxNoAndFillNo(rxNo, refillNo)
+                    dispenseTxnDao.getByRxNoAndFillNo(rxNo, refillNo)
                 } else {
-                    pillCountTxnDao.getMostRecentByRxNo(rxNo)
+                    dispenseTxnDao.getMostRecentByRxNo(rxNo)
                 }
                 if (mostRecentTxn?.status == CountStatus.COMPLETED || mostRecentTxn?.status == CountStatus.FORCE_COMPLETED) {
                     _uiState.update {
@@ -325,7 +325,7 @@ class DispenseFlowViewModel @Inject constructor(
                 }
 
                 // Check if this RX has an active local transaction (PARTIAL or ON_HOLD).
-                val existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
+                val existingTxn = dispenseTxnDao.getActiveByRxNo(rxNo)
                 if (existingTxn == null) {
                     // No PMS-created transaction found. In standalone mode, no PMS will
                     // ever send this txn, so the app is expected to originate the
@@ -376,7 +376,7 @@ class DispenseFlowViewModel @Inject constructor(
                         // (COUNTING). Otherwise show the sheet and defer the
                         // advance to PRE_NDC until the user taps Proceed.
                         val txnId = existingTxn.txnId
-                        pillCountTxnDao.updateGlovesPresent(txnId, false)
+                        dispenseTxnDao.updateGlovesPresent(txnId, false)
                         preferenceHelper.saveTxnId(txnId)
                         val ndcAlreadyVerified = existingTxn.isNdcVerified == true
                         val targetStage = if (ndcAlreadyVerified) DispenseStage.COUNTING else DispenseStage.PRE_NDC
@@ -422,7 +422,7 @@ class DispenseFlowViewModel @Inject constructor(
 
     /**
      * Resolves the drug for a standalone Rx label and shows the verify-Rx sheet.
-     * Writes nothing to pill_count_txn — [onRxConfirmed] creates the txn on Proceed.
+     * Writes nothing to dispense_txn — [onRxConfirmed] creates the txn on Proceed.
      */
     private suspend fun showStandaloneRxSheet(
         parsedNdc: String,
@@ -524,10 +524,9 @@ class DispenseFlowViewModel @Inject constructor(
      * @return the new txn's id.
      */
     private suspend fun createStandaloneDispenseTxn(draft: StandaloneRxDraft): Long {
-        val newTxn = PillCountTxnEntity(
-            localId = preferenceHelper.getLocalId(),
+        val newTxn = DispenseTxnEntity(
+            userLocalId = preferenceHelper.getLocalId(),
             drugId = draft.drugId,
-            isDispense = true,
             targetCount = draft.targetCount,
             status = CountStatus.PARTIAL,
             isComingFromHL7 = false,
@@ -543,7 +542,7 @@ class DispenseFlowViewModel @Inject constructor(
             transactionOrderId = draft.refillNo?.takeIf { it.isNotBlank() }?.let { "${draft.rxNo}-$it" } ?: draft.rxNo,
             bucketId = draft.bucket,
         )
-        return pillCountTxnDao.upsertPreservingId(newTxn)
+        return dispenseTxnDao.upsertPreservingId(newTxn)
     }
 
     /**
@@ -569,7 +568,7 @@ class DispenseFlowViewModel @Inject constructor(
      *      confirmation dialog instead of the success popup. The user has to
      *      accept the substitute explicitly via [confirmSubstitute].
      */
-    fun onNdcBarcodeRead(gtin14: String, imagePath: String?, firstBottle: BottleInfo? = null) {
+    fun onNdcBarcodeRead(gtin14: String, imagePath: String?, firstBottle: DispenseBottle? = null) {
         if (_uiState.value.stage != DispenseStage.PRE_NDC) return
         if (_uiState.value.isLoading) return
         if (gtin14.isBlank()) {
@@ -811,7 +810,7 @@ class DispenseFlowViewModel @Inject constructor(
 
         if (txnId == 0L) {
             // No pre-existing txn: stock-count Scan-Pills flow. Fully deferred —
-            // NO writes to batch / stock_txn / bottle_info until the user hits
+            // NO writes to batch / stock_txn / stock_bottle_info until the user hits
             // All Done and confirms the popup. Back-out before commit leaves zero
             // rows behind. PillScanningViewModel.flushStagedDetails owns the
             // atomic commit at Done time using [stockDrugId] + [selectedBucketId].
@@ -848,7 +847,7 @@ class DispenseFlowViewModel @Inject constructor(
             return
         }
 
-        val txn = pillCountTxnDao.getById(txnId) ?: return
+        val txn = dispenseTxnDao.getById(txnId) ?: return
         val isSubstitute = state.isSubstituteConfirmed
         val substitutedDrugId = if (isSubstitute && state.ndcScannedValue.isNotBlank()) {
             // The image was already downloaded during the NDC scan step (onNdcBarcodeRead).
@@ -870,16 +869,16 @@ class DispenseFlowViewModel @Inject constructor(
         // Stamp the first bottle scanned against this txn — only when the txn has no
         // bottle entries yet, so resuming an already-in-progress dispense (e.g. after
         // process death) doesn't clobber bottles already tracked via a rescan mid-count.
-        val existingBottles = BottleInfoJson.decode(txn.bottleInfoListJson)
-        val bottleInfoListJson = if (txn.isDispense && existingBottles.isEmpty() && state.pendingFirstBottle != null) {
-            BottleInfoJson.encode(listOf(state.pendingFirstBottle.copy(txnId = txnId)))
-        } else txn.bottleInfoListJson
-        pillCountTxnDao.update(
+        val existingBottles = DispenseBottleJson.decode(txn.bottlesJson)
+        val bottlesJson = if (existingBottles.isEmpty() && state.pendingFirstBottle != null) {
+            DispenseBottleJson.encode(listOf(state.pendingFirstBottle.copy(txnId = txnId)))
+        } else txn.bottlesJson
+        dispenseTxnDao.update(
             txn.copy(
                 isNdcVerified = true,
                 isSubstitute = isSubstitute,
                 substitutedDrugId = substitutedDrugId,
-                bottleInfoListJson = bottleInfoListJson,
+                bottlesJson = bottlesJson,
             )
         )
         _uiState.update { it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, pendingFirstBottle = null) }
@@ -907,7 +906,7 @@ class DispenseFlowViewModel @Inject constructor(
                 // The count is already wiped: a failed lookup only loses the display fallbacks, so still move the stage.
                 val drug = try {
                     txnId.takeIf { it != 0L }
-                        ?.let { pillCountTxnDao.getById(it) }
+                        ?.let { dispenseTxnDao.getById(it) }
                         ?.drugId?.let { drugMasterDao.getDrugById(it) }
                 } catch (e: CancellationException) {
                     throw e
@@ -948,9 +947,9 @@ class DispenseFlowViewModel @Inject constructor(
         val txnId = _uiState.value.txnId
         viewModelScope.launch {
             try {
-                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
                 val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
-                pillCountTxnDao.updateGlovesPresent(txnId, false)
+                dispenseTxnDao.updateGlovesPresent(txnId, false)
                 // Persist so pillVm.getDrugInfo() picks up the correct txn and restores
                 // the saved workflow step (workflowStep column) from the DB.
                 preferenceHelper.saveTxnId(txnId)
@@ -1027,7 +1026,7 @@ class DispenseFlowViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
 
                 val isSubstitute = state.isSubstituteConfirmed
                 val substitutedDrugId = if (isSubstitute && state.ndcScannedValue.isNotBlank()) {
@@ -1047,16 +1046,16 @@ class DispenseFlowViewModel @Inject constructor(
                     )
                 } else null
 
-                val existingBottles = BottleInfoJson.decode(txn.bottleInfoListJson)
-                val bottleInfoListJson = if (txn.isDispense && existingBottles.isEmpty() && state.pendingFirstBottle != null) {
-                    BottleInfoJson.encode(listOf(state.pendingFirstBottle.copy(txnId = txnId)))
-                } else txn.bottleInfoListJson
-                pillCountTxnDao.update(
+                val existingBottles = DispenseBottleJson.decode(txn.bottlesJson)
+                val bottlesJson = if (existingBottles.isEmpty() && state.pendingFirstBottle != null) {
+                    DispenseBottleJson.encode(listOf(state.pendingFirstBottle.copy(txnId = txnId)))
+                } else txn.bottlesJson
+                dispenseTxnDao.update(
                     txn.copy(
                         isNdcVerified = true,
                         isSubstitute = isSubstitute,
                         substitutedDrugId = substitutedDrugId,
-                        bottleInfoListJson = bottleInfoListJson,
+                        bottlesJson = bottlesJson,
                     )
                 )
                 _uiState.update {
@@ -1210,8 +1209,7 @@ class DispenseFlowViewModel @Inject constructor(
 
     private suspend fun hasPendingDispenseItems(): Boolean {
         val localId = preferenceHelper.getLocalId()
-        return pillCountTxnDao.countPartialByIsDispense(
-            isDispense = true,
+        return dispenseTxnDao.countPartialDispenses(
             partialStatus = CountStatus.PARTIAL,
             userLocalId = localId,
         ) > 0
@@ -1253,9 +1251,9 @@ class DispenseFlowViewModel @Inject constructor(
     fun resumeFromQueue(txnId: Long) {
         viewModelScope.launch {
             try {
-                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
                 preferenceHelper.saveTxnId(txnId)
-                pillCountTxnDao.updateGlovesPresent(txnId, false)
+                dispenseTxnDao.updateGlovesPresent(txnId, false)
                 val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
                 val targetStage = if (txn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC
                 _uiState.update {
@@ -1289,11 +1287,10 @@ class DispenseFlowViewModel @Inject constructor(
         queueObserverJob?.cancel()
         queueObserverJob = viewModelScope.launch(Dispatchers.IO) {
             val localId = preferenceHelper.getLocalId()
-            pillCountTxnDao.observePartialByIsDispense(
-                isDispense = true,
+            dispenseTxnDao.observePartialDispenses(
                 partialStatus = CountStatus.PARTIAL,
                 userLocalId = localId,
-                type = StepState.TARGET_VERIFICATION,
+                step = StepState.TARGET_VERIFICATION,
             ).catch { e ->
                 logger.e("Dispense queue observation failed", e, event = LogEvent.DISPENSE_FAILED)
             }.collect { txns ->

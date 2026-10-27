@@ -1,7 +1,7 @@
 package com.dispensesure.retail.feature.dashboard.domain.model
 
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
-import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -17,7 +17,7 @@ class QueueItemTest {
         txnId: Long = 1L,
         bucketId: String? = "bucket-1",
         createdAt: Long = 1000L,
-    ) = PillCountWithDrugAndTotal(
+    ) = DispenseTxnWithDrug(
         txnId = txnId,
         drugName = "Aspirin",
         ndc = "12345-678-90",
@@ -25,11 +25,10 @@ class QueueItemTest {
         bucketId = bucketId,
         createdAt = createdAt,
         targetCount = 30,
-        bottleInfoListJson = "img",
+        bottlesJson = "img",
         totalPillCount = 10,
         isComingFromHL7 = false,
         isNdcVerified = true,
-        isDispense = true,
         priority = TxnPriority.High,
         isHazardous = false,
     )

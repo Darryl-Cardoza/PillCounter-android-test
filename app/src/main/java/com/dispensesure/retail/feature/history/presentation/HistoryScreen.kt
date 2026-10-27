@@ -74,10 +74,6 @@ fun HistoryScreen(
     }
     val defaultToComplete = historyMode == HistoryMode.REGULAR || historyMode == HistoryMode.DISPENSE
 
-    LaunchedEffect(historyMode) {
-        viewModel.setHistoryMode(historyMode)
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()

@@ -3,11 +3,11 @@ package com.dispensesure.retail.feature.batchCount.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.room.models.BatchEntity
-import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
+import com.dispensesure.retail.core.room.models.StockBatchEntity
+import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -32,8 +32,8 @@ import javax.inject.Inject
 class BatchViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val stockTxnDao: StockTxnDao,
-    private val bottleInfoDao: BottleInfoDao,
-    private val batchDao: BatchDao,
+    private val stockBottleInfoDao: StockBottleInfoDao,
+    private val stockBatchDao: StockBatchDao,
     private val preferenceHelper: PreferenceHelper
 ) : ViewModel() {
 
@@ -42,8 +42,8 @@ class BatchViewModel @Inject constructor(
     private val _resolvedBatchId = MutableStateFlow(argBatchId)
     val displayBatchId: StateFlow<Long> = _resolvedBatchId.asStateFlow()
 
-    private val _batchEntity = MutableStateFlow<BatchEntity?>(null)
-    val batchEntity: StateFlow<BatchEntity?> = _batchEntity.asStateFlow()
+    private val _batchEntity = MutableStateFlow<StockBatchEntity?>(null)
+    val batchEntity: StateFlow<StockBatchEntity?> = _batchEntity.asStateFlow()
 
     private val _uniqueNdcCount = MutableStateFlow(0)
     val uniqueNdcCount: StateFlow<Int> = _uniqueNdcCount.asStateFlow()
@@ -54,12 +54,12 @@ class BatchViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val batchId = if (argBatchId == 0L) {
-                    batchDao.getLatest()?.batchId?.also { _resolvedBatchId.value = it } ?: 0L
+                    stockBatchDao.getLatest()?.batchId?.also { _resolvedBatchId.value = it } ?: 0L
                 } else {
                     argBatchId
                 }
                 if (batchId != 0L) {
-                    val entity = batchDao.getById(batchId)
+                    val entity = stockBatchDao.getById(batchId)
                     _batchEntity.value = entity
                     _uniqueNdcCount.value = stockTxnDao.getUniqueNdcCountForBatch(batchId)
                 }
@@ -75,7 +75,7 @@ class BatchViewModel @Inject constructor(
     val drugGroups: StateFlow<List<BatchDrugGroup>> = _resolvedBatchId
         .flatMapLatest { id ->
             if (id == 0L) flowOf(emptyList())
-            else bottleInfoDao.observeByBatchId(id).map { it.groupAndMap() }
+            else stockBottleInfoDao.observeByBatchId(id).map { it.groupAndMap() }
         }
         .catch { e -> logger.e("Failed to build batch drug groups", e, event = LogEvent.BATCH_PROCESS_FAILED) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
@@ -85,7 +85,7 @@ class BatchViewModel @Inject constructor(
             try {
                 val id = _resolvedBatchId.value
                 if (id != 0L) {
-                    batchDao.softDelete(id)
+                    stockBatchDao.softDelete(id)
                     stockTxnDao.deleteByBatchIds(listOf(id))
                 }
             } catch (e: CancellationException) {
@@ -103,7 +103,7 @@ class BatchViewModel @Inject constructor(
             ?: preferenceHelper.getUserId()
             ?: "—"
 
-    private fun List<BatchTxnDto>.groupAndMap(): List<BatchDrugGroup> =
+    private fun List<StockBottleInfoDto>.groupAndMap(): List<BatchDrugGroup> =
         groupBy { it.drugId }
             .map { (_, txns) ->
                 val sealedLots = txns

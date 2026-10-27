@@ -3,12 +3,12 @@ package com.dispensesure.retail.core.tourguide
 import android.content.Context
 import androidx.room.withTransaction
 import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -23,10 +23,10 @@ import javax.inject.Singleton
 class TutorialDataCleaner @Inject constructor(
     @ApplicationContext context: Context,
     private val db: AppDatabase,
-    private val txnDao: PillCountTxnDao,
-    private val batchDao: BatchDao,
+    private val dispenseTxnDao: DispenseTxnDao,
+    private val stockBatchDao: StockBatchDao,
     private val stockTxnDao: StockTxnDao,
-    private val bottleInfoDao: BottleInfoDao,
+    private val stockBottleInfoDao: StockBottleInfoDao,
     private val drugMasterDao: DrugMasterDao,
 ) {
     private val logger = AppLogger.create<TutorialDataCleaner>()
@@ -56,18 +56,18 @@ class TutorialDataCleaner @Inject constructor(
         val files = mutableListOf<String>()
         try {
         db.withTransaction {
-            txnDao.getTutorialTxnIds().forEach { id ->
-                BottleInfoJson.decode(txnDao.getById(id)?.bottleInfoListJson)
+            dispenseTxnDao.getTutorialTxnIds().forEach { id ->
+                DispenseBottleJson.decode(dispenseTxnDao.getById(id)?.bottlesJson)
                     .mapNotNull { it.barcodeImagePath }.let(files::addAll)
-                files += txnDao.getTransactionDetailsImages(id)
-                txnDao.deleteTransaction(id)
+                files += dispenseTxnDao.getTransactionDetailsImages(id)
+                dispenseTxnDao.deleteTransaction(id)
             }
-            val batchIds = batchDao.getTutorialBatchIds()
+            val batchIds = stockBatchDao.getTutorialBatchIds()
             batchIds.forEach { id ->
-                bottleInfoDao.getByBatchId(id).flatMap { it.imagePaths.orEmpty() }.let(files::addAll)
+                stockBottleInfoDao.getByBatchId(id).flatMap { it.imagePaths.orEmpty() }.let(files::addAll)
             }
             if (batchIds.isNotEmpty()) stockTxnDao.deleteByBatchIds(batchIds)
-            batchIds.forEach { batchDao.deleteById(it) }
+            batchIds.forEach { stockBatchDao.deleteById(it) }
             stockTxnDao.deleteByDemoDrug()
             // Last: the txn/stock deletes above still match by this drug's NDC.
             drugMasterDao.deleteByNdc(TutorialData.DEMO_NDC)

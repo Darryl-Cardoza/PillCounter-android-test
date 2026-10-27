@@ -3,10 +3,10 @@ package com.dispensesure.retail.feature.dashboard.domain.model
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
-import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 
 // Mapped Room lists per tab, before any KPI filter.
 internal data class QueueSources(
@@ -77,7 +77,7 @@ private fun QueueItem.Inventory.matches(filter: KpiFilter): Boolean = when (filt
 }
 
 // Keeps the DAO order: priority, then oldest first.
-internal fun List<PillCountWithDrugAndTotal>.toPendingDispenseItems(): List<QueueItem.Dispense> =
+internal fun List<DispenseTxnWithDrug>.toPendingDispenseItems(): List<QueueItem.Dispense> =
     map { txn ->
         QueueItem.Dispense(
             txn = txn,
@@ -93,12 +93,12 @@ internal fun List<BatchSummaryDto>.toPendingInventoryItems(): List<QueueItem.Inv
 
 // Completed dispenses and completed batches, newest first.
 internal fun recentActivityItems(
-    dispenses: List<TxnWithDrugDto>,
+    dispenses: List<DispenseTxnSummary>,
     batches: List<BatchSummaryDto>,
 ): List<QueueItem> {
     val dispenseItems = dispenses.map { completedTxn ->
         QueueItem.Dispense(
-            txn = PillCountWithDrugAndTotal(
+            txn = DispenseTxnWithDrug(
                 txnId = completedTxn.txnId,
                 drugName = completedTxn.drugName,
                 ndc = completedTxn.ndc,
@@ -106,11 +106,10 @@ internal fun recentActivityItems(
                 bucketId = completedTxn.bucketId,
                 createdAt = completedTxn.createdAt,
                 targetCount = completedTxn.targetCount,
-                bottleInfoListJson = completedTxn.bottleInfoListJson,
+                bottlesJson = completedTxn.bottlesJson,
                 totalPillCount = completedTxn.pillCount ?: 0,
                 isComingFromHL7 = false,
                 isNdcVerified = false,
-                isDispense = completedTxn.isDispense,
                 priority = null,
                 strength = completedTxn.strength,
                 dosageForm = completedTxn.dosageForm,

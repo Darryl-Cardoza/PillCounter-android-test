@@ -147,7 +147,7 @@ User → DispenseFlowScreen → DispenseFlowViewModel
    → IDrugRepository (Retrofit IDrugAPI)  ── drug/NDC lookup
    → CameraX + ML Kit (barcode/NDC)       ── on-device scan
    → PillAnalyzer + TFLite (PillDetectionModelLoader) ── on-device count
-   → PillCountTxnDao / PillCountTxnDetailsDao (encrypted Room) ── persist
+   → DispenseTxnDao / DispenseCountDao (encrypted Room) ── persist
    → Hl7ServiceManager / Hl7MessageSender ── emit HL7 RXD/INV to PMS (if connected)
 ```
 

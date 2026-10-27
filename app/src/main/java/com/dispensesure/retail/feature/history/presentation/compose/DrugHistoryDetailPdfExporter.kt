@@ -12,8 +12,8 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.models.dtos.TxnDetailInfo
-import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
+import com.dispensesure.retail.core.room.models.dtos.DispenseCountInfo
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -97,7 +97,7 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    fun generate(txn: TxnWithDetails, userName: String): File? {
+    fun generate(txn: DispenseTxnDetail, userName: String): File? {
         val dir = File(context.getExternalFilesDir(null), "PillReports/PillTransactionDetailReports")
         if (!dir.exists() && !dir.mkdirs()) return null
 
@@ -117,16 +117,16 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
             ctx.y = drawHeader(ctx.cv, genTime)
             ctx.y = drawInfoLine(ctx.cv, ctx.y, txn.drugName ?: "—", txnDate, userName)
 
-            val verCount = txn.txnDetails.sumForStep(StepState.TARGET_VERIFICATION)
+            val verCount = txn.counts.sumForStep(StepState.TARGET_VERIFICATION)
             ctx.y = drawSummaryTile(ctx.cv, ctx.y + 12f, verCount, txn.targetCount)
             ctx.y += 16f
 
             val isBatchFlow = txn.drugType != null && txn.drugType.toString() != "null"
 
             if (!isBatchFlow) {
-                if (txn.txnDetails.hasStep(StepState.TARGET_VERIFICATION)) {
+                if (txn.counts.hasStep(StepState.TARGET_VERIFICATION)) {
                     ctx.y = drawCountCard(ctx, context.getString(R.string.pill_count),
-                        txn.txnDetails.forStep(StepState.TARGET_VERIFICATION), isVial = false)
+                        txn.counts.forStep(StepState.TARGET_VERIFICATION), isVial = false)
                     ctx.y += 10f
                 }
                 if (txn.isSubstitute) {
@@ -143,15 +143,15 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
                 ctx.y = drawKvCard(ctx, drugTitle, drugKvRows(txn, dateOnly, timeOnly))
                 ctx.y += 10f
 
-                if (txn.txnDetails.hasStep(StepState.VIAL)) {
+                if (txn.counts.hasStep(StepState.VIAL)) {
                     ctx.y = drawCountCard(ctx, context.getString(R.string.vial_capture),
-                        txn.txnDetails.forStep(StepState.VIAL), isVial = true)
+                        txn.counts.forStep(StepState.VIAL), isVial = true)
                     ctx.y += 10f
                 }
             } else {
-                if (txn.txnDetails.hasStep(StepState.CONTAINER_INITIATE)) {
+                if (txn.counts.hasStep(StepState.CONTAINER_INITIATE)) {
                     ctx.y = drawCountCard(ctx, context.getString(R.string.initial_stock_bottle_count),
-                        txn.txnDetails.forStep(StepState.CONTAINER_INITIATE), isVial = false)
+                        txn.counts.forStep(StepState.CONTAINER_INITIATE), isVial = false)
                     ctx.y += 10f
                 }
                 if (txn.isSubstitute) {
@@ -168,24 +168,24 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
                 ctx.y = drawKvCard(ctx, drugTitle, drugKvRows(txn, dateOnly, timeOnly))
                 ctx.y += 10f
 
-                if (txn.txnDetails.hasStep(StepState.TARGET_VERIFICATION)) {
+                if (txn.counts.hasStep(StepState.TARGET_VERIFICATION)) {
                     ctx.y = drawCountCard(ctx, context.getString(R.string.pill_count),
-                        txn.txnDetails.forStep(StepState.TARGET_VERIFICATION), isVial = false)
+                        txn.counts.forStep(StepState.TARGET_VERIFICATION), isVial = false)
                     ctx.y += 10f
                 }
-                if (txn.txnDetails.hasStep(StepState.TARGET_REVERIFICATION)) {
+                if (txn.counts.hasStep(StepState.TARGET_REVERIFICATION)) {
                     ctx.y = drawCountCard(ctx, context.getString(R.string.pill_recount),
-                        txn.txnDetails.forStep(StepState.TARGET_REVERIFICATION), isVial = false)
+                        txn.counts.forStep(StepState.TARGET_REVERIFICATION), isVial = false)
                     ctx.y += 10f
                 }
-                if (txn.txnDetails.hasStep(StepState.VIAL)) {
+                if (txn.counts.hasStep(StepState.VIAL)) {
                     ctx.y = drawCountCard(ctx, context.getString(R.string.vial_capture),
-                        txn.txnDetails.forStep(StepState.VIAL), isVial = true)
+                        txn.counts.forStep(StepState.VIAL), isVial = true)
                     ctx.y += 10f
                 }
-                if (txn.txnDetails.hasStep(StepState.CONTAINER_PENDING)) {
+                if (txn.counts.hasStep(StepState.CONTAINER_PENDING)) {
                     ctx.y = drawCountCard(ctx, context.getString(R.string.remaining_stock_bottle_count),
-                        txn.txnDetails.forStep(StepState.CONTAINER_PENDING), isVial = false)
+                        txn.counts.forStep(StepState.CONTAINER_PENDING), isVial = false)
                     ctx.y += 10f
                 }
             }
@@ -347,21 +347,21 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
 
     // ── Count card (batch tray / vial table) ──────────────────────────────────
 
-    private fun countCardHeight(batches: List<TxnDetailInfo>, isVial: Boolean): Float {
+    private fun countCardHeight(batches: List<DispenseCountInfo>, isVial: Boolean): Float {
         val tableH = if (batches.isNotEmpty())
             ROW_TBL_HDR + batches.size * ROW_BATCH + ROW_TOTAL
         else ROW_BATCH
         return ROW_SECTION_HDR + ROW_COUNT_HERO + tableH + CARD_PAD_BOT
     }
 
-    private fun drawCountCard(ctx: Ctx, title: String, batches: List<TxnDetailInfo>, isVial: Boolean): Float {
+    private fun drawCountCard(ctx: Ctx, title: String, batches: List<DispenseCountInfo>, isVial: Boolean): Float {
         val h = countCardHeight(batches, isVial)
         ctx.need(h)
         return drawCountCardAt(ctx.cv, ctx.y, title, batches, isVial).also { ctx.y = it }
     }
 
     private fun drawCountCardAt(cv: Canvas, top: Float, title: String,
-                                batches: List<TxnDetailInfo>, isVial: Boolean): Float {
+                                batches: List<DispenseCountInfo>, isVial: Boolean): Float {
         val h     = countCardHeight(batches, isVial)
         val left  = mH; val right = pageW - mH
         val ix    = left + 20f; val irx = right - 16f
@@ -498,11 +498,11 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private fun List<TxnDetailInfo>.forStep(step: StepState) = filter { it.type == step }
-    private fun List<TxnDetailInfo>.hasStep(step: StepState) = any { it.type == step }
-    private fun List<TxnDetailInfo>.sumForStep(step: StepState) = forStep(step).sumOf { it.pillCount ?: 0 }
+    private fun List<DispenseCountInfo>.forStep(step: StepState) = filter { it.step == step }
+    private fun List<DispenseCountInfo>.hasStep(step: StepState) = any { it.step == step }
+    private fun List<DispenseCountInfo>.sumForStep(step: StepState) = forStep(step).sumOf { it.pillCount ?: 0 }
 
-    private fun drugKvRows(txn: TxnWithDetails, dateOnly: String, timeOnly: String) = listOf(
+    private fun drugKvRows(txn: DispenseTxnDetail, dateOnly: String, timeOnly: String) = listOf(
         context.getString(R.string.drug_name) to (txn.drugName ?: "—"),
         context.getString(R.string.pdf_ndc_label) to (txn.ndc ?: "—"),
         context.getString(R.string.date) to dateOnly,

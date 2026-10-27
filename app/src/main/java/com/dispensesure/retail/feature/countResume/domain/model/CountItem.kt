@@ -15,14 +15,12 @@ import com.dispensesure.retail.core.room.models.enums.TxnPriority
  * @property ndc NDC of the counted drug.
  * @property drugType Drug type reported for the NDC.
  * @property bucketId Bucket the count belongs to.
- * @property pillCount The quantity counted for this item.
  * @property target The expected count for this transaction.
- * @property bottleInfoListJson Serialized list of the bottles used in this count.
+ * @property bottlesJson Serialized list of the bottles used in this count.
  * @property date The timestamp when this count was recorded, already formatted.
  * @property image Drawable resource ID for the item's icon. Defaults to [R.drawable.logo].
  * @property isComingFromHL7 True when the transaction originated from an HL7 order.
  * @property isNdcVerified True once the scanned NDC has been verified.
- * @property isDispense True when this is a dispense rather than a plain count.
  * @property priority Priority of the originating transaction, if any.
  * @property strength Strength of the drug, shown in the row.
  * @property dosageForm Dosage form of the drug, shown in the row.
@@ -34,14 +32,12 @@ data class CountItem(
     val ndc: String?,
     val drugType: String?,
     val bucketId: String?,
-    val pillCount: Int,
     val target: Int,
-    val bottleInfoListJson: String?,
+    val bottlesJson: String?,
     val date: String,
     val image: Int = R.drawable.logo,
     val isComingFromHL7: Boolean,
     val isNdcVerified: Boolean,
-    val isDispense: Boolean = false,
     val priority: TxnPriority? = null,
     val strength: String? = null,
     val dosageForm: String? = null,

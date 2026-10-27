@@ -2,9 +2,9 @@ package com.dispensesure.retail.feature.history.presentation.viewmodel
 
 import android.util.Log
 import app.cash.turbine.test
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.models.dtos.TxnDetailInfo
-import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.models.dtos.DispenseCountInfo
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -30,7 +30,7 @@ class HistoryDetailsViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
-    private lateinit var pillCountTxnDao: PillCountTxnDao
+    private lateinit var dispenseTxnDao: DispenseTxnDao
     private lateinit var preferenceHelper: PreferenceHelper
 
     @Before
@@ -44,12 +44,12 @@ class HistoryDetailsViewModelTest {
         every { Log.w(any(), any<String>(), any()) } returns 0
         every { Log.e(any(), any(), any()) } returns 0
 
-        pillCountTxnDao = mockk(relaxed = true)
+        dispenseTxnDao = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
 
         // Sensible defaults so the init block does not blow up.
         every { preferenceHelper.getTxnId() } returns 1L
-        coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns null
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns null
     }
 
     @After
@@ -59,22 +59,22 @@ class HistoryDetailsViewModelTest {
     }
 
     private fun createViewModel(): HistoryDetailsViewModel =
-        HistoryDetailsViewModel(preferenceHelper, pillCountTxnDao)
+        HistoryDetailsViewModel(preferenceHelper, dispenseTxnDao)
 
     private fun detail(
         txnId: Long = 1L,
         pillCount: Int = 5,
-    ) = TxnDetailInfo(
+    ) = DispenseCountInfo(
         txnId = txnId,
         pillCount = pillCount,
         imagePath = null,
-        type = null,
+        step = null,
     )
 
     private fun txnWithDetails(
         txnId: Long = 1L,
-        details: List<TxnDetailInfo> = emptyList()
-    ) = TxnWithDetails(
+        details: List<DispenseCountInfo> = emptyList()
+    ) = DispenseTxnDetail(
         txnId = txnId,
         drugName = "Aspirin",
         drugId = 10L,
@@ -82,11 +82,10 @@ class HistoryDetailsViewModelTest {
         targetCount = 100,
         note = null,
         createdAt = 0L,
-        bottleInfoListJson = null,
+        bottlesJson = null,
         totalPillCount = 50,
-        isDispense = true,
         drugType = null,
-        txnDetails = details,
+        counts = details,
         isComingFromHL7 = false
     )
 
@@ -103,7 +102,7 @@ class HistoryDetailsViewModelTest {
             )
         )
         every { preferenceHelper.getTxnId() } returns 1L
-        coEvery { pillCountTxnDao.getTxnWithDetails(1L) } returns txn
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(1L) } returns txn
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -112,16 +111,16 @@ class HistoryDetailsViewModelTest {
             val state = awaitItem()
             val info = state.txnInfo!!
             assertEquals(1L, info.txnId)
-            assertEquals(3, info.txnDetails.size)
-            assertEquals(listOf(1L, 2L, 3L), info.txnDetails.map { it.txnId })
+            assertEquals(3, info.counts.size)
+            assertEquals(listOf(1L, 2L, 3L), info.counts.map { it.txnId })
         }
-        coVerify(exactly = 1) { pillCountTxnDao.getTxnWithDetails(1L) }
+        coVerify(exactly = 1) { dispenseTxnDao.getDispenseTxnDetail(1L) }
     }
 
     @Test
     fun `init sets null txnInfo when no transaction found`() = runTest(testDispatcher) {
         every { preferenceHelper.getTxnId() } returns 99L
-        coEvery { pillCountTxnDao.getTxnWithDetails(99L) } returns null
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(99L) } returns null
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -143,13 +142,13 @@ class HistoryDetailsViewModelTest {
         vm.deleteTransaction()
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { pillCountTxnDao.softDelete(eq(7L), any()) }
+        coVerify(exactly = 1) { dispenseTxnDao.softDelete(eq(7L), any()) }
     }
 
     @Test
     fun `deleteTransaction swallows exception from dao`() = runTest(testDispatcher) {
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { pillCountTxnDao.softDelete(eq(7L), any()) } throws RuntimeException("db error")
+        coEvery { dispenseTxnDao.softDelete(eq(7L), any()) } throws RuntimeException("db error")
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -158,7 +157,7 @@ class HistoryDetailsViewModelTest {
         vm.deleteTransaction()
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { pillCountTxnDao.softDelete(eq(7L), any()) }
+        coVerify(exactly = 1) { dispenseTxnDao.softDelete(eq(7L), any()) }
     }
 
 }

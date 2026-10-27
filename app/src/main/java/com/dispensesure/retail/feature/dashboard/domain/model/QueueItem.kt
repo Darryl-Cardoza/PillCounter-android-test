@@ -1,7 +1,7 @@
 package com.dispensesure.retail.feature.dashboard.domain.model
 
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
-import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 
 /**
  * A single row in the dashboard's "Today's Queue" list.
@@ -23,7 +23,7 @@ sealed class QueueItem {
     val is340B: Boolean get() = !bucketId.isNullOrBlank()
 
     data class Dispense(
-        val txn: PillCountWithDrugAndTotal,
+        val txn: DispenseTxnWithDrug,
         val isHazardous: Boolean,
         val isHighPriority: Boolean,
         val isControlled: Boolean,

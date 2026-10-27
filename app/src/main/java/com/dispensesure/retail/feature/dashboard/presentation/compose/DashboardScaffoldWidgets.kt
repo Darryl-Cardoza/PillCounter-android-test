@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.tourguide.TourGuideState
 import com.dispensesure.retail.core.tourguide.tourTarget
@@ -425,15 +425,13 @@ internal fun ScaffoldQueueList(
 
 // One mapping from a queued dispense to the row data, shared by the list row and the UP NEXT card.
 internal fun QueueItem.Dispense.toDrugCountRowData() = DrugCountRowData(
-    barcodeImage = BottleInfoJson.decode(txn.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
+    barcodeImage = DispenseBottleJson.decode(txn.bottlesJson).firstOrNull()?.barcodeImagePath,
     ndc = txn.ndc,
     drugType = txn.drugType,
     drugName = txn.drugName ?: "—",
     date = txn.createdAt.toFormattedDate(),
     bucketId = txn.bucketId,
-    pillCount = txn.totalPillCount,
     targetCount = txn.targetCount ?: 0,
-    isDispense = txn.isDispense,
     strength = txn.strength,
     dosageForm = txn.dosageForm,
     drugImagePath = txn.drugImagePath,

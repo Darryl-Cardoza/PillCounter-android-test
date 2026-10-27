@@ -2,9 +2,9 @@ package com.dispensesure.retail.feature.hl7.presentation
 
 import android.content.Context
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
@@ -38,7 +38,7 @@ class Hl7OrderProcessorTest {
     private val message = parse("MSH|^~\\&|PMS|FAC|APP|STORE|20240101||RDE^O11|$MSG_ID|P|2.5\r")
 
     private val context: Context = mockk(relaxed = true)
-    private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val drugRepository: DrugRepository = mockk(relaxed = true)
@@ -55,14 +55,14 @@ class Hl7OrderProcessorTest {
         every { preferenceHelper.getLocalId() } returns 1L
         coEvery { drugMasterDao.getDrugByNdc(NDC) } returns DrugMasterEntity(drugId = DRUG_ID, ndc = NDC, drugName = DRUG_NAME)
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns DRUG_ID
-        coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns NEW_TXN_ID
+        coEvery { dispenseTxnDao.upsertPreservingId(any()) } returns NEW_TXN_ID
         // Relaxed lookups would return a fake row; default to "nothing saved yet".
-        coEvery { pillCountTxnDao.getByRxNoAndFillNo(any(), any()) } returns null
-        coEvery { pillCountTxnDao.getByRxNoAndMessageControlId(any(), any()) } returns null
-        coEvery { pillCountTxnDao.getMostRecentByRxNo(any()) } returns null
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(any(), any()) } returns null
+        coEvery { dispenseTxnDao.getByRxNoAndMessageControlId(any(), any()) } returns null
+        coEvery { dispenseTxnDao.getMostRecentByRxNo(any()) } returns null
 
         processor = Hl7OrderProcessor(
-            context, pillCountTxnDao, preferenceHelper,
+            context, dispenseTxnDao, preferenceHelper,
             DrugResolver(drugMasterDao, drugRepository, drugImageDownloader), notifier, hl7Repository,
         )
     }
@@ -86,7 +86,7 @@ class Hl7OrderProcessorTest {
 
     @Test
     fun `NW with a saved PARTIAL row updates it in place`() = runTest {
-        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.PARTIAL, "0")
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.PARTIAL, "0")
 
         processor.process(newOrder(order("NW"))).join()
 
@@ -95,7 +95,7 @@ class Hl7OrderProcessorTest {
 
     @Test
     fun `NW with a saved ON_HOLD row updates it in place`() = runTest {
-        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.ON_HOLD, "0")
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.ON_HOLD, "0")
 
         processor.process(newOrder(order("NW"))).join()
 
@@ -104,7 +104,7 @@ class Hl7OrderProcessorTest {
 
     @Test
     fun `NW with a saved COMPLETED row from another message inserts a new transaction`() = runTest {
-        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.COMPLETED, "0")
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.COMPLETED, "0")
 
         processor.process(newOrder(order("NW"))).join()
 
@@ -113,7 +113,7 @@ class Hl7OrderProcessorTest {
 
     @Test
     fun `NW with a saved FORCE_COMPLETED row from another message inserts a new transaction`() = runTest {
-        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.FORCE_COMPLETED, "0")
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.FORCE_COMPLETED, "0")
 
         processor.process(newOrder(order("NW"))).join()
 
@@ -123,8 +123,8 @@ class Hl7OrderProcessorTest {
     @Test
     fun `NW resent after its COMPLETED row writes nothing`() = runTest {
         val finished = savedRow(CountStatus.COMPLETED, "0")
-        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "0") } returns finished
-        coEvery { pillCountTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns finished
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "0") } returns finished
+        coEvery { dispenseTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns finished
 
         processor.process(newOrder(order("NW"))).join()
 
@@ -134,8 +134,8 @@ class Hl7OrderProcessorTest {
     @Test
     fun `NW resent after its FORCE_COMPLETED row writes nothing`() = runTest {
         val finished = savedRow(CountStatus.FORCE_COMPLETED, "0")
-        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "0") } returns finished
-        coEvery { pillCountTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns finished
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "0") } returns finished
+        coEvery { dispenseTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns finished
 
         processor.process(newOrder(order("NW"))).join()
 
@@ -177,7 +177,7 @@ class Hl7OrderProcessorTest {
 
     @Test
     fun `RF with RXE-16 and a saved PARTIAL row updates it in place`() = runTest {
-        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "2") } returns savedRow(CountStatus.PARTIAL, "2")
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "2") } returns savedRow(CountStatus.PARTIAL, "2")
 
         processor.process(refill(order("RF", pendingRefills = 1, refillNumber = 2))).join()
 
@@ -186,7 +186,7 @@ class Hl7OrderProcessorTest {
 
     @Test
     fun `RF with RXE-16 and a saved COMPLETED row from another message inserts a new transaction`() = runTest {
-        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "2") } returns savedRow(CountStatus.COMPLETED, "2")
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "2") } returns savedRow(CountStatus.COMPLETED, "2")
 
         processor.process(refill(order("RF", pendingRefills = 1, refillNumber = 2))).join()
 
@@ -196,8 +196,8 @@ class Hl7OrderProcessorTest {
     @Test
     fun `RF with RXE-16 resent after its COMPLETED row writes nothing`() = runTest {
         val finished = savedRow(CountStatus.COMPLETED, "2")
-        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "2") } returns finished
-        coEvery { pillCountTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns finished
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "2") } returns finished
+        coEvery { dispenseTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns finished
 
         processor.process(refill(order("RF", pendingRefills = 1, refillNumber = 2))).join()
 
@@ -214,7 +214,7 @@ class Hl7OrderProcessorTest {
 
     @Test
     fun `RF without RXE-16 adds one to the latest refill`() = runTest {
-        coEvery { pillCountTxnDao.getMostRecentByRxNo(RX) } returns savedRow(CountStatus.COMPLETED, "2")
+        coEvery { dispenseTxnDao.getMostRecentByRxNo(RX) } returns savedRow(CountStatus.COMPLETED, "2")
 
         processor.process(refill(order("RF"))).join()
 
@@ -224,23 +224,23 @@ class Hl7OrderProcessorTest {
     @Test
     fun `RF without RXE-16 resent while its row is open updates that row`() = runTest {
         val resent = savedRow(CountStatus.PARTIAL, "3")
-        coEvery { pillCountTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns resent
-        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "3") } returns resent
+        coEvery { dispenseTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns resent
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "3") } returns resent
 
         processor.process(refill(order("RF"))).join()
 
         verifyUpdatedInPlace()
-        coVerify(exactly = 0) { pillCountTxnDao.getMostRecentByRxNo(any()) }
+        coVerify(exactly = 0) { dispenseTxnDao.getMostRecentByRxNo(any()) }
     }
 
     @Test
     fun `RF without RXE-16 resent after its row finished writes nothing`() = runTest {
-        coEvery { pillCountTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns savedRow(CountStatus.COMPLETED, "3")
+        coEvery { dispenseTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns savedRow(CountStatus.COMPLETED, "3")
 
         processor.process(refill(order("RF"))).join()
 
         verifyNoTxnWrite()
-        coVerify(exactly = 0) { pillCountTxnDao.getMostRecentByRxNo(any()) }
+        coVerify(exactly = 0) { dispenseTxnDao.getMostRecentByRxNo(any()) }
     }
 
     // ───────────────────────── HD / RL ─────────────────────────
@@ -249,7 +249,7 @@ class Hl7OrderProcessorTest {
     fun `HD uses the PARTIAL-only status update`() = runTest {
         processor.process(Hl7OrderAction.Hold(ORDER_ID)).join()
 
-        coVerify(exactly = 1) { pillCountTxnDao.updateStatusByOrderIdIfPartial(ORDER_ID, CountStatus.ON_HOLD, any()) }
+        coVerify(exactly = 1) { dispenseTxnDao.updateStatusByOrderIdIfPartial(ORDER_ID, CountStatus.ON_HOLD, any()) }
     }
 
     @Test
@@ -257,7 +257,7 @@ class Hl7OrderProcessorTest {
         processor.process(Hl7OrderAction.Release(ORDER_ID)).join()
 
         coVerify(exactly = 1) {
-            pillCountTxnDao.updateStatusByOrderIdIfPartialOrOnHold(ORDER_ID, CountStatus.PARTIAL, any())
+            dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold(ORDER_ID, CountStatus.PARTIAL, any())
         }
     }
 
@@ -300,21 +300,21 @@ class Hl7OrderProcessorTest {
     private fun newOrder(order: OrderGroup) = Hl7OrderAction.NewOrder(order, message)
     private fun refill(order: OrderGroup) = Hl7OrderAction.Refill(order, message)
 
-    private fun savedRow(status: CountStatus, refillNo: String) = PillCountTxnEntity(
-        txnId = SAVED_TXN_ID, isDispense = true, status = status, rxNo = RX, refillNo = refillNo,
+    private fun savedRow(status: CountStatus, refillNo: String) = DispenseTxnEntity(
+        txnId = SAVED_TXN_ID, status = status, rxNo = RX, refillNo = refillNo,
     )
 
-    private fun insertedRow(): PillCountTxnEntity {
-        val row = slot<PillCountTxnEntity>()
-        coVerify(exactly = 1) { pillCountTxnDao.upsertPreservingId(capture(row)) }
+    private fun insertedRow(): DispenseTxnEntity {
+        val row = slot<DispenseTxnEntity>()
+        coVerify(exactly = 1) { dispenseTxnDao.upsertPreservingId(capture(row)) }
         return row.captured
     }
 
     private fun verifyUpdatedInPlace() {
         coVerify(exactly = 1) {
-            pillCountTxnDao.updateFromHl7Edit(SAVED_TXN_ID, DRUG_ID, 30, TxnPriority.Medium, null, any())
+            dispenseTxnDao.updateFromHl7Edit(SAVED_TXN_ID, DRUG_ID, 30, TxnPriority.Medium, null, any())
         }
-        coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any()) }
+        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
     }
 
     private fun verifyInsertedNew(refillNo: String) {
@@ -322,12 +322,12 @@ class Hl7OrderProcessorTest {
         assertEquals(0L, row.txnId)
         assertEquals(RX, row.rxNo)
         assertEquals(refillNo, row.refillNo)
-        coVerify(exactly = 0) { pillCountTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
     }
 
     private fun verifyNoTxnWrite() {
-        coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any()) }
-        coVerify(exactly = 0) { pillCountTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
+        coVerify(exactly = 0) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
     }
 
     private fun verifyIgnoredAsResend() {

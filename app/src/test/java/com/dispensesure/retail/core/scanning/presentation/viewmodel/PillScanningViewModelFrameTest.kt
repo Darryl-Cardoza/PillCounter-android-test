@@ -5,11 +5,11 @@ import android.graphics.Bitmap
 import androidx.camera.core.ImageProxy
 import androidx.core.content.ContextCompat
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.UserDao
@@ -65,19 +65,19 @@ class PillScanningViewModelFrameTest {
 
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
-    private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
-    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
+    private val stockBottleInfoDao: StockBottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
-    private val pillCountTxnDetailsDao: PillCountTxnDetailsDao = mockk(relaxed = true)
+    private val dispenseCountDao: DispenseCountDao = mockk(relaxed = true)
     private val locationProvider: LocationProvider = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val modelLoader: PillDetectionModelLoader = mockk(relaxed = true)
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
-    private val batchDao: BatchDao = mockk(relaxed = true)
+    private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
@@ -87,21 +87,21 @@ class PillScanningViewModelFrameTest {
         every { application.applicationContext } returns application
         every { application.getString(any<Int>()) } returns "test error"
         every { application.getString(any<Int>(), any()) } returns "test error"
-        every { pillCountTxnDetailsDao.observeAllForTxn(any(), any()) } returns flowOf(emptyList())
-        // getLatestType returns StepState? — relaxed mock returns a child mock instead of null,
+        every { dispenseCountDao.observeAllForTxn(any(), any()) } returns flowOf(emptyList())
+        // getLatestStep returns StepState? — relaxed mock returns a child mock instead of null,
         // which would make getDrugInfo resolve to the wrong step. Force null explicitly.
-        coEvery { pillCountTxnDetailsDao.getLatestType(any()) } returns null
+        coEvery { dispenseCountDao.getLatestStep(any()) } returns null
         coJustRun { performanceLogger.logPerformanceSnapshot(any()) }
         viewModel = PillScanningViewModel(
             app = application,
             preferenceHelper = preferenceHelper,
-            pillCountTxnDao = pillCountTxnDao,
+            dispenseTxnDao = dispenseTxnDao,
             stockTxnDao = stockTxnDao,
-            bottleInfoDao = bottleInfoDao,
-            batchDao = batchDao,
+            stockBottleInfoDao = stockBottleInfoDao,
+            stockBatchDao = stockBatchDao,
             userDao = userDao,
             operatorNameProvider = operatorNameProvider,
-            pillCountTxnDetailsDao = pillCountTxnDetailsDao,
+            dispenseCountDao = dispenseCountDao,
             locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
             modelLoader = modelLoader,
@@ -144,7 +144,7 @@ class PillScanningViewModelFrameTest {
     // SCAN_VM_017
     @Test
     fun `getDrugInfo with no txn resolves currentStep to TARGET_VERIFICATION`() = runTest {
-        // Relaxed mocks: getTxnWithDetails → null, getLatestType → null.
+        // Relaxed mocks: getDispenseTxnDetail → null, getLatestStep → null.
         // drugInfo is null (no txn -> no drugId), so drugType.isNullOrEmpty() is true,
         // which falls back to TARGET_VERIFICATION (not CONTAINER_INITIATE, which is only
         // reached when drugType is a known non-blank, non-"null" value).

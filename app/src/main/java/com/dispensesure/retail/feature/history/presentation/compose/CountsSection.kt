@@ -36,7 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
@@ -48,14 +48,14 @@ import com.dispensesure.retail.core.utils.compose.StatusChip
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.history.domain.model.HistoryDeleteFilter
 import com.dispensesure.retail.feature.history.domain.model.ToggleOption
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import com.dispensesure.retail.ui.theme.AppTheme
 
 private enum class StatusFilter { ALL, COMPLETED, PENDING }
 
 @Composable
 fun CountsSection(
-    counts: List<TxnWithDrugDto>,
+    counts: List<DispenseTxnSummary>,
     batches: List<BatchSummary>,
     selectedOption: ToggleOption,
     initialShowComplete: Boolean = false,
@@ -70,20 +70,19 @@ fun CountsSection(
         mutableStateOf(if (initialShowComplete) StatusFilter.COMPLETED else StatusFilter.ALL)
     }
 
-    // ── Dispensed (FIXED) breakdowns ──────────────────────────────────────────
-    val dispensedCounts = remember(counts) { counts.filter { it.isDispense } }
-    val completedDispensed = remember(dispensedCounts) {
-        dispensedCounts.filter {
+    // ── Dispensed breakdowns ──────────────────────────────────────────────────
+    val completedDispensed = remember(counts) {
+        counts.filter {
             it.status == CountStatus.COMPLETED || it.status == CountStatus.FORCE_COMPLETED
         }
     }
-    val pendingDispensed = remember(dispensedCounts) {
-        dispensedCounts.filter {
+    val pendingDispensed = remember(counts) {
+        counts.filter {
             it.status != CountStatus.COMPLETED && it.status != CountStatus.FORCE_COMPLETED
         }
     }
     val filteredDispensed = when (statusFilter) {
-        StatusFilter.ALL -> dispensedCounts
+        StatusFilter.ALL -> counts
         StatusFilter.COMPLETED -> completedDispensed
         StatusFilter.PENDING -> pendingDispensed
     }
@@ -98,18 +97,18 @@ fun CountsSection(
     }
 
     // ── Toggle counts (shown in the pill buttons) ─────────────────────────────
-    val dispensedCount = dispensedCounts.size
+    val dispensedCount = counts.size
     val stockCount = batches.size       // number of batches, not REGULAR txns
 
     // ── Status chip counts switch based on which tab is active ────────────────
-    val allCount = if (selectedOption == ToggleOption.STOCK) batches.size else dispensedCounts.size
+    val allCount = if (selectedOption == ToggleOption.STOCK) batches.size else counts.size
     val completedCount =
         if (selectedOption == ToggleOption.STOCK) completedBatches.size else completedDispensed.size
     val pendingCount =
         if (selectedOption == ToggleOption.STOCK) pendingBatches.size else pendingDispensed.size
 
     val isEmpty = when (selectedOption) {
-        ToggleOption.DISPENSED -> dispensedCounts.isEmpty()
+        ToggleOption.DISPENSED -> counts.isEmpty()
         else -> batches.isEmpty()
     }
     val dimens = AppTheme.dimens
@@ -207,18 +206,16 @@ fun CountsSection(
                 if (isSearchActive) {
                     when (selectedOption) {
                         ToggleOption.DISPENSED -> {
-                            items(dispensedCounts, key = { it.txnId }) { rowData ->
+                            items(counts, key = { it.txnId }) { rowData ->
                                 DrugCountRow(
                                     data = DrugCountRowData(
-                                        barcodeImage = BottleInfoJson.decode(rowData.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
+                                        barcodeImage = DispenseBottleJson.decode(rowData.bottlesJson).firstOrNull()?.barcodeImagePath,
                                         ndc = rowData.ndc,
                                         drugType = rowData.drugType,
                                         drugName = rowData.drugName ?: "",
                                         date = rowData.createdAt.toFormattedDate(),
                                         bucketId = rowData.bucketId,
-                                        pillCount = rowData.pillCount ?: 0,
                                         targetCount = rowData.targetCount ?: 0,
-                                        isDispense = rowData.isDispense,
                                         strength = rowData.strength,
                                         dosageForm = rowData.dosageForm,
                                         drugImagePath = rowData.drugImagePath,
@@ -248,15 +245,13 @@ fun CountsSection(
                             items(filteredDispensed, key = { it.txnId }) { rowData ->
                                 DrugCountRow(
                                     data = DrugCountRowData(
-                                        barcodeImage = BottleInfoJson.decode(rowData.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
+                                        barcodeImage = DispenseBottleJson.decode(rowData.bottlesJson).firstOrNull()?.barcodeImagePath,
                                         ndc = rowData.ndc,
                                         drugType = rowData.drugType,
                                         drugName = rowData.drugName ?: "",
                                         date = rowData.createdAt.toFormattedDate(),
                                         bucketId = rowData.bucketId,
-                                        pillCount = rowData.pillCount ?: 0,
                                         targetCount = rowData.targetCount ?: 0,
-                                        isDispense = rowData.isDispense,
                                         strength = rowData.strength,
                                         dosageForm = rowData.dosageForm,
                                         drugImagePath = rowData.drugImagePath,

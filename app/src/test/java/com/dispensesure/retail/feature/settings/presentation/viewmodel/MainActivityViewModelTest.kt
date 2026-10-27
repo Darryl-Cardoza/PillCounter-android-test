@@ -7,14 +7,14 @@ import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.models.ApiResponse
 import com.dispensesure.retail.core.models.ScheduleCode
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
@@ -54,10 +54,10 @@ class MainActivityViewModelTest {
 
     private lateinit var repository: IApplicationSettingsRepository
     private lateinit var preferenceHelper: PreferenceHelper
-    private lateinit var txnDao: PillCountTxnDao
-    private lateinit var batchDao: BatchDao
+    private lateinit var dispenseTxnDao: DispenseTxnDao
+    private lateinit var stockBatchDao: StockBatchDao
     private lateinit var stockTxnDao: StockTxnDao
-    private lateinit var bottleInfoDao: BottleInfoDao
+    private lateinit var stockBottleInfoDao: StockBottleInfoDao
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var hl7EventHandler: Hl7EventHandler
     private lateinit var sessionHealthController: SessionHealthController
@@ -127,10 +127,10 @@ class MainActivityViewModelTest {
 
         repository = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
-        txnDao = mockk(relaxed = true)
-        batchDao = mockk(relaxed = true)
+        dispenseTxnDao = mockk(relaxed = true)
+        stockBatchDao = mockk(relaxed = true)
         stockTxnDao = mockk(relaxed = true)
-        bottleInfoDao = mockk(relaxed = true)
+        stockBottleInfoDao = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
         sessionHealthController = mockk(relaxed = true)
@@ -158,8 +158,8 @@ class MainActivityViewModelTest {
         every { preferenceHelper.getContext() } returns defaultContext
 
         coEvery { repository.getApplicationSettings() } returns apiResponse(dto())
-        coEvery { txnDao.getTransactionsBefore(any()) } returns emptyList()
-        coEvery { txnDao.getTransactionDetailsImages(any()) } returns emptyList()
+        coEvery { dispenseTxnDao.getTransactionsBefore(any()) } returns emptyList()
+        coEvery { dispenseTxnDao.getTransactionDetailsImages(any()) } returns emptyList()
     }
 
     @After
@@ -171,10 +171,10 @@ class MainActivityViewModelTest {
     private fun createViewModel() = MainActivityViewModel(
         repository,
         preferenceHelper,
-        txnDao,
-        batchDao,
+        dispenseTxnDao,
+        stockBatchDao,
         stockTxnDao,
-        bottleInfoDao,
+        stockBottleInfoDao,
         hl7ServiceManager,
         hl7EventHandler,
         mockk(relaxed = true),
@@ -604,26 +604,25 @@ class MainActivityViewModelTest {
 
     @Test
     fun `deleteOldTransactions processes txn with images and missing files`() = runTest(testDispatcher) {
-        val txn = PillCountTxnEntity(
+        val txn = DispenseTxnEntity(
             txnId = 5L,
-            isDispense = true,
             status = CountStatus.COMPLETED,
-            bottleInfoListJson = BottleInfoJson.encode(
-                listOf(BottleInfo(txnId = 5L, barcodeImagePath = "C:/nonexistent/barcode.png")),
+            bottlesJson = DispenseBottleJson.encode(
+                listOf(DispenseBottle(txnId = 5L, barcodeImagePath = "C:/nonexistent/barcode.png")),
             ),
         )
-        coEvery { txnDao.getTransactionsBefore(any()) } returns listOf(txn)
-        coEvery { txnDao.getTransactionDetailsImages(5L) } returns listOf("C:/nonexistent/detail.png")
+        coEvery { dispenseTxnDao.getTransactionsBefore(any()) } returns listOf(txn)
+        coEvery { dispenseTxnDao.getTransactionDetailsImages(5L) } returns listOf("C:/nonexistent/detail.png")
 
         val vm = createViewModel()
         advanceUntilIdle()
 
-        coVerify { txnDao.deleteTransaction(5L) }
+        coVerify { dispenseTxnDao.deleteTransaction(5L) }
     }
 
     @Test
     fun `deleteOldTransactions handles exception`() = runTest(testDispatcher) {
-        coEvery { txnDao.getTransactionsBefore(any()) } throws RuntimeException("db error")
+        coEvery { dispenseTxnDao.getTransactionsBefore(any()) } throws RuntimeException("db error")
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -642,7 +641,7 @@ class MainActivityViewModelTest {
 
         assertEquals(7, vm.selectedHistoryOption.value)
         verify { preferenceHelper.saveHistoryRetention(7) }
-        coVerify(atLeast = 1) { txnDao.getTransactionsBefore(any()) }
+        coVerify(atLeast = 1) { dispenseTxnDao.getTransactionsBefore(any()) }
     }
 
     // ─────────────────────────── toggles ───────────────────────────
@@ -732,8 +731,8 @@ class MainActivityViewModelTest {
         vm.deleteAllTransaction()
         advanceUntilIdle()
 
-        coVerify { txnDao.deleteAllTransactions() }
-        coVerify { batchDao.deleteAll() }
+        coVerify { dispenseTxnDao.deleteAllTransactions() }
+        coVerify { stockBatchDao.deleteAll() }
     }
 
     @Test

@@ -16,10 +16,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.core.net.toUri
-import com.dispensesure.retail.core.room.models.dtos.StatusTypeCount
-import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.menu.domain.model.CountBuckets
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -36,7 +33,6 @@ import kotlin.system.exitProcess
  * Provides functionality for:
  * - Email masking for UI display.
  * - Route resolution during app start.
- * - Dashboard count mapping.
  * - Immersive fullscreen toggling.
  * - Bitmap saving and Play Store navigation.
  */
@@ -126,42 +122,6 @@ object HelperFunctions {
         preferenceHelper.clearLoggedInAt()
         preferenceHelper.saveLocalId(0)
         preferenceHelper.clearHl7Config()
-    }
-
-    /**
-     * Maps aggregated status and type counts into [CountBuckets] for dashboard visualization.
-     *
-     * @param rows List of status-type aggregates.
-     * @return Structured [CountBuckets] separating fixed/regular and completed/partial counts.
-     */
-    fun mapCounts(rows: List<StatusTypeCount>): CountBuckets {
-        var fixedCompleted = 0
-        var fixedPartial = 0
-        var regularCompleted = 0
-        var regularPartial = 0
-
-        rows.forEach { row ->
-            if (row.isDispense) {
-                when (row.status) {
-                    CountStatus.COMPLETED -> fixedCompleted = row.cnt
-                    CountStatus.PARTIAL -> fixedPartial = row.cnt
-                    else -> {}
-                }
-            } else {
-                when (row.status) {
-                    CountStatus.COMPLETED -> regularCompleted = row.cnt
-                    CountStatus.PARTIAL -> regularPartial = row.cnt
-                    else -> {}
-                }
-            }
-        }
-
-        return CountBuckets(
-            fixedCompleted = fixedCompleted,
-            fixedPartial = fixedPartial,
-            regularCompleted = regularCompleted,
-            regularPartial = regularPartial
-        )
     }
 
     /** Immediately terminates the app process. */

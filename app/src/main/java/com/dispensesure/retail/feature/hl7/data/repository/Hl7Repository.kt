@@ -4,15 +4,15 @@ import android.annotation.SuppressLint
 import android.content.Context
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
-import com.dispensesure.retail.core.room.models.BatchEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
+import com.dispensesure.retail.core.room.models.StockBatchEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.room.models.enums.CountStatus
@@ -23,7 +23,7 @@ import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isControlledDrugType
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
 import com.dispensesure.retail.core.tourguide.FtueController
@@ -59,14 +59,13 @@ class Hl7Repository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val drugMasterDao: DrugMasterDao,
     private val locationProvider: LocationProvider,
-    private val txnDao: PillCountTxnDao,
-    private val txnDetailsDao: PillCountTxnDetailsDao,
+    private val dispenseTxnDao: DispenseTxnDao,
+    private val dispenseCountDao: DispenseCountDao,
     private val preferenceHelper: PreferenceHelper,
-    private val pillCountTxnDao: PillCountTxnDao,
     private val stockTxnDao: StockTxnDao,
-    private val bottleInfoDao: BottleInfoDao,
+    private val stockBottleInfoDao: StockBottleInfoDao,
     private val operatorNameProvider: OperatorNameProvider,
-    private val batchDao: BatchDao,
+    private val stockBatchDao: StockBatchDao,
     private val hl7MessageSender: Hl7MessageSender,
     private val drugResolver: DrugResolver,
     private val notifier: Hl7Notifier,
@@ -151,7 +150,7 @@ class Hl7Repository @Inject constructor(
     private suspend fun buildAndSendSuccessfulDispenseInternal(
         txnId: Long
     ) {
-        val txn = txnDao.getById(txnId)
+        val txn = dispenseTxnDao.getById(txnId)
             ?: run {
                 logger.w("Dispense HL7 skipped — txn $txnId not found")
                 return
@@ -162,7 +161,7 @@ class Hl7Repository @Inject constructor(
             logger.i("Dispense HL7 skipped — txn $txnId already synced")
             return
         }
-        val txnDetails = txnDetailsDao.getAllForTxn(txnId.toString())
+        val txnDetails = dispenseCountDao.getAllForTxn(txnId.toString())
         //Change this condition because we have transaction status that we are handling from pms
 //        val totalCount = txnDetails.sumOf { it.pillCount ?: 0 }
 //        if (totalCount == 0) {
@@ -187,7 +186,7 @@ class Hl7Repository @Inject constructor(
         // the PMS pulls images by control id — without this write the DB column stays null
         // forever and that lookup always misses.
         if (txn.hl7MessageControlId.isNullOrBlank()) {
-            txnDao.updateHl7MessageControlId(txnId, txnId.toString())
+            dispenseTxnDao.updateHl7MessageControlId(txnId, txnId.toString())
         }
 
         val message = HL7MessageBuilder.buildDispenseMessage(
@@ -234,32 +233,32 @@ class Hl7Repository @Inject constructor(
      *
      * Chunks are sent strictly in order, one at a time, each only after the
      * previous chunk's ACK succeeds. Progress is persisted
-     * ([BatchDao.markChunkAcked]) immediately after every successful ACK, so if
+     * ([StockBatchDao.markChunkAcked]) immediately after every successful ACK, so if
      * PMS goes offline or the app is killed mid-sync, the next call (via
      * [resendPendingHl7BatchTransactions]) resumes at the first un-ACKed chunk
      * instead of resending chunks PMS has already applied. The batch is marked
-     * synced ([BatchDao.markBatchSynced]) only once every chunk has ACKed.
+     * synced ([StockBatchDao.markBatchSynced]) only once every chunk has ACKed.
      */
     suspend fun buildAndSendInventoryResponse(batchId: Long) {
         try {
-            if (batchId in batchDao.getTutorialBatchIds()) {
+            if (batchId in stockBatchDao.getTutorialBatchIds()) {
                 logger.i("Tutorial batch — never sending to PMS, batchId=$batchId")
                 return
             }
             logger.i("buildAndSendInventoryResponse started, batchId=$batchId")
 
-            val batch = batchDao.getById(batchId)
+            val batch = stockBatchDao.getById(batchId)
             if (batch == null) {
                 logger.w("No batch found for batchId=$batchId")
                 return
             }
 
-            val txns = bottleInfoDao.getByBatchId(batchId)
-            logger.i("txns count = ${txns.size}, txns = $txns")
+            val bottles = stockBottleInfoDao.getByBatchId(batchId)
+            logger.i("bottles count = ${bottles.size}, bottles = $bottles")
 
             val chunks = HL7MessageBuilder.buildInventoryMessageChunks(
                 batch = batch,
-                txns = txns,
+                bottles = bottles,
                 config = currentHl7Config()
             )
 
@@ -268,7 +267,7 @@ class Hl7Repository @Inject constructor(
             // count should match what was persisted, but persist defensively in
             // case rows changed since the last attempt (e.g. an edit while offline).
             if (batch.totalChunks != chunks.size) {
-                batchDao.setTotalChunks(batchId, chunks.size)
+                stockBatchDao.setTotalChunks(batchId, chunks.size)
             }
 
             val resumeFromChunk = batch.lastAckedChunkIndex + 1
@@ -285,7 +284,7 @@ class Hl7Repository @Inject constructor(
                 val ackAccepted = result.getOrNull()?.let { isSuccessAck(it) } ?: false
 
                 if (result.isSuccess && ackAccepted) {
-                    batchDao.markChunkAcked(batchId, chunk.chunkIndex)
+                    stockBatchDao.markChunkAcked(batchId, chunk.chunkIndex)
                     logger.i("Chunk ${chunk.chunkIndex}/${chunk.totalChunks} ACKed for batchId=$batchId")
                 } else {
                     // Stop here — do not send later chunks out of order. The batch
@@ -302,7 +301,7 @@ class Hl7Repository @Inject constructor(
                 }
             }
 
-            batchDao.markBatchSynced(batchId)
+            stockBatchDao.markBatchSynced(batchId)
             logger.i("All chunks sent — inventory HL7 sync complete for batchId=$batchId")
 
         } catch (e: Exception) {
@@ -328,7 +327,7 @@ class Hl7Repository @Inject constructor(
         if (preferenceHelper.isHl7Enabled()) {
             scope.launch {
                 try {
-                    if (txnId in pillCountTxnDao.getTutorialTxnIds()) {
+                    if (txnId in dispenseTxnDao.getTutorialTxnIds()) {
                         logger.i("Tutorial entry — never sending to PMS, txnId=$txnId")
                         return@launch
                     }
@@ -361,7 +360,7 @@ class Hl7Repository @Inject constructor(
                 return@launch
             }
             try {
-                val pendingTxn = pillCountTxnDao.getPendingHl7TxnOnce()
+                val pendingTxn = dispenseTxnDao.getPendingHl7TxnOnce()
                     .filterNot { it.txnId in rejectedTxnIds }
                 if (pendingTxn.isEmpty()) {
                     logger.i("No pending HL7 transactions to sync")
@@ -369,9 +368,7 @@ class Hl7Repository @Inject constructor(
                 }
                 logger.i("Resending ${pendingTxn.size} pending HL7 transactions")
                 for (txn in pendingTxn) {
-                    if (txn.isDispense) {
-                        buildAndSendSuccessfulDispense(txnId = txn.txnId)
-                    }
+                    buildAndSendSuccessfulDispense(txnId = txn.txnId)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -386,7 +383,7 @@ class Hl7Repository @Inject constructor(
     fun resendPendingHl7BatchTransactions() {
         scope.launch {
             try {
-                val pendingBatches = batchDao.getUnsyncedCompletedBatchesOnce()
+                val pendingBatches = stockBatchDao.getUnsyncedCompletedBatchesOnce()
                 if (pendingBatches.isEmpty()) {
                     logger.i("No pending HL7 batch transactions to sync")
                     return@launch
@@ -416,7 +413,7 @@ class Hl7Repository @Inject constructor(
         // the success ACK, so the images are already retrieved by the time we delete here.
         // Awaited, not launched: the caller still holds resendMutex, and releasing it before
         // this row lands would let a concurrent send read isSynced = 0 and send a second copy.
-        pillCountTxnDao.markTxnSynced(txnId)
+        dispenseTxnDao.markTxnSynced(txnId)
         if (!preferenceHelper.isAllowLocalStorage()) {
             scope.launch {
                 // Wait before deleting: the PMS pulls the transaction images from the device
@@ -437,12 +434,12 @@ class Hl7Repository @Inject constructor(
     private suspend fun deleteSyncedTransaction(txnId: Long) {
         if (txnId <= 0L) return
         try {
-            val txn = pillCountTxnDao.getById(txnId)
+            val txn = dispenseTxnDao.getById(txnId)
             val filesToDelete = mutableListOf<String>()
-            BottleInfoJson.decode(txn?.bottleInfoListJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
-            filesToDelete.addAll(pillCountTxnDao.getTransactionDetailsImages(txnId))
+            DispenseBottleJson.decode(txn?.bottlesJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
+            filesToDelete.addAll(dispenseTxnDao.getTransactionDetailsImages(txnId))
 
-            pillCountTxnDao.deleteTransaction(txnId)
+            dispenseTxnDao.deleteTransaction(txnId)
 
             filesToDelete.forEach { path ->
                 val file = java.io.File(path)
@@ -513,8 +510,8 @@ class Hl7Repository @Inject constructor(
 
         logger.i("MSH-10 raw messageControlId (site2) = '${message.header?.messageControlId.orEmpty()}'")
 
-        val txn = PillCountTxnEntity(
-            localId = preferenceHelper.getLocalId(),
+        val txn = DispenseTxnEntity(
+            userLocalId = preferenceHelper.getLocalId(),
             drugId = drugId,
             targetCount = targetCount,
             status = CountStatus.PARTIAL,
@@ -527,12 +524,11 @@ class Hl7Repository @Inject constructor(
             priority = priority,
             hl7MessageControlId = message.header?.messageControlId.orEmpty().takeIf { it.isNotBlank() },
             hl7SequenceNumber = message.header?.sequenceNumber?.takeIf { it.isNotBlank() },
-            isDispense = true
         )
 
         logger.i("Saving txn (site2) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}'")
 
-        val txnId = pillCountTxnDao.upsertPreservingId(txn)
+        val txnId = dispenseTxnDao.upsertPreservingId(txn)
         // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
         FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         insertZinContainerDetails(txnId, message)
@@ -603,8 +599,8 @@ class Hl7Repository @Inject constructor(
 
         logger.i("MSH-10 raw messageControlId (site3/orderPacket) = '${message.header?.messageControlId.orEmpty()}'")
 
-        val txn = PillCountTxnEntity(
-            localId = preferenceHelper.getLocalId(),
+        val txn = DispenseTxnEntity(
+            userLocalId = preferenceHelper.getLocalId(),
             drugId = drugId,
             targetCount = targetCount,
             status = CountStatus.PARTIAL,
@@ -617,12 +613,11 @@ class Hl7Repository @Inject constructor(
             hl7MessageControlId = message.header?.messageControlId.orEmpty().takeIf { it.isNotBlank() },
             hl7SequenceNumber = message.header?.sequenceNumber?.takeIf { it.isNotBlank() },
             transactionOrderId = orderPacket.orderTransactionOrderId.takeIf { it.isNotBlank() },
-            isDispense = true
         )
 
         logger.i("Saving txn (site3) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}' transactionOrderId='${txn.transactionOrderId}'")
 
-        val txnId = pillCountTxnDao.upsertPreservingId(txn)
+        val txnId = dispenseTxnDao.upsertPreservingId(txn)
         // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
         FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         insertZinContainerDetails(txnId, message)
@@ -709,7 +704,7 @@ class Hl7Repository @Inject constructor(
         }
 
         val now = System.currentTimeMillis()
-        val batch = BatchEntity(
+        val batch = StockBatchEntity(
             batchId = now,
             startDateTime = now,
             endDateTime = null,
@@ -719,7 +714,7 @@ class Hl7Repository @Inject constructor(
             bucketId = "",
             requestIdFromPMS = message.header?.messageControlId.orEmpty()
         )
-        val batchId = batchDao.insert(batch)
+        val batchId = stockBatchDao.insert(batch)
 
         for (item in resolvedItems) {
             val txn = StockTxnEntity(
@@ -798,11 +793,11 @@ class Hl7Repository @Inject constructor(
                 logger.i("ZIN EXPECTED_ON_HAND: skipping detail insert for txnId=$txnId because pillCount=0")
                 continue
             }
-            txnDetailsDao.insert(
-                PillCountTxnDetailsEntity(
+            dispenseCountDao.insert(
+                DispenseCountEntity(
                     txnId = txnId,
                     pillCount = pillCount,
-                    type = StepState.CONTAINER_INITIATE.name,
+                    step = StepState.CONTAINER_INITIATE.name,
                     isManual = false
                 )
             )
@@ -810,7 +805,7 @@ class Hl7Repository @Inject constructor(
             inserted = true
         }
         if (inserted) {
-            pillCountTxnDao.updateWorkflowStep(txnId, StepState.TARGET_VERIFICATION.name)
+            dispenseTxnDao.updateWorkflowStep(txnId, StepState.TARGET_VERIFICATION.name)
             logger.i("ZIN: workflowStep updated to TARGET_VERIFICATION for txnId=$txnId")
         }
     }
@@ -826,9 +821,9 @@ class Hl7Repository @Inject constructor(
      * exist, the edit is ignored and a notification is shown.
      *
      * Fields updated:
-     * - [PillCountTxnEntity.drugId]      — resolved from the incoming NDC
-     * - [PillCountTxnEntity.targetCount] — from RXE quantity
-     * - [PillCountTxnEntity.isSynced]    — reset to false so the updated result is re-sent
+     * - [DispenseTxnEntity.drugId]      — resolved from the incoming NDC
+     * - [DispenseTxnEntity.targetCount] — from RXE quantity
+     * - [DispenseTxnEntity.isSynced]    — reset to false so the updated result is re-sent
      */
     internal suspend fun handleOrderEdit(message: HL7Message) {
         val orc = message.segment<ORCSegment>(ORCSegment.NAME) ?: return
@@ -841,12 +836,12 @@ class Hl7Repository @Inject constructor(
         logger.i("Received ORC|XO for rxNo=$rxNo orderStatus=$orderStatusRaw — looking up existing transaction")
 
         // 1. Locate the active transaction; if soft-deleted, restore it so the edit can be applied
-        var existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
+        var existingTxn = dispenseTxnDao.getActiveByRxNo(rxNo)
         if (existingTxn == null) {
-            val deletedTxn = pillCountTxnDao.getDeletedByRxNo(rxNo)
+            val deletedTxn = dispenseTxnDao.getDeletedByRxNo(rxNo)
             if (deletedTxn != null) {
                 logger.i("ORC|XO: restoring deleted txnId=${deletedTxn.txnId} for rxNo=$rxNo before applying status=$orderStatusRaw")
-                pillCountTxnDao.restoreDeletedTxn(deletedTxn.txnId)
+                dispenseTxnDao.restoreDeletedTxn(deletedTxn.txnId)
                 existingTxn = deletedTxn.copy(isDeleted = false, status = CountStatus.PARTIAL)
             }
         }
@@ -893,7 +888,7 @@ class Hl7Repository @Inject constructor(
         // 4. Map order status and apply the edit
         val newStatus = mapHl7OrderStatus(orderStatusRaw)
 
-        pillCountTxnDao.updateFromHl7Edit(
+        dispenseTxnDao.updateFromHl7Edit(
             txnId = existingTxn.txnId,
             drugId = newDrugId,
             targetCount = newTargetCount,
@@ -909,7 +904,7 @@ class Hl7Repository @Inject constructor(
         // 5. If status is CA, soft-delete after applying the edit
         if (orderStatusRaw == "CA") {
             logger.i("ORC|XO with status=CA — soft-deleting txnId=${existingTxn.txnId} after update")
-            pillCountTxnDao.softDeleteByRxNo(rxNo)
+            dispenseTxnDao.softDeleteByRxNo(rxNo)
             return
         }
 
@@ -944,7 +939,7 @@ class Hl7Repository @Inject constructor(
 
     private fun observePendingHl7Transactions() {
         scope.launch {
-            pillCountTxnDao.observePendingHl7Txn()
+            dispenseTxnDao.observePendingHl7Txn()
                 .catch { e -> logger.e("Pending HL7 txn observer flow failed", e, event = LogEvent.HL7_RESEND_FAILED) }
                 .collect { pendingTxn ->
                     logger.i("HL7 observer fired, pending=${pendingTxn.size}")

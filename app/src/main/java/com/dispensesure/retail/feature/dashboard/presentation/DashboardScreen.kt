@@ -159,7 +159,7 @@ fun DashboardScreen(
         }
     }
 
-    // Inventory quick action: bucket selected but no BatchEntity yet — the batch is
+    // Inventory quick action: bucket selected but no StockBatchEntity yet — the batch is
     // created on the first NDC scan inside InventoryScanViewModel. Routes to the
     // new Batch Stock Count panel (Screen.InventoryScan), NOT the legacy DispenseFlow.
     LaunchedEffect(uiState.pendingStockCountBucketId) {

@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import com.dispensesure.retail.ui.theme.AppTheme
 
 /**
@@ -39,7 +39,7 @@ import com.dispensesure.retail.ui.theme.AppTheme
  */
 @Composable
 fun StockRow(
-    rowData: TxnWithDrugDto,
+    rowData: DispenseTxnSummary,
     onTxnClick: () -> Unit
 ) {
     val dimens = AppTheme.dimens

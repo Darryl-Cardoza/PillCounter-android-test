@@ -2,11 +2,11 @@ package com.dispensesure.retail.feature.batchCount.presentation.viewmodel
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.room.models.BatchEntity
-import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
+import com.dispensesure.retail.core.room.models.StockBatchEntity
+import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.batchCount.domain.model.BatchDrugGroup
@@ -37,24 +37,24 @@ class BatchViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var stockTxnDao: StockTxnDao
-    private lateinit var bottleInfoDao: BottleInfoDao
-    private lateinit var batchDao: BatchDao
+    private lateinit var stockBottleInfoDao: StockBottleInfoDao
+    private lateinit var stockBatchDao: StockBatchDao
     private lateinit var preferenceHelper: PreferenceHelper
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         stockTxnDao = mockk(relaxed = true)
-        bottleInfoDao = mockk(relaxed = true)
-        batchDao = mockk(relaxed = true)
+        stockBottleInfoDao = mockk(relaxed = true)
+        stockBatchDao = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
 
         // Sensible defaults so the init block does not blow up.
         every { preferenceHelper.getLocalId() } returns 1L
-        coEvery { batchDao.getLatest() } returns null
-        coEvery { batchDao.getById(any()) } returns null
+        coEvery { stockBatchDao.getLatest() } returns null
+        coEvery { stockBatchDao.getById(any()) } returns null
         coEvery { stockTxnDao.getUniqueNdcCountForBatch(any()) } returns 0
-        every { bottleInfoDao.observeByBatchId(any()) } returns flowOf(emptyList())
+        every { stockBottleInfoDao.observeByBatchId(any()) } returns flowOf(emptyList())
     }
 
     @After
@@ -70,8 +70,8 @@ class BatchViewModelTest {
         return BatchViewModel(
             savedStateHandle,
             stockTxnDao,
-            bottleInfoDao,
-            batchDao,
+            stockBottleInfoDao,
+            stockBatchDao,
             preferenceHelper,
         )
     }
@@ -86,7 +86,7 @@ class BatchViewModelTest {
         bottleQty: Int? = 0,
         looseQty: Int? = 0,
         packageQty: Int? = 1
-    ) = BatchTxnDto(txnId, drugId, drugName, ndc, lotNo, expiry, bottleQty, looseQty, packageQty)
+    ) = StockBottleInfoDto(txnId, drugId, drugName, ndc, lotNo, expiry, bottleQty, looseQty, packageQty)
 
     // ────────────────────────────── init block ──────────────────────────────
 
@@ -98,15 +98,15 @@ class BatchViewModelTest {
         assertEquals(0L, vm.displayBatchId.value)
         assertNull(vm.batchEntity.value)
         assertEquals(0, vm.uniqueNdcCount.value)
-        coVerify(exactly = 0) { batchDao.getById(any()) }
+        coVerify(exactly = 0) { stockBatchDao.getById(any()) }
     }
 
     // BATCH_VM_001
     @Test
     fun `init with zero batch_id arg falls back to latest batch`() = runTest(testDispatcher) {
-        val entity = BatchEntity(batchId = 7L, status = BatchStatus.INPROGRESS)
-        coEvery { batchDao.getLatest() } returns entity
-        coEvery { batchDao.getById(7L) } returns entity
+        val entity = StockBatchEntity(batchId = 7L, status = BatchStatus.INPROGRESS)
+        coEvery { stockBatchDao.getLatest() } returns entity
+        coEvery { stockBatchDao.getById(7L) } returns entity
         coEvery { stockTxnDao.getUniqueNdcCountForBatch(7L) } returns 3
 
         val vm = createViewModel(batchId = 0L)
@@ -120,8 +120,8 @@ class BatchViewModelTest {
     // BATCH_VM_002
     @Test
     fun `init with explicit batch_id loads completed entity`() = runTest(testDispatcher) {
-        val entity = BatchEntity(batchId = 9L, status = BatchStatus.COMPLETED)
-        coEvery { batchDao.getById(9L) } returns entity
+        val entity = StockBatchEntity(batchId = 9L, status = BatchStatus.COMPLETED)
+        coEvery { stockBatchDao.getById(9L) } returns entity
         coEvery { stockTxnDao.getUniqueNdcCountForBatch(9L) } returns 5
 
         val vm = createViewModel(batchId = 9L)
@@ -130,12 +130,12 @@ class BatchViewModelTest {
         assertEquals(9L, vm.displayBatchId.value)
         assertEquals(entity, vm.batchEntity.value)
         assertEquals(5, vm.uniqueNdcCount.value)
-        coVerify(exactly = 0) { batchDao.getLatest() }
+        coVerify(exactly = 0) { stockBatchDao.getLatest() }
     }
 
     @Test
     fun `init with explicit batch_id but missing entity leaves batchEntity null`() = runTest(testDispatcher) {
-        coEvery { batchDao.getById(9L) } returns null
+        coEvery { stockBatchDao.getById(9L) } returns null
 
         val vm = createViewModel(batchId = 9L)
         advanceUntilIdle()
@@ -169,7 +169,7 @@ class BatchViewModelTest {
                 bottleQty = null, looseQty = null, packageQty = null
             )
         )
-        every { bottleInfoDao.observeByBatchId(5L) } returns flowOf(txns)
+        every { stockBottleInfoDao.observeByBatchId(5L) } returns flowOf(txns)
 
         val vm = createViewModel(batchId = 5L)
         advanceUntilIdle()
@@ -207,7 +207,7 @@ class BatchViewModelTest {
             txn(txnId = 1, drugId = 10L, bottleQty = 3, looseQty = 0, packageQty = 2),
             txn(txnId = 2, drugId = 10L, bottleQty = 0, looseQty = 6, packageQty = 1)
         )
-        every { bottleInfoDao.observeByBatchId(8L) } returns flowOf(txns)
+        every { stockBottleInfoDao.observeByBatchId(8L) } returns flowOf(txns)
 
         val vm = createViewModel(batchId = 8L)
         // Start a real collector so WhileSubscribed activates the upstream and groupAndMap runs.
@@ -225,7 +225,7 @@ class BatchViewModelTest {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun BatchViewModel.invokeGroupAndMap(txns: List<BatchTxnDto>): List<BatchDrugGroup> {
+    private fun BatchViewModel.invokeGroupAndMap(txns: List<StockBottleInfoDto>): List<BatchDrugGroup> {
         val method = BatchViewModel::class.java
             .getDeclaredMethod("groupAndMap", List::class.java)
             .apply { isAccessible = true }
@@ -295,7 +295,7 @@ class BatchViewModelTest {
         advanceUntilIdle()
 
         assertTrue(done)
-        coVerify(exactly = 1) { batchDao.softDelete(4L) }
+        coVerify(exactly = 1) { stockBatchDao.softDelete(4L) }
         coVerify(exactly = 1) { stockTxnDao.deleteByBatchIds(listOf(4L)) }
     }
 
@@ -309,13 +309,13 @@ class BatchViewModelTest {
         advanceUntilIdle()
 
         assertTrue(done)
-        coVerify(exactly = 0) { batchDao.softDelete(any()) }
+        coVerify(exactly = 0) { stockBatchDao.softDelete(any()) }
         coVerify(exactly = 0) { stockTxnDao.deleteByBatchIds(any()) }
     }
 
     @Test
     fun `deleteBatch still calls onDone when dao throws`() = runTest(testDispatcher) {
-        coEvery { batchDao.softDelete(4L) } throws RuntimeException("db error")
+        coEvery { stockBatchDao.softDelete(4L) } throws RuntimeException("db error")
 
         val vm = createViewModel(batchId = 4L)
         advanceUntilIdle()

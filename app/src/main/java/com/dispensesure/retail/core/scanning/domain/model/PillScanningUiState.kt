@@ -56,5 +56,7 @@ data class PillScanningUiState(
     val showAddBottleDialog: Boolean = false,
     val showReplaceBottleDialog: Boolean = false,
     val canReset: Boolean = false,
-    val showSkipStepDialog: Boolean = false
+    val showSkipStepDialog: Boolean = false,
+    // True for a stock loose-count session; set by enterStockCountSession.
+    val isStockCountSession: Boolean = false
 )

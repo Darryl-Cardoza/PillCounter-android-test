@@ -43,7 +43,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
-import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.scanning.logic.TrayClass
@@ -345,17 +344,12 @@ fun CameraPreviewSection(
                     // still need to be dispensed, so the green threshold must track
                     // the REMAINING target, not the original target. Mirrors the
                     // "already counted" total shown in InformationPanelSection.
-                    val alreadyCounted =
-                        if (uiState.scanType == CountType.REGULAR.toString()) {
-                            uiState.stockCountSessionTotal
-                        } else {
-                            uiState.txnDetailHistory.sumOf { it.count }
-                        }
+                    val alreadyCounted = uiState.txnDetailHistory.sumOf { it.count }
                     val excessCount = OverlayUtils.excessPillCount(
                         pillCount = pills.size,
                         targetCount = uiState.targetCount,
                         alreadyCounted = alreadyCounted,
-                        isDispense = txnInfo?.isDispense,
+                        isDispense = txnInfo != null && !uiState.isStockCountSession,
                         stepType = stepType,
                     )
                     val excessIndices: Set<Int> = if (excessCount <= 0) {

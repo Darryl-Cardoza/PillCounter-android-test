@@ -4,22 +4,22 @@ import android.app.Application
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
-import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
@@ -59,7 +59,7 @@ import java.util.concurrent.TimeUnit
  * (resetWorkflowSteps, updateFilteredPills, pausePillDetection).
  *
  * handleConfirmDialog is private; it is exercised via onEvent(PillScanningEvent.FinalDone).
- * _txnInfo is private; it is populated via showTxnInfo(), which calls getTxnWithDetails().
+ * _txnInfo is private; it is populated via showTxnInfo(), which calls getDispenseTxnDetail().
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PillScanningViewModelEventTest {
@@ -69,19 +69,19 @@ class PillScanningViewModelEventTest {
 
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
-    private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
-    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
+    private val stockBottleInfoDao: StockBottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
-    private val pillCountTxnDetailsDao: PillCountTxnDetailsDao = mockk(relaxed = true)
+    private val dispenseCountDao: DispenseCountDao = mockk(relaxed = true)
     private val locationProvider: LocationProvider = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val modelLoader: PillDetectionModelLoader = mockk(relaxed = true)
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
-    private val batchDao: BatchDao = mockk(relaxed = true)
+    private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
@@ -101,21 +101,21 @@ class PillScanningViewModelEventTest {
         every { application.applicationContext } returns application
         every { application.getString(any<Int>()) } returns "test error"
         every { application.getString(any<Int>(), any()) } returns "test error"
-        every { pillCountTxnDetailsDao.observeAllForTxn(any(), any()) } returns flowOf(emptyList())
-        // getLatestType returns StepState? — relaxed mock yields a child mock instead of null;
+        every { dispenseCountDao.observeAllForTxn(any(), any()) } returns flowOf(emptyList())
+        // getLatestStep returns StepState? — relaxed mock yields a child mock instead of null;
         // stub explicitly so getDrugInfo resolves to CONTAINER_INITIATE as expected.
-        coEvery { pillCountTxnDetailsDao.getLatestType(any()) } returns null
+        coEvery { dispenseCountDao.getLatestStep(any()) } returns null
         coJustRun { performanceLogger.logPerformanceSnapshot(any()) }
         viewModel = PillScanningViewModel(
             app = application,
             preferenceHelper = preferenceHelper,
-            pillCountTxnDao = pillCountTxnDao,
+            dispenseTxnDao = dispenseTxnDao,
             stockTxnDao = stockTxnDao,
-            bottleInfoDao = bottleInfoDao,
-            batchDao = batchDao,
+            stockBottleInfoDao = stockBottleInfoDao,
+            stockBatchDao = stockBatchDao,
             userDao = userDao,
             operatorNameProvider = operatorNameProvider,
-            pillCountTxnDetailsDao = pillCountTxnDetailsDao,
+            dispenseCountDao = dispenseCountDao,
             locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
             modelLoader = modelLoader,
@@ -155,7 +155,7 @@ class PillScanningViewModelEventTest {
     @Test
     fun `resetTransaction returns false when the DB reset fails`() = runTest {
         coEvery { preferenceHelper.getTxnId() } returns 7L
-        coEvery { pillCountTxnDao.resetForRecount(7L, any()) } throws IllegalStateException("boom")
+        coEvery { dispenseTxnDao.resetForRecount(7L, any()) } throws IllegalStateException("boom")
 
         assertFalse(viewModel.resetTransaction())
     }
@@ -195,15 +195,15 @@ class PillScanningViewModelEventTest {
     // SCAN_VM_031
     @Test
     fun `TransactionDetailDeleted hard-deletes the files then the row`() = runTest {
-        coEvery { pillCountTxnDetailsDao.getImagePathsForDetail(5L) } returns emptyList()
+        coEvery { dispenseCountDao.getImagePathsForCount(5L) } returns emptyList()
 
         viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
 
         // Delete runs on real Dispatchers.IO; wait for the last call, then check order.
-        coVerify(timeout = 3000) { pillCountTxnDetailsDao.hardDelete(5L) }
+        coVerify(timeout = 3000) { dispenseCountDao.hardDelete(5L) }
         coVerifyOrder {
-            pillCountTxnDetailsDao.getImagePathsForDetail(5L)
-            pillCountTxnDetailsDao.hardDelete(5L)
+            dispenseCountDao.getImagePathsForCount(5L)
+            dispenseCountDao.hardDelete(5L)
         }
     }
 
@@ -212,83 +212,83 @@ class PillScanningViewModelEventTest {
     // SCAN_VM_032
     @Test
     fun `AllTransactionDetailsDeleted hard-deletes the step's files then rows`() = runTest {
-        coEvery { pillCountTxnDetailsDao.getImagePathsForStep(any(), any()) } returns emptyList()
+        coEvery { dispenseCountDao.getImagePathsForStep(any(), any()) } returns emptyList()
 
         viewModel.onEvent(
             PillScanningEvent.AllTransactionDetailsDeleted(stepType = StepState.CONTAINER_INITIATE)
         )
 
         coVerify(timeout = 3000) {
-            pillCountTxnDetailsDao.hardDeleteAllForStep(any(), eq(StepState.CONTAINER_INITIATE))
+            dispenseCountDao.hardDeleteAllForStep(any(), eq(StepState.CONTAINER_INITIATE))
         }
         coVerifyOrder {
-            pillCountTxnDetailsDao.getImagePathsForStep(any(), eq(StepState.CONTAINER_INITIATE))
-            pillCountTxnDetailsDao.hardDeleteAllForStep(any(), eq(StepState.CONTAINER_INITIATE))
+            dispenseCountDao.getImagePathsForStep(any(), eq(StepState.CONTAINER_INITIATE))
+            dispenseCountDao.hardDeleteAllForStep(any(), eq(StepState.CONTAINER_INITIATE))
         }
     }
 
     // ─────────────────────────── Delete: bottle links ───────────────────────────
 
-    private fun txnWithBottleIds(vararg ids: Long) = PillCountTxnEntity(
-        txnId = 9L, isDispense = true, status = CountStatus.PARTIAL,
-        bottleInfoListJson = BottleInfoJson.encode(listOf(BottleInfo(txnId = 9L, txnDetailsIds = ids.toList()))),
+    private fun txnWithBottleIds(vararg ids: Long) = DispenseTxnEntity(
+        txnId = 9L, status = CountStatus.PARTIAL,
+        bottlesJson = DispenseBottleJson.encode(listOf(DispenseBottle(txnId = 9L, countIds = ids.toList()))),
     )
 
-    private fun bottleIdsWritten(json: String) = BottleInfoJson.decode(json).single().txnDetailsIds
+    private fun bottleIdsWritten(json: String) = DispenseBottleJson.decode(json).single().countIds
 
     @Test
     fun `TransactionDetailDeleted removes the id from its bottle`() = runTest {
         every { preferenceHelper.getTxnId() } returns 9L
-        coEvery { pillCountTxnDetailsDao.getImagePathsForDetail(5L) } returns emptyList()
-        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L)
+        coEvery { dispenseCountDao.getImagePathsForCount(5L) } returns emptyList()
+        coEvery { dispenseTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L)
         val json = slot<String>()
 
         viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
 
-        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, capture(json), any()) }
+        coVerify(timeout = 3000) { dispenseTxnDao.updateBottles(9L, capture(json), any()) }
         assertEquals(listOf(6L), bottleIdsWritten(json.captured))
         coVerifyOrder {
-            pillCountTxnDetailsDao.hardDelete(5L)
-            pillCountTxnDao.updateBottleInfoList(9L, any(), any())
+            dispenseCountDao.hardDelete(5L)
+            dispenseTxnDao.updateBottles(9L, any(), any())
         }
     }
 
     @Test
     fun `AllTransactionDetailsDeleted removes the step's ids from bottles`() = runTest {
         every { preferenceHelper.getTxnId() } returns 9L
-        coEvery { pillCountTxnDetailsDao.getImagePathsForStep(any(), any()) } returns emptyList()
-        coEvery { pillCountTxnDetailsDao.getIdsForStep(9L, StepState.TARGET_VERIFICATION) } returns listOf(5L, 6L)
-        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L, 7L)
+        coEvery { dispenseCountDao.getImagePathsForStep(any(), any()) } returns emptyList()
+        coEvery { dispenseCountDao.getIdsForStep(9L, StepState.TARGET_VERIFICATION) } returns listOf(5L, 6L)
+        coEvery { dispenseTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L, 7L)
         val json = slot<String>()
 
         viewModel.onEvent(PillScanningEvent.AllTransactionDetailsDeleted(stepType = StepState.TARGET_VERIFICATION))
 
-        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, capture(json), any()) }
+        coVerify(timeout = 3000) { dispenseTxnDao.updateBottles(9L, capture(json), any()) }
         assertEquals(listOf(7L), bottleIdsWritten(json.captured))
     }
 
     @Test
     fun `TransactionDetailDeleted leaves bottles alone when the id isn't linked`() = runTest {
         every { preferenceHelper.getTxnId() } returns 9L
-        coEvery { pillCountTxnDetailsDao.getImagePathsForDetail(5L) } returns emptyList()
-        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(6L)
+        coEvery { dispenseCountDao.getImagePathsForCount(5L) } returns emptyList()
+        coEvery { dispenseTxnDao.getById(9L) } returns txnWithBottleIds(6L)
 
         viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
 
-        coVerify(timeout = 3000) { pillCountTxnDao.getById(9L) }
-        coVerify(exactly = 0) { pillCountTxnDao.updateBottleInfoList(any(), any(), any()) }
+        coVerify(timeout = 3000) { dispenseTxnDao.getById(9L) }
+        coVerify(exactly = 0) { dispenseTxnDao.updateBottles(any(), any(), any()) }
     }
 
     @Test
     fun `TransactionDetailDeleted deletes the row and unlinks it in one transaction`() = runTest {
         every { preferenceHelper.getTxnId() } returns 9L
-        coEvery { pillCountTxnDetailsDao.getImagePathsForDetail(5L) } returns emptyList()
-        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L)
+        coEvery { dispenseCountDao.getImagePathsForCount(5L) } returns emptyList()
+        coEvery { dispenseTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L)
         var deleteInTx = false
         var unlinkInTx = false
         val unlinked = CountDownLatch(1)
-        coEvery { pillCountTxnDetailsDao.hardDelete(5L) } coAnswers { deleteInTx = inTransaction }
-        coEvery { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) } coAnswers {
+        coEvery { dispenseCountDao.hardDelete(5L) } coAnswers { deleteInTx = inTransaction }
+        coEvery { dispenseTxnDao.updateBottles(9L, any(), any()) } coAnswers {
             unlinkInTx = inTransaction
             unlinked.countDown()
         }
@@ -305,16 +305,16 @@ class PillScanningViewModelEventTest {
     @Test
     fun `AllTransactionDetailsDeleted deletes the rows and unlinks them in one transaction`() = runTest {
         every { preferenceHelper.getTxnId() } returns 9L
-        coEvery { pillCountTxnDetailsDao.getImagePathsForStep(any(), any()) } returns emptyList()
-        coEvery { pillCountTxnDetailsDao.getIdsForStep(9L, StepState.TARGET_VERIFICATION) } returns listOf(5L, 6L)
-        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L, 7L)
+        coEvery { dispenseCountDao.getImagePathsForStep(any(), any()) } returns emptyList()
+        coEvery { dispenseCountDao.getIdsForStep(9L, StepState.TARGET_VERIFICATION) } returns listOf(5L, 6L)
+        coEvery { dispenseTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L, 7L)
         var deleteInTx = false
         var unlinkInTx = false
         val unlinked = CountDownLatch(1)
-        coEvery { pillCountTxnDetailsDao.hardDeleteAllForStep(9L, StepState.TARGET_VERIFICATION) } coAnswers {
+        coEvery { dispenseCountDao.hardDeleteAllForStep(9L, StepState.TARGET_VERIFICATION) } coAnswers {
             deleteInTx = inTransaction
         }
-        coEvery { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) } coAnswers {
+        coEvery { dispenseTxnDao.updateBottles(9L, any(), any()) } coAnswers {
             unlinkInTx = inTransaction
             unlinked.countDown()
         }
@@ -339,7 +339,7 @@ class PillScanningViewModelEventTest {
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.showNotesDialog)
-        coVerify(exactly = 1) { pillCountTxnDao.updateNote(any(), eq("test note"), any()) }
+        coVerify(exactly = 1) { dispenseTxnDao.updateNote(any(), eq("test note"), any()) }
     }
 
     // ─────────────────────────── NoteSkip ───────────────────────────
@@ -358,39 +358,72 @@ class PillScanningViewModelEventTest {
 
     // SCAN_VM_035
     @Test
-    fun `FinalDone with REGULAR countType sets showEndStockCountDialog to true`() = runTest {
-        val txnInfo = TxnWithDetails(
+    fun `FinalDone in a stock count session sets showEndStockCountDialog to true`() = runTest {
+        val txnInfo = DispenseTxnDetail(
             txnId = 1L, drugName = null, drugId = 1L, ndc = null,
             targetCount = 10, note = null,
-            createdAt = 0L, bottleInfoListJson = null, totalPillCount = 0,
-            isDispense = false, drugType = null,
-            txnDetails = emptyList(), isComingFromHL7 = false,
+            createdAt = 0L, bottlesJson = null, totalPillCount = 0,
+            drugType = null,
+            counts = emptyList(), isComingFromHL7 = false,
         )
-        coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns txnInfo
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns txnInfo
         viewModel.showTxnInfo(CountType.REGULAR.toString())
         advanceUntilIdle()
+        // A null drug stops startStockCounting, so only the session flag changes.
+        coEvery { drugMasterDao.getDrugById(any()) } returns null
+        viewModel.enterStockCountSession(bottleId = 0L, stockTxnId = 0L, batchId = 0L, drugId = 1L)
 
         viewModel.onEvent(PillScanningEvent.FinalDone(StepState.CONTAINER_INITIATE, totalCount = 5))
 
         assertTrue(viewModel.uiState.value.showEndStockCountDialog)
     }
 
+    // SCAN_VM_048
+    @Test
+    fun `enterStockCountSession marks the session in uiState`() = runTest {
+        coEvery { drugMasterDao.getDrugById(any()) } returns null
+
+        viewModel.enterStockCountSession(bottleId = 0L, stockTxnId = 0L, batchId = 0L, drugId = 1L)
+
+        assertTrue(viewModel.uiState.value.isStockCountSession)
+    }
+
     // SCAN_VM_036
     @Test
     fun `FinalDone with CONTAINER_INITIATE and totalCount below target sets showErrorMessage`() = runTest {
-        val txnInfo = TxnWithDetails(
+        val txnInfo = DispenseTxnDetail(
             txnId = 1L, drugName = null, drugId = 1L, ndc = null,
             targetCount = 10, note = null,
-            createdAt = 0L, bottleInfoListJson = null, totalPillCount = 0,
-            isDispense = true, drugType = null,
-            txnDetails = emptyList(), isComingFromHL7 = false,
+            createdAt = 0L, bottlesJson = null, totalPillCount = 0,
+            drugType = null,
+            counts = emptyList(), isComingFromHL7 = false,
         )
-        coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns txnInfo
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns txnInfo
         viewModel.showTxnInfo(CountType.FIXED.toString())
         advanceUntilIdle()
 
         // target=10, totalCount=5 → 10 <= 5 is false → sets showErrorMessage
         viewModel.onEvent(PillScanningEvent.FinalDone(StepState.CONTAINER_INITIATE, totalCount = 5))
+
+        assertNotNull(viewModel.uiState.value.showErrorMessage)
+    }
+
+    // SCAN_VM_049
+    @Test
+    fun `FinalDone with TARGET_VERIFICATION and count below target sets showErrorMessage`() = runTest {
+        val txnInfo = DispenseTxnDetail(
+            txnId = 1L, drugName = null, drugId = 1L, ndc = null,
+            targetCount = 10, note = null,
+            createdAt = 0L, bottlesJson = null, totalPillCount = 0,
+            drugType = null,
+            counts = emptyList(), isComingFromHL7 = false,
+        )
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns txnInfo
+        viewModel.showTxnInfo(CountType.FIXED.toString())
+        advanceUntilIdle()
+
+        // target=10, history sums to 0 → error, no step change
+        viewModel.onEvent(PillScanningEvent.FinalDone(StepState.TARGET_VERIFICATION, totalCount = 0))
 
         assertNotNull(viewModel.uiState.value.showErrorMessage)
     }
@@ -411,13 +444,12 @@ class PillScanningViewModelEventTest {
     @Test
     fun `completing a count stamps the operator name on the txn`() = runTest {
         every { preferenceHelper.getTxnId() } returns 42L
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(42L) } returns 5
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(42L) } returns 5
         coEvery {
-            pillCountTxnDetailsDao.getPillCountForStep(42L, StepState.TARGET_VERIFICATION.name)
+            dispenseCountDao.getPillCountForStep(42L, StepState.TARGET_VERIFICATION.name)
         } returns 5
-        coEvery { pillCountTxnDao.getById(42L) } returns PillCountTxnEntity(
+        coEvery { dispenseTxnDao.getById(42L) } returns DispenseTxnEntity(
             txnId = 42L,
-            isDispense = true,
             status = CountStatus.PARTIAL,
             targetCount = 5,
         )
@@ -426,7 +458,7 @@ class PillScanningViewModelEventTest {
         viewModel.onEvent(PillScanningEvent.NoteSkip)
         advanceUntilIdle()
 
-        coVerify { pillCountTxnDao.updateOperatorName(42L, "Bruce", "Wayne", any()) }
+        coVerify { dispenseTxnDao.updateOperatorName(42L, "Bruce", "Wayne", any()) }
     }
 
     @Test
@@ -434,13 +466,12 @@ class PillScanningViewModelEventTest {
         // observePendingHl7Txn fires on status = COMPLETED. If the operator lands after
         // that write, the resend sweep can read the row first and send a blank operator.
         every { preferenceHelper.getTxnId() } returns 44L
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(44L) } returns 5
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(44L) } returns 5
         coEvery {
-            pillCountTxnDetailsDao.getPillCountForStep(44L, StepState.TARGET_VERIFICATION.name)
+            dispenseCountDao.getPillCountForStep(44L, StepState.TARGET_VERIFICATION.name)
         } returns 5
-        coEvery { pillCountTxnDao.getById(44L) } returns PillCountTxnEntity(
+        coEvery { dispenseTxnDao.getById(44L) } returns DispenseTxnEntity(
             txnId = 44L,
-            isDispense = true,
             status = CountStatus.PARTIAL,
             targetCount = 5,
         )
@@ -450,8 +481,8 @@ class PillScanningViewModelEventTest {
         advanceUntilIdle()
 
         coVerifyOrder {
-            pillCountTxnDao.updateOperatorName(44L, "Bruce", "Wayne", any())
-            pillCountTxnDao.updateTxnStatus(44L, CountStatus.COMPLETED, any())
+            dispenseTxnDao.updateOperatorName(44L, "Bruce", "Wayne", any())
+            dispenseTxnDao.updateTxnStatus(44L, CountStatus.COMPLETED, any())
         }
     }
 
@@ -459,13 +490,12 @@ class PillScanningViewModelEventTest {
     fun `a short dispense is stored PARTIAL even when other steps counted more pills`() = runTest {
         every { preferenceHelper.getTxnId() } returns 43L
         // All steps together clear the target; the prescribed step alone does not.
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(43L) } returns 35
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(43L) } returns 35
         coEvery {
-            pillCountTxnDetailsDao.getPillCountForStep(43L, StepState.TARGET_VERIFICATION.name)
+            dispenseCountDao.getPillCountForStep(43L, StepState.TARGET_VERIFICATION.name)
         } returns 15
-        coEvery { pillCountTxnDao.getById(43L) } returns PillCountTxnEntity(
+        coEvery { dispenseTxnDao.getById(43L) } returns DispenseTxnEntity(
             txnId = 43L,
-            isDispense = true,
             status = CountStatus.PARTIAL,
             targetCount = 20,
         )
@@ -473,6 +503,6 @@ class PillScanningViewModelEventTest {
         viewModel.onEvent(PillScanningEvent.NoteSkip)
         advanceUntilIdle()
 
-        coVerify { pillCountTxnDao.updateTxnStatus(43L, CountStatus.PARTIAL, any()) }
+        coVerify { dispenseTxnDao.updateTxnStatus(43L, CountStatus.PARTIAL, any()) }
     }
 }

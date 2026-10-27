@@ -9,11 +9,11 @@ import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.hl7.service.HL7Config
 import com.dispensesure.retail.core.models.ApiResponse
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.feature.settings.domain.data.IApplicationSettingsRepository
 import com.dispensesure.retail.feature.settings.domain.data.IApplicationSettingsViewModel
 import com.dispensesure.retail.feature.settings.domain.model.ApplicationSettingsUiState
@@ -61,10 +61,10 @@ import javax.inject.Inject
 class MainActivityViewModel @Inject constructor(
     private val repository: IApplicationSettingsRepository,
     private val preferenceHelper: PreferenceHelper,
-    private val txnDao: PillCountTxnDao,
-    private val batchDao: BatchDao,
+    private val dispenseTxnDao: DispenseTxnDao,
+    private val stockBatchDao: StockBatchDao,
     private val stockTxnDao: StockTxnDao,
-    private val bottleInfoDao: BottleInfoDao,
+    private val stockBottleInfoDao: StockBottleInfoDao,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val hl7EventHandler: Hl7EventHandler,
     private val tutorialDataCleaner: TutorialDataCleaner,
@@ -453,21 +453,21 @@ class MainActivityViewModel @Inject constructor(
             logger.d("Retention days: $optionDays, cutoff=${Date(cutoff)}")
 
             // Get all transactions older than cutoff regardless of isDeleted
-            val oldTransactions = txnDao.getTransactionsBefore(cutoff)
+            val oldTransactions = dispenseTxnDao.getTransactionsBefore(cutoff)
             logger.d("Found ${oldTransactions.size} transactions to delete")
 
             oldTransactions.forEach { txn ->
                 val filesToDelete = mutableListOf<String>()
 
                 // Collect barcode images
-                BottleInfoJson.decode(txn.bottleInfoListJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
+                DispenseBottleJson.decode(txn.bottlesJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
 
                 // Collect details images
-                val detailImages = txnDao.getTransactionDetailsImages(txn.txnId)
+                val detailImages = dispenseTxnDao.getTransactionDetailsImages(txn.txnId)
                 filesToDelete.addAll(detailImages)
 
                 // Delete transaction (assumes cascade deletes details)
-                txnDao.deleteTransaction(txn.txnId)
+                dispenseTxnDao.deleteTransaction(txn.txnId)
 
                 // Delete files from storage
                 filesToDelete.forEach { path ->
@@ -693,10 +693,10 @@ class MainActivityViewModel @Inject constructor(
     fun deleteAllTransaction() {
         viewModelScope.launch {
             try {
-                txnDao.deleteAllTransactions()
-                bottleInfoDao.deleteAll()
+                dispenseTxnDao.deleteAllTransactions()
+                stockBottleInfoDao.deleteAll()
                 stockTxnDao.deleteAll()
-                batchDao.deleteAll()
+                stockBatchDao.deleteAll()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -11,7 +11,7 @@ import android.graphics.pdf.PdfDocument
 import android.text.TextUtils
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.DateFormats
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -80,7 +80,7 @@ class HistoryPdfExporter(private val context: Context) {
         textAlign = Paint.Align.CENTER
     }
 
-    fun generateHistoryPdf(counts: List<TxnWithDrugDto>, selectedDate: String): File? {
+    fun generateHistoryPdf(counts: List<DispenseTxnSummary>, selectedDate: String): File? {
         // 1. Setup Path
         val folderName = "PillReports/DailyHistoryReports"
         val directory = File(context.getExternalFilesDir(null), folderName)

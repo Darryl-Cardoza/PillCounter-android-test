@@ -1,11 +1,11 @@
 package com.dispensesure.retail.core.scanning.presentation.viewmodel
 
 import android.app.Application
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.UserDao
@@ -55,19 +55,19 @@ class PillScanningViewModelStateTest {
 
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
-    private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
-    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
+    private val stockBottleInfoDao: StockBottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
-    private val pillCountTxnDetailsDao: PillCountTxnDetailsDao = mockk(relaxed = true)
+    private val dispenseCountDao: DispenseCountDao = mockk(relaxed = true)
     private val locationProvider: LocationProvider = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val modelLoader: PillDetectionModelLoader = mockk(relaxed = true)
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
-    private val batchDao: BatchDao = mockk(relaxed = true)
+    private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
@@ -78,18 +78,18 @@ class PillScanningViewModelStateTest {
         every { application.getString(any<Int>()) } returns "test error"
         every { application.getString(any<Int>(), any()) } returns "test error"
         // observeAllForTxn is called from observeTxnDetailsForTxn (triggered via getDrugInfo)
-        every { pillCountTxnDetailsDao.observeAllForTxn(any(), any()) } returns flowOf(emptyList())
+        every { dispenseCountDao.observeAllForTxn(any(), any()) } returns flowOf(emptyList())
         coJustRun { performanceLogger.logPerformanceSnapshot(any()) }
         viewModel = PillScanningViewModel(
             app = application,
             preferenceHelper = preferenceHelper,
-            pillCountTxnDao = pillCountTxnDao,
+            dispenseTxnDao = dispenseTxnDao,
             stockTxnDao = stockTxnDao,
-            bottleInfoDao = bottleInfoDao,
-            batchDao = batchDao,
+            stockBottleInfoDao = stockBottleInfoDao,
+            stockBatchDao = stockBatchDao,
             userDao = userDao,
             operatorNameProvider = operatorNameProvider,
-            pillCountTxnDetailsDao = pillCountTxnDetailsDao,
+            dispenseCountDao = dispenseCountDao,
             locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
             modelLoader = modelLoader,
@@ -196,7 +196,7 @@ class PillScanningViewModelStateTest {
         advanceUntilIdle()
 
         assertEquals(42, viewModel.uiState.value.targetCount)
-        coVerify { pillCountTxnDao.updateTargetCount(any(), eq(42), any()) }
+        coVerify { dispenseTxnDao.updateTargetCount(any(), eq(42), any()) }
     }
 
     // ─────────────────────────── Camera pause control ───────────────────────────

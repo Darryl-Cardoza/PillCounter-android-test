@@ -1,8 +1,8 @@
 package com.dispensesure.retail.feature.history.viewmodel
 
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.models.dtos.TxnDetailInfo
-import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.models.dtos.DispenseCountInfo
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.history.presentation.viewmodel.HistoryDetailsViewModel
 import com.dispensesure.retail.util.MainDispatcherRule
@@ -35,7 +35,7 @@ class HistoryDetailsViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
-    private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
 
     @Before
     fun setup() {
@@ -45,10 +45,10 @@ class HistoryDetailsViewModelTest {
     @After
     fun tearDown() { unmockkAll() }
 
-    private fun createViewModel() = HistoryDetailsViewModel(preferenceHelper, pillCountTxnDao)
+    private fun createViewModel() = HistoryDetailsViewModel(preferenceHelper, dispenseTxnDao)
 
-    private fun buildTxnWithDetails(txnDetails: List<TxnDetailInfo> = emptyList()) =
-        TxnWithDetails(
+    private fun buildTxnWithDetails(counts: List<DispenseCountInfo> = emptyList()) =
+        DispenseTxnDetail(
             txnId = 1L,
             drugName = "Aspirin",
             drugId = 100L,
@@ -56,18 +56,17 @@ class HistoryDetailsViewModelTest {
             targetCount = 10,
             note = null,
             createdAt = 1_000_000L,
-            bottleInfoListJson = null,
+            bottlesJson = null,
             totalPillCount = 10,
-            isDispense = true,
             drugType = null,
-            txnDetails = txnDetails,
+            counts = counts,
             isComingFromHL7 = false
         )
 
     // HIST_DET_VM_001
     @Test
     fun `init sets txnInfo to null when DAO returns null`() = runTest {
-        coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns null
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns null
 
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -78,7 +77,7 @@ class HistoryDetailsViewModelTest {
     // HIST_DET_VM_002
     @Test
     fun `init sets txnInfo when DAO returns a transaction`() = runTest {
-        coEvery { pillCountTxnDao.getTxnWithDetails(1L) } returns buildTxnWithDetails()
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(1L) } returns buildTxnWithDetails()
 
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -91,8 +90,8 @@ class HistoryDetailsViewModelTest {
     @Test
     fun `init uses txnId from preferenceHelper`() = runTest {
         every { preferenceHelper.getTxnId() } returns 42L
-        coEvery { pillCountTxnDao.getTxnWithDetails(42L) } returns buildTxnWithDetails()
-        coEvery { pillCountTxnDao.getTxnWithDetails(neq(42L)) } returns null
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(42L) } returns buildTxnWithDetails()
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(neq(42L)) } returns null
 
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -102,15 +101,15 @@ class HistoryDetailsViewModelTest {
 
     // HIST_DET_VM_005
     @Test
-    fun `deleteTransaction calls pillCountTxnDao softDelete with current txnId`() = runTest {
-        coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns null
+    fun `deleteTransaction calls dispenseTxnDao softDelete with current txnId`() = runTest {
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns null
         val viewModel = createViewModel()
         advanceUntilIdle()
 
         viewModel.deleteTransaction()
         advanceUntilIdle()
 
-        coVerify { pillCountTxnDao.softDelete(1L, any()) }
+        coVerify { dispenseTxnDao.softDelete(1L, any()) }
     }
 
 }

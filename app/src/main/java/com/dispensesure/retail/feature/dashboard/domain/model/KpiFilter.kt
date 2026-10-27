@@ -8,7 +8,7 @@ package com.dispensesure.retail.feature.dashboard.domain.model
  * (handled in the ViewModel — see `onKpiFilterTapped`).
  *
  * Dispense counts come from the unfiltered dispense list; inventory counts come from
- * `BatchDao.observeInProgressBatchKpiCounts`.
+ * `StockBatchDao.observeInProgressBatchKpiCounts`.
  */
 enum class KpiFilter(val queue: DashboardTab) {
     /** All dispense rows flagged as high-priority. Stubbed until the priority field is confirmed. */

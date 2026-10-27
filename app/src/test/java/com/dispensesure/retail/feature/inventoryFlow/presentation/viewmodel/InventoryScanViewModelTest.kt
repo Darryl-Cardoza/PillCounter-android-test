@@ -3,15 +3,15 @@ package com.dispensesure.retail.feature.inventoryFlow.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.room.models.BatchEntity
-import com.dispensesure.retail.core.room.models.BottleInfoEntity
+import com.dispensesure.retail.core.room.models.StockBatchEntity
+import com.dispensesure.retail.core.room.models.StockBottleInfoEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
-import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
+import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
 import com.dispensesure.retail.core.room.models.dtos.RequestedDrugDto
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.scanning.data.DrugResolver
@@ -57,9 +57,9 @@ class InventoryScanViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
-    private lateinit var batchDao: BatchDao
+    private lateinit var stockBatchDao: StockBatchDao
     private lateinit var stockTxnDao: StockTxnDao
-    private lateinit var bottleInfoDao: BottleInfoDao
+    private lateinit var stockBottleInfoDao: StockBottleInfoDao
     private lateinit var drugMasterDao: DrugMasterDao
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var operatorNameProvider: OperatorNameProvider
@@ -83,9 +83,9 @@ class InventoryScanViewModelTest {
 
         Dispatchers.setMain(testDispatcher)
 
-        batchDao = mockk(relaxed = true)
+        stockBatchDao = mockk(relaxed = true)
         stockTxnDao = mockk(relaxed = true)
-        bottleInfoDao = mockk(relaxed = true)
+        stockBottleInfoDao = mockk(relaxed = true)
         drugMasterDao = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
         operatorNameProvider = mockk(relaxed = true)
@@ -98,9 +98,9 @@ class InventoryScanViewModelTest {
 
         every { hl7EventHandler.connectionState } returns connectionState
         every { preferenceHelper.getLocalId() } returns 1L
-        every { bottleInfoDao.observeByBatchId(any()) } returns flowOf(emptyList())
+        every { stockBottleInfoDao.observeByBatchId(any()) } returns flowOf(emptyList())
         every { stockTxnDao.observeRequestedDrugs(any()) } returns flowOf(emptyList())
-        coEvery { batchDao.getById(any()) } returns null
+        coEvery { stockBatchDao.getById(any()) } returns null
     }
 
     @After
@@ -119,9 +119,9 @@ class InventoryScanViewModelTest {
         val savedStateHandle = SavedStateHandle(map)
         return InventoryScanViewModel(
             savedStateHandle,
-            batchDao,
+            stockBatchDao,
             stockTxnDao,
-            bottleInfoDao,
+            stockBottleInfoDao,
             drugMasterDao,
             preferenceHelper,
             operatorNameProvider,
@@ -159,7 +159,7 @@ class InventoryScanViewModelTest {
         bottleQty: Int? = 5,
         lotNo: String? = "LOT1",
         expNo: String? = "01-15-2030",
-    ) = BottleInfoEntity(
+    ) = StockBottleInfoEntity(
         bottleId = bottleId,
         stockTxnId = stockTxnId,
         bottleQty = bottleQty,
@@ -181,7 +181,7 @@ class InventoryScanViewModelTest {
 
     @Test
     fun `init with PMS batch loads expectedNdcs`() = runTest(testDispatcher) {
-        coEvery { batchDao.getById(5L) } returns BatchEntity(
+        coEvery { stockBatchDao.getById(5L) } returns StockBatchEntity(
             batchId = 5L, bucketId = "B1", requestIdFromPMS = "REQ-1"
         )
         coEvery { stockTxnDao.getNdcsForBatch(5L) } returns listOf("NDC-A", "NDC-B")
@@ -194,7 +194,7 @@ class InventoryScanViewModelTest {
 
     @Test
     fun `init with manual batch does not load expectedNdcs`() = runTest(testDispatcher) {
-        coEvery { batchDao.getById(6L) } returns BatchEntity(
+        coEvery { stockBatchDao.getById(6L) } returns StockBatchEntity(
             batchId = 6L, bucketId = "B2", requestIdFromPMS = null
         )
         val vm = createViewModel(batchId = 6L)
@@ -209,7 +209,7 @@ class InventoryScanViewModelTest {
         val vm = createViewModel(batchId = 0L, bucketId = "BUCKET-X")
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { batchDao.getById(any()) }
+        coVerify(exactly = 0) { stockBatchDao.getById(any()) }
         assertNotNull(vm)
     }
 
@@ -232,13 +232,13 @@ class InventoryScanViewModelTest {
 
     @Test
     fun `uiState groups txns and sums pills via toRecentRows`() = runTest(testDispatcher) {
-        every { bottleInfoDao.observeByBatchId(7L) } returns flowOf(
+        every { stockBottleInfoDao.observeByBatchId(7L) } returns flowOf(
             listOf(
                 // drug 10: 2 bottles * 5 pkg + 3 loose = 13
-                BatchTxnDto(1, 10L, "Aspirin", "NDC-A", "L1", "E1", 2, 0, 5),
-                BatchTxnDto(2, 10L, "Aspirin", "NDC-A", "L2", "E2", 0, 3, 1),
+                StockBottleInfoDto(1, 10L, "Aspirin", "NDC-A", "L1", "E1", 2, 0, 5),
+                StockBottleInfoDto(2, 10L, "Aspirin", "NDC-A", "L2", "E2", 0, 3, 1),
                 // drug 20: nulls -> defaults
-                BatchTxnDto(3, 20L, null, null, null, null, null, null, null),
+                StockBottleInfoDto(3, 20L, null, null, null, null, null, null, null),
             )
         )
         val vm = createViewModel(batchId = 7L)
@@ -259,7 +259,7 @@ class InventoryScanViewModelTest {
     @Test
     fun `uiState shows PMS requested drugs as zero placeholders by default`() = runTest(testDispatcher) {
         // A freshly received PMS batch has stock-txn headers but no bottle lines yet.
-        every { bottleInfoDao.observeByBatchId(7L) } returns flowOf(emptyList())
+        every { stockBottleInfoDao.observeByBatchId(7L) } returns flowOf(emptyList())
         every { stockTxnDao.observeRequestedDrugs(7L) } returns flowOf(
             listOf(
                 RequestedDrugDto(10L, "NDC-A", "Aspirin"),
@@ -281,8 +281,8 @@ class InventoryScanViewModelTest {
     @Test
     fun `uiState counted drug supersedes its requested placeholder`() = runTest(testDispatcher) {
         // NDC-A has been counted (has a bottle line); NDC-B is still just requested.
-        every { bottleInfoDao.observeByBatchId(7L) } returns flowOf(
-            listOf(BatchTxnDto(1, 10L, "Aspirin", "NDC-A", "L1", "E1", 2, 0, 5))
+        every { stockBottleInfoDao.observeByBatchId(7L) } returns flowOf(
+            listOf(StockBottleInfoDto(1, 10L, "Aspirin", "NDC-A", "L1", "E1", 2, 0, 5))
         )
         every { stockTxnDao.observeRequestedDrugs(7L) } returns flowOf(
             listOf(
@@ -332,7 +332,7 @@ class InventoryScanViewModelTest {
         assertEquals("00093-0058", vm.uiState.value.activeNdc?.ndc)
         assertEquals(1, vm.uiState.value.activeNdc?.bottles)
         // New stock model: a first scan inserts a bottle line under a (new) stock header.
-        coVerify { bottleInfoDao.insert(any()) }
+        coVerify { stockBottleInfoDao.insert(any()) }
         job.cancel()
     }
 
@@ -452,7 +452,7 @@ class InventoryScanViewModelTest {
 
     @Test
     fun `onBarcodeDetected rejects ndc not in PMS expected set`() = runTest(testDispatcher) {
-        coEvery { batchDao.getById(5L) } returns BatchEntity(
+        coEvery { stockBatchDao.getById(5L) } returns StockBatchEntity(
             batchId = 5L, bucketId = "B", requestIdFromPMS = "REQ"
         )
         coEvery { stockTxnDao.getNdcsForBatch(5L) } returns listOf("ALLOWED-NDC")
@@ -473,7 +473,7 @@ class InventoryScanViewModelTest {
         stubGs1Decode()
         coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
         coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
-        coEvery { batchDao.insert(any()) } returns 99L
+        coEvery { stockBatchDao.insert(any()) } returns 99L
 
         val vm = createViewModel(batchId = 0L, bucketId = "BK")
         val job = launch { vm.uiState.collect {} }
@@ -482,7 +482,7 @@ class InventoryScanViewModelTest {
         vm.onBarcodeDetected("raw")
         advanceUntilIdle()
 
-        coVerify { batchDao.insert(any()) }
+        coVerify { stockBatchDao.insert(any()) }
         assertEquals("00093-0058", vm.uiState.value.activeNdc?.ndc)
         job.cancel()
     }
@@ -491,7 +491,7 @@ class InventoryScanViewModelTest {
     fun `onBarcodeDetected insert returns zero emits no_active_batch`() = runTest(testDispatcher) {
         stubGs1Decode()
         coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { batchDao.insert(any()) } returns 0L
+        coEvery { stockBatchDao.insert(any()) } returns 0L
 
         val vm = createViewModel(batchId = 0L)
         advanceUntilIdle()
@@ -506,7 +506,7 @@ class InventoryScanViewModelTest {
     fun `onBarcodeDetected insert throws causes ensureBatchCreated zero and no_active_batch`() = runTest(testDispatcher) {
         stubGs1Decode()
         coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { batchDao.insert(any()) } throws RuntimeException("db")
+        coEvery { stockBatchDao.insert(any()) } throws RuntimeException("db")
 
         val vm = createViewModel(batchId = 0L)
         advanceUntilIdle()
@@ -543,7 +543,7 @@ class InventoryScanViewModelTest {
 
         assertEquals("NDC-2", vm.uiState.value.activeNdc?.ndc)
         // both NDC-1 (auto-commit) and NDC-2 persisted as bottle lines
-        coVerify(atLeast = 2) { bottleInfoDao.insert(any<BottleInfoEntity>()) }
+        coVerify(atLeast = 2) { stockBottleInfoDao.insert(any<StockBottleInfoEntity>()) }
         job.cancel()
     }
 
@@ -593,7 +593,7 @@ class InventoryScanViewModelTest {
         coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns stockTxn()
         coEvery {
-            bottleInfoDao.findSealedLine(any(), any(), any())
+            stockBottleInfoDao.findSealedLine(any(), any(), any())
         } returns bottleLine(bottleQty = 4)
 
         val vm = createViewModel(batchId = 7L)
@@ -613,7 +613,7 @@ class InventoryScanViewModelTest {
         coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
         coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns stockTxn()
-        coEvery { bottleInfoDao.findSealedLine(any(), any(), any()) } returns null
+        coEvery { stockBottleInfoDao.findSealedLine(any(), any(), any()) } returns null
 
         val vm = createViewModel(batchId = 7L)
         val job = launch { vm.uiState.collect {} }
@@ -623,7 +623,7 @@ class InventoryScanViewModelTest {
         advanceUntilIdle()
 
         assertEquals("01-15-2030", vm.uiState.value.activeNdc?.expiry)
-        coVerify { bottleInfoDao.findSealedLine(100L, "LOT1", "01-15-2030") }
+        coVerify { stockBottleInfoDao.findSealedLine(100L, "LOT1", "01-15-2030") }
         job.cancel()
     }
 
@@ -650,7 +650,7 @@ class InventoryScanViewModelTest {
         // No bottle line on scan (insert), then an existing line on onAdd flush (update).
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returnsMany listOf(null, stockTxn())
         coEvery {
-            bottleInfoDao.findSealedLine(any(), any(), any())
+            stockBottleInfoDao.findSealedLine(any(), any(), any())
         } returnsMany listOf(null, bottleLine())
 
         val vm = createViewModel(batchId = 7L)
@@ -662,7 +662,7 @@ class InventoryScanViewModelTest {
         vm.onAdd()
         advanceUntilIdle()
 
-        coVerify { bottleInfoDao.update(any()) }
+        coVerify { stockBottleInfoDao.update(any()) }
         assertNull(vm.uiState.value.activeNdc)
         job.cancel()
     }
@@ -689,7 +689,7 @@ class InventoryScanViewModelTest {
         coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
         coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
-        coEvery { bottleInfoDao.insert(any<BottleInfoEntity>()) } throws RuntimeException("db")
+        coEvery { stockBottleInfoDao.insert(any<StockBottleInfoEntity>()) } throws RuntimeException("db")
 
         val vm = createViewModel(batchId = 7L)
         advanceUntilIdle()
@@ -767,16 +767,16 @@ class InventoryScanViewModelTest {
     }
 
     // Scan inserts a 1-bottle sealed line; the NDC has 40 open pills, so decrement may reach 0.
-    private fun stubSealedLineWithOpenPills(sealedLine: BottleInfoEntity) {
+    private fun stubSealedLineWithOpenPills(sealedLine: StockBottleInfoEntity) {
         stubGs1Decode()
         coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
         coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns stockTxn()
-        coEvery { bottleInfoDao.getByBatchId(7L) } returns listOf(
-            BatchTxnDto(2, 10L, "Aspirin", "00093-0058", null, null, 0, 40, 100)
+        coEvery { stockBottleInfoDao.getByBatchId(7L) } returns listOf(
+            StockBottleInfoDto(2, 10L, "Aspirin", "00093-0058", null, null, 0, 40, 100)
         )
         // Scan lookup and scan persist find nothing; the decrement persist finds the new line.
-        coEvery { bottleInfoDao.findSealedLine(any(), any(), any()) } returnsMany listOf(null, null, sealedLine)
+        coEvery { stockBottleInfoDao.findSealedLine(any(), any(), any()) } returnsMany listOf(null, null, sealedLine)
     }
 
     @Test
@@ -792,8 +792,8 @@ class InventoryScanViewModelTest {
         vm.decrement() // 1 -> 0 (open pills allow 0)
         advanceUntilIdle()
 
-        coVerify { bottleInfoDao.delete(1L) }
-        coVerify(exactly = 0) { bottleInfoDao.update(any()) }
+        coVerify { stockBottleInfoDao.delete(1L) }
+        coVerify(exactly = 0) { stockBottleInfoDao.update(any()) }
         job.cancel()
     }
 
@@ -810,8 +810,8 @@ class InventoryScanViewModelTest {
         vm.decrement()
         advanceUntilIdle()
 
-        coVerify { bottleInfoDao.update(match { it.bottleId == 1L && it.bottleQty == 0 }) }
-        coVerify(exactly = 0) { bottleInfoDao.delete(any()) }
+        coVerify { stockBottleInfoDao.update(match { it.bottleId == 1L && it.bottleQty == 0 }) }
+        coVerify(exactly = 0) { stockBottleInfoDao.delete(any()) }
         job.cancel()
     }
 
@@ -823,13 +823,13 @@ class InventoryScanViewModelTest {
         advanceUntilIdle()
         vm.onRecentRowTapped(RecentBatchRow("NDC", "name", 5, 1))
         advanceUntilIdle()
-        coVerify(exactly = 0) { bottleInfoDao.getByBatchId(any()) }
+        coVerify(exactly = 0) { stockBottleInfoDao.getByBatchId(any()) }
     }
 
     @Test
     fun `onRecentRowTapped txn null returns without activating`() = runTest(testDispatcher) {
         // No bottle lines for this ndc → buildActiveTotals returns null → nothing activates.
-        coEvery { bottleInfoDao.getByBatchId(7L) } returns emptyList()
+        coEvery { stockBottleInfoDao.getByBatchId(7L) } returns emptyList()
         coEvery { drugMasterDao.getDrugByNdc("NDC") } returns drug(ndc = "NDC")
 
         val vm = createViewModel(batchId = 7L)
@@ -865,8 +865,8 @@ class InventoryScanViewModelTest {
         coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug(ndc = "ACTIVE-NDC")
         coEvery { drugMasterDao.getDrugIdByNdc("ACTIVE-NDC") } returns 10L
         // buildActiveTotals sums this NDC's bottle lines from getByBatchId.
-        coEvery { bottleInfoDao.getByBatchId(7L) } returns listOf(
-            BatchTxnDto(1, 30L, "Row Drug", "ROW-NDC", "RL", "RE", 7, 0, 1)
+        coEvery { stockBottleInfoDao.getByBatchId(7L) } returns listOf(
+            StockBottleInfoDto(1, 30L, "Row Drug", "ROW-NDC", "RL", "RE", 7, 0, 1)
         )
         coEvery { drugMasterDao.getDrugByNdc("ROW-NDC") } returns drug(drugId = 30L, ndc = "ROW-NDC", drugName = "Row Drug")
 
@@ -889,7 +889,7 @@ class InventoryScanViewModelTest {
     @Test
     fun `onRecentRowTapped catches exception`() = runTest(testDispatcher) {
         coEvery { drugMasterDao.getDrugByNdc(any()) } returns drug(ndc = "NDC")
-        coEvery { bottleInfoDao.getByBatchId(any()) } throws RuntimeException("db")
+        coEvery { stockBottleInfoDao.getByBatchId(any()) } throws RuntimeException("db")
 
         val vm = createViewModel(batchId = 7L)
         advanceUntilIdle()
@@ -928,7 +928,7 @@ class InventoryScanViewModelTest {
         advanceUntilIdle()
         vm.onAdd()
         advanceUntilIdle()
-        coVerify(exactly = 0) { bottleInfoDao.insert(any<BottleInfoEntity>()) }
+        coVerify(exactly = 0) { stockBottleInfoDao.insert(any<StockBottleInfoEntity>()) }
     }
 
     @Test
@@ -982,7 +982,7 @@ class InventoryScanViewModelTest {
 
     @Test
     fun `onScanPillsForActive with active PMS batch uses full expectedNdcs`() = runTest(testDispatcher) {
-        coEvery { batchDao.getById(5L) } returns BatchEntity(
+        coEvery { stockBatchDao.getById(5L) } returns StockBatchEntity(
             batchId = 5L, bucketId = "B", requestIdFromPMS = "REQ"
         )
         coEvery { stockTxnDao.getNdcsForBatch(5L) } returns listOf("00093-0058", "PMS-2")
@@ -1022,7 +1022,7 @@ class InventoryScanViewModelTest {
 
     @Test
     fun `onScanPillsForActive no active PMS batch uses expectedNdcs`() = runTest(testDispatcher) {
-        coEvery { batchDao.getById(5L) } returns BatchEntity(
+        coEvery { stockBatchDao.getById(5L) } returns StockBatchEntity(
             batchId = 5L, bucketId = "B", requestIdFromPMS = "REQ"
         )
         coEvery { stockTxnDao.getNdcsForBatch(5L) } returns listOf("PMS-1", "PMS-2")
@@ -1053,7 +1053,7 @@ class InventoryScanViewModelTest {
         assertTrue(called)
         assertEquals(0L, readyBatch)
         assertNull(vm.errorMessage.value)
-        coVerify(exactly = 0) { batchDao.insert(any()) }
+        coVerify(exactly = 0) { stockBatchDao.insert(any()) }
     }
 
     @Test
@@ -1064,7 +1064,7 @@ class InventoryScanViewModelTest {
         vm.onScanPillsForActive { _, _ -> }
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { batchDao.insert(any()) }
+        coVerify(exactly = 0) { stockBatchDao.insert(any()) }
     }
 
     @Test
@@ -1107,7 +1107,7 @@ class InventoryScanViewModelTest {
         vm.confirmEndCount()
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { batchDao.markAsCompleted(any(), any()) }
+        coVerify(exactly = 0) { stockBatchDao.markAsCompleted(any(), any()) }
         assertTrue(vm.batchEnded.value)
         assertFalse(vm.showEndCountDialog.value)
         job.cancel()
@@ -1115,8 +1115,8 @@ class InventoryScanViewModelTest {
 
     @Test
     fun `confirmEndCount committed ndc marks completed updates note and resends when connected`() = runTest(testDispatcher) {
-        every { bottleInfoDao.observeByBatchId(7L) } returns flowOf(
-            listOf(BatchTxnDto(1, 10L, "Aspirin", "NDC-A", "L", "E", 1, 0, 5))
+        every { stockBottleInfoDao.observeByBatchId(7L) } returns flowOf(
+            listOf(StockBottleInfoDto(1, 10L, "Aspirin", "NDC-A", "L", "E", 1, 0, 5))
         )
         connectionState.value = true
 
@@ -1127,8 +1127,8 @@ class InventoryScanViewModelTest {
         vm.confirmEndCount("a note")
         advanceUntilIdle()
 
-        coVerify { batchDao.markAsCompleted(7L, any()) }
-        coVerify { batchDao.updateNote(7L, "a note") }
+        coVerify { stockBatchDao.markAsCompleted(7L, any()) }
+        coVerify { stockBatchDao.updateNote(7L, "a note") }
         coVerify { hl7Repository.resendPendingHl7BatchTransactions() }
         assertTrue(vm.batchEnded.value)
         job.cancel()
@@ -1136,8 +1136,8 @@ class InventoryScanViewModelTest {
 
     @Test
     fun `confirmEndCount blank note skips updateNote and disconnected skips resend`() = runTest(testDispatcher) {
-        every { bottleInfoDao.observeByBatchId(7L) } returns flowOf(
-            listOf(BatchTxnDto(1, 10L, "Aspirin", "NDC-A", "L", "E", 1, 0, 5))
+        every { stockBottleInfoDao.observeByBatchId(7L) } returns flowOf(
+            listOf(StockBottleInfoDto(1, 10L, "Aspirin", "NDC-A", "L", "E", 1, 0, 5))
         )
         connectionState.value = false
 
@@ -1148,18 +1148,18 @@ class InventoryScanViewModelTest {
         vm.confirmEndCount("   ")
         advanceUntilIdle()
 
-        coVerify { batchDao.markAsCompleted(7L, any()) }
-        coVerify(exactly = 0) { batchDao.updateNote(any(), any()) }
+        coVerify { stockBatchDao.markAsCompleted(7L, any()) }
+        coVerify(exactly = 0) { stockBatchDao.updateNote(any(), any()) }
         coVerify(exactly = 0) { hl7Repository.resendPendingHl7BatchTransactions() }
         job.cancel()
     }
 
     @Test
     fun `confirmEndCount catches exception but still ends batch`() = runTest(testDispatcher) {
-        every { bottleInfoDao.observeByBatchId(7L) } returns flowOf(
-            listOf(BatchTxnDto(1, 10L, "Aspirin", "NDC-A", "L", "E", 1, 0, 5))
+        every { stockBottleInfoDao.observeByBatchId(7L) } returns flowOf(
+            listOf(StockBottleInfoDto(1, 10L, "Aspirin", "NDC-A", "L", "E", 1, 0, 5))
         )
-        coEvery { batchDao.markAsCompleted(7L, any()) } throws RuntimeException("db")
+        coEvery { stockBatchDao.markAsCompleted(7L, any()) } throws RuntimeException("db")
 
         val vm = createViewModel(batchId = 7L)
         val job = launch { vm.uiState.collect {} }

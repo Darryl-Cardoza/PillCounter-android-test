@@ -52,9 +52,7 @@ data class DrugCountRowData(
     val drugName: String,
     val date: String,
     val bucketId: String?,
-    val pillCount: Int,
     val targetCount: Int,
-    val isDispense: Boolean,
     val strength: String? = null,
     val dosageForm: String? = null,
     /** Absolute local path to the downloaded drug image (.webp). Shown first when available. */
@@ -191,11 +189,7 @@ fun DrugCountRow(
 
                 // count
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    val countText = if (data.isDispense) {
-                        "${data.targetCount}"
-                    } else {
-                        "${data.pillCount}"
-                    }
+                    val countText = "${data.targetCount}"
                     Text(
                         text = countText,
                         fontSize = responsiveSp(12.sp),

@@ -1,8 +1,8 @@
 package com.dispensesure.retail.feature.history.data
 
 import app.cash.turbine.test
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
@@ -12,7 +12,6 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.unmockkAll
-import io.mockk.verify
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -31,15 +30,15 @@ import java.time.LocalDate
  */
 class HistoryRepositoryTest {
 
-    private val dao: PillCountTxnDao = mockk(relaxed = true)
-    private val batchDao: BatchDao = mockk(relaxed = true)
+    private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
+    private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
 
     private lateinit var repository: HistoryRepository
 
     @Before
     fun setup() {
-        repository = HistoryRepository(dao, batchDao, stockTxnDao)
+        repository = HistoryRepository(dispenseTxnDao, stockBatchDao, stockTxnDao)
     }
 
     @After
@@ -50,27 +49,15 @@ class HistoryRepositoryTest {
     // HIST_REPO_001
     @Test
     fun `getTransactionsForDateRange delegates to DAO with epoch millis and returns its flow`() = runTest {
-        every { dao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any()) } returns flowOf(emptyList())
+        every { dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any()) } returns flowOf(emptyList())
 
-        val flow = repository.getTransactionsForDateRange(today, today, null, null, 1L)
+        val flow = repository.getTransactionsForDateRange(today, today, 1L)
 
         flow.test {
             val list = awaitItem()
             assertTrue(list.isEmpty())
             cancelAndIgnoreRemainingEvents()
         }
-    }
-
-    // HIST_REPO_002
-    @Test
-    fun `getTransactionsForDateRange passes correct type and status to DAO`() = runTest {
-        every { dao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any()) } returns flowOf(emptyList())
-
-        repository.getTransactionsForDateRange(today, today, true, null, 1L)
-            .test { cancelAndIgnoreRemainingEvents() }
-
-        // Verify type=FIXED was forwarded
-        verify { dao.getTransactionsForDateRange(any(), any(), any(), true, any(), any()) }
     }
 
     // HIST_REPO_003
@@ -80,7 +67,7 @@ class HistoryRepositoryTest {
             batchId = 10L, createdAt = 5000L, uniqueNdcCount = 3,
             status = "COMPLETED", bucketId = "BCK-01", requestIdFromPMS = "REQ-99"
         )
-        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(listOf(dto))
+        every { stockBatchDao.getBatchSummaries(any(), any()) } returns flowOf(listOf(dto))
 
         repository.getBatchSummaries(today, today, 1L).test {
             val list = awaitItem()
@@ -103,7 +90,7 @@ class HistoryRepositoryTest {
             batchId = 1L, createdAt = 1000L, uniqueNdcCount = 1,
             status = "INPROGRESS", bucketId = null, requestIdFromPMS = null
         )
-        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(listOf(dto))
+        every { stockBatchDao.getBatchSummaries(any(), any()) } returns flowOf(listOf(dto))
 
         repository.getBatchSummaries(today, today, 1L).test {
             val summary = awaitItem()[0]
@@ -115,35 +102,35 @@ class HistoryRepositoryTest {
     // HIST_REPO_005
     @Test
     fun `deleteTransactionsForDate delegates to DAO`() = runTest {
-        coJustRun { dao.deleteTransactionsByDate(any(), any(), any(), any(), any(), any(), any()) }
+        coJustRun { dispenseTxnDao.deleteTransactionsByDate(any(), any(), any(), any(), any(), any()) }
 
-        repository.deleteTransactionsForDate(today, today, null, null, 1L)
+        repository.deleteTransactionsForDate(today, today, null, 1L)
 
-        coVerify(exactly = 1) { dao.deleteTransactionsByDate(any(), any(), null, null, 1L, any(), any()) }
+        coVerify(exactly = 1) { dispenseTxnDao.deleteTransactionsByDate(any(), any(), null, 1L, any(), any()) }
     }
 
     // HIST_REPO_006
     @Test
     fun `deleteBatchesForDateRange soft-deletes batches and their transactions when batch IDs exist`() = runTest {
         val batchIds = listOf(100L, 200L)
-        coEvery { batchDao.getBatchIdsByDate(any(), any(), any(), any(), any()) } returns batchIds
-        coJustRun { batchDao.softDeleteBatchesByDate(any(), any(), any(), any(), any()) }
+        coEvery { stockBatchDao.getBatchIdsByDate(any(), any(), any(), any(), any()) } returns batchIds
+        coJustRun { stockBatchDao.softDeleteBatchesByDate(any(), any(), any(), any(), any()) }
         coJustRun { stockTxnDao.deleteByBatchIds(any()) }
 
         repository.deleteBatchesForDateRange(today, today, null, 1L)
 
-        coVerify { batchDao.softDeleteBatchesByDate(any(), any(), null, any(), any()) }
+        coVerify { stockBatchDao.softDeleteBatchesByDate(any(), any(), null, any(), any()) }
         coVerify { stockTxnDao.deleteByBatchIds(batchIds) }
     }
 
     // HIST_REPO_007
     @Test
     fun `deleteBatchesForDateRange skips soft-delete when no batch IDs found`() = runTest {
-        coEvery { batchDao.getBatchIdsByDate(any(), any(), any(), any(), any()) } returns emptyList()
+        coEvery { stockBatchDao.getBatchIdsByDate(any(), any(), any(), any(), any()) } returns emptyList()
 
         repository.deleteBatchesForDateRange(today, today, null, 1L)
 
-        coVerify(exactly = 0) { batchDao.softDeleteBatchesByDate(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { stockBatchDao.softDeleteBatchesByDate(any(), any(), any(), any(), any()) }
         coVerify(exactly = 0) { stockTxnDao.deleteByBatchIds(any()) }
     }
 
@@ -153,7 +140,7 @@ class HistoryRepositoryTest {
         var capturedStart = 0L
         var capturedEnd = 0L
         coEvery {
-            dao.deleteTransactionsByDate(any(), any(), any(), any(), any(), any(), any())
+            dispenseTxnDao.deleteTransactionsByDate(any(), any(), any(), any(), any(), any())
         } answers {
             capturedStart = firstArg()
             capturedEnd = secondArg()
@@ -161,7 +148,7 @@ class HistoryRepositoryTest {
 
         val start = LocalDate.of(2024, 1, 1)
         val end = LocalDate.of(2024, 1, 31)
-        repository.deleteTransactionsForDate(start, end, null, null, 1L)
+        repository.deleteTransactionsForDate(start, end, null, 1L)
 
         assertTrue("startMillis should be before endMillis", capturedStart < capturedEnd)
         assertTrue("startMillis should be positive", capturedStart > 0)

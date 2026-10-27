@@ -2,13 +2,13 @@ package com.dispensesure.retail.feature.hl7.util
 
 import android.util.Base64
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.models.BatchEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
-import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
+import com.dispensesure.retail.core.room.models.StockBatchEntity
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import io.mockk.every
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
@@ -22,8 +22,8 @@ import java.io.File
 /**
  * Unit tests for [HL7MessageBuilder].
  *
- * The entities involved (PillCountTxnEntity, PillCountTxnDetailsEntity, BatchEntity,
- * BatchTxnDto) are plain Kotlin data classes, so they are constructed directly without
+ * The entities involved (DispenseTxnEntity, DispenseCountEntity, StockBatchEntity,
+ * StockBottleInfoDto) are plain Kotlin data classes, so they are constructed directly without
  * mocking. The only Android dependency is [android.os.Build.MODEL], a static String
  * field that reads as null on the JVM (resulting in "PillCounter-null"), which is fine.
  *
@@ -54,18 +54,17 @@ class HL7MessageBuilderTest {
         barcodeImage: String? = null,
         note: String? = "some note",
         bottleTxnDetailsIds: List<Long> = emptyList(),
-    ): PillCountTxnEntity = PillCountTxnEntity(
+    ): DispenseTxnEntity = DispenseTxnEntity(
         txnId = txnId,
-        isDispense = false,
         status = CountStatus.COMPLETED,
         note = note,
-        bottleInfoListJson = barcodeImage?.let {
-            BottleInfoJson.encode(
+        bottlesJson = barcodeImage?.let {
+            DispenseBottleJson.encode(
                 listOf(
-                    BottleInfo(
+                    DispenseBottle(
                         txnId = txnId,
                         barcodeImagePath = it,
-                        txnDetailsIds = bottleTxnDetailsIds,
+                        countIds = bottleTxnDetailsIds,
                     )
                 )
             )
@@ -74,15 +73,15 @@ class HL7MessageBuilderTest {
     )
 
     private fun detail(
-        txnDetailsId: Long = 0L,
+        countId: Long = 0L,
         pillCount: Int? = null,
-        type: String? = null,
+        step: String? = null,
         imagePath: String? = null,
         rawImagePath: String? = null,
-    ): PillCountTxnDetailsEntity = PillCountTxnDetailsEntity(
-        txnDetailsId = txnDetailsId,
+    ): DispenseCountEntity = DispenseCountEntity(
+        countId = countId,
         pillCount = pillCount,
-        type = type,
+        step = step,
         imagePath = imagePath,
         rawImagePath = rawImagePath,
     )
@@ -92,9 +91,9 @@ class HL7MessageBuilderTest {
     @Test
     fun `buildDispenseMessage with rxNo null uses txnId and adds barcode obx`() {
         val details = listOf(
-            detail(txnDetailsId = 1L, pillCount = 10, type = StepState.TARGET_VERIFICATION.name, imagePath = "/a/b/img1.png"),
+            detail(countId = 1L, pillCount = 10, step = StepState.TARGET_VERIFICATION.name, imagePath = "/a/b/img1.png"),
             // null pillCount/type/imagePath -> defaults 0/UNKNOWN/""
-            detail(txnDetailsId = 2L, pillCount = null, type = null, imagePath = null),
+            detail(countId = 2L, pillCount = null, step = null, imagePath = null),
         )
         val txn = txn(
             txnId = 555L,
@@ -154,7 +153,7 @@ class HL7MessageBuilderTest {
             note = null,
         )
         val details = listOf(
-            detail(pillCount = 5, type = "partial", imagePath = "/x/y/z/photo.jpg"),
+            detail(pillCount = 5, step = "partial", imagePath = "/x/y/z/photo.jpg"),
         )
 
         val raw = HL7MessageBuilder.buildDispenseMessage(
@@ -189,7 +188,7 @@ class HL7MessageBuilderTest {
             note = null,
         )
         val details = listOf(
-            detail(pillCount = 20, type = StepState.TARGET_VERIFICATION.name, imagePath = "/a/img.png"),
+            detail(pillCount = 20, step = StepState.TARGET_VERIFICATION.name, imagePath = "/a/img.png"),
         )
 
         val raw = HL7MessageBuilder.buildDispenseMessage(
@@ -255,7 +254,7 @@ class HL7MessageBuilderTest {
             note = null,
         )
         val details = listOf(
-            detail(txnDetailsId = 1L, pillCount = 15, type = StepState.TARGET_VERIFICATION.name, imagePath = imgFile.absolutePath),
+            detail(countId = 1L, pillCount = 15, step = StepState.TARGET_VERIFICATION.name, imagePath = imgFile.absolutePath),
         )
 
         val raw = HL7MessageBuilder.buildDispenseMessage(
@@ -298,7 +297,7 @@ class HL7MessageBuilderTest {
         val raw = File.createTempFile("zui8_raw", ".png").apply { writeBytes(byteArrayOf(2)); deleteOnExit() }
         val details = listOf(
             detail(
-                txnDetailsId = 1L, pillCount = 15, type = StepState.TARGET_VERIFICATION.name,
+                countId = 1L, pillCount = 15, step = StepState.TARGET_VERIFICATION.name,
                 imagePath = img.absolutePath, rawImagePath = raw.absolutePath
             ),
         )
@@ -328,10 +327,10 @@ class HL7MessageBuilderTest {
     fun `buildDispenseMessage adds a _raw OBX row after the processed image row`() {
         val details = listOf(
             detail(
-                txnDetailsId = 1L, pillCount = 10, type = StepState.TARGET_VERIFICATION.name,
+                countId = 1L, pillCount = 10, step = StepState.TARGET_VERIFICATION.name,
                 imagePath = "/a/txn_detail_1.jpg", rawImagePath = "/a/txn_detail_1_raw.jpg"
             ),
-            detail(txnDetailsId = 2L, pillCount = 2, type = StepState.VIAL.name, imagePath = "/a/vial.jpg"),
+            detail(countId = 2L, pillCount = 2, step = StepState.VIAL.name, imagePath = "/a/vial.jpg"),
         )
 
         val msg = HL7MessageBuilder.buildDispenseMessage(
@@ -355,7 +354,7 @@ class HL7MessageBuilderTest {
     fun `buildDispenseMessage for Vivid format leaves ZUI-8 empty when there are no images`() {
         val txn = txn(txnId = 111L, rxNo = "RX-V2", note = null)
         val details = listOf(
-            detail(pillCount = 3, type = "fixed", imagePath = null),
+            detail(pillCount = 3, step = "fixed", imagePath = null),
         )
 
         val raw = HL7MessageBuilder.buildDispenseMessage(
@@ -384,7 +383,7 @@ class HL7MessageBuilderTest {
     @Test
     fun `buildDispenseMessage emits RXD-10 as name only with no id component`() {
         val details = listOf(
-            detail(txnDetailsId = 1L, pillCount = 12, type = StepState.TARGET_VERIFICATION.name)
+            detail(countId = 1L, pillCount = 12, step = StepState.TARGET_VERIFICATION.name)
         )
 
         val raw = HL7MessageBuilder.buildDispenseMessage(
@@ -407,12 +406,12 @@ class HL7MessageBuilderTest {
         // One dispense of 23, surrounded by steps that measure other things:
         // a 60-pill pour-out, a 23-pill recount of the same pills, and a remainder count.
         val details = listOf(
-            detail(txnDetailsId = 1L, pillCount = 60, type = StepState.CONTAINER_INITIATE.name),
-            detail(txnDetailsId = 2L, pillCount = 20, type = StepState.TARGET_VERIFICATION.name),
-            detail(txnDetailsId = 3L, pillCount = 3, type = StepState.TARGET_VERIFICATION.name),
-            detail(txnDetailsId = 4L, pillCount = 23, type = StepState.TARGET_REVERIFICATION.name),
-            detail(txnDetailsId = 5L, pillCount = 0, type = StepState.VIAL.name),
-            detail(txnDetailsId = 6L, pillCount = 37, type = StepState.CONTAINER_PENDING.name),
+            detail(countId = 1L, pillCount = 60, step = StepState.CONTAINER_INITIATE.name),
+            detail(countId = 2L, pillCount = 20, step = StepState.TARGET_VERIFICATION.name),
+            detail(countId = 3L, pillCount = 3, step = StepState.TARGET_VERIFICATION.name),
+            detail(countId = 4L, pillCount = 23, step = StepState.TARGET_REVERIFICATION.name),
+            detail(countId = 5L, pillCount = 0, step = StepState.VIAL.name),
+            detail(countId = 6L, pillCount = 37, step = StepState.CONTAINER_PENDING.name),
         )
         val txn = txn(
             txnId = 900L,
@@ -444,12 +443,12 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildDispenseMessage falls back to the step sum when no dispensed row is linked to a bottle`() {
-        // linkDetailToActiveBottle no-ops when the txn has no bottle entry yet, so a bottle
+        // linkCountToActiveBottle no-ops when the txn has no bottle entry yet, so a bottle
         // scanned after the pills were counted holds only the pour-out row. Summing the
         // bottle then gives 0 while the prescribed-count rows are sitting right there.
         val details = listOf(
-            detail(txnDetailsId = 1L, pillCount = 60, type = StepState.CONTAINER_INITIATE.name),
-            detail(txnDetailsId = 2L, pillCount = 30, type = StepState.TARGET_VERIFICATION.name),
+            detail(countId = 1L, pillCount = 60, step = StepState.CONTAINER_INITIATE.name),
+            detail(countId = 2L, pillCount = 30, step = StepState.TARGET_VERIFICATION.name),
         )
         val txn = txn(
             txnId = 901L,
@@ -477,24 +476,24 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildInventoryMessage uses requestIdFromPMS when non-blank and covers opened sealed both NA branches`() {
-        val batch = BatchEntity(
+        val batch = StockBatchEntity(
             batchId = 42L,
             requestIdFromPMS = "REQ-FROM-PMS",
             bucketId = "BUCKET-7",
         )
 
-        val txns = listOf(
+        val bottles = listOf(
             // opened only (loose) -> sealed == 0
-            BatchTxnDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 4, packageQty = 10),
+            StockBottleInfoDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 4, packageQty = 10),
             // sealed only (bottle * package) -> opened == 0
-            BatchTxnDto(2L, 2L, "DrugB", "NDC-B", "LOTB", "EXPB", bottleQty = 3, looseQty = 0, packageQty = 5),
+            StockBottleInfoDto(2L, 2L, "DrugB", "NDC-B", "LOTB", "EXPB", bottleQty = 3, looseQty = 0, packageQty = 5),
             // both opened and sealed for same key
-            BatchTxnDto(3L, 3L, "DrugC", "NDC-C", "LOTC", "EXPC", bottleQty = 2, looseQty = 7, packageQty = 4),
+            StockBottleInfoDto(3L, 3L, "DrugC", "NDC-C", "LOTC", "EXPC", bottleQty = 2, looseQty = 7, packageQty = 4),
             // NA branch: opened == 0 && sealed == 0 (all nulls)
-            BatchTxnDto(4L, 4L, "DrugD", "NDC-D", "LOTD", "EXPD", bottleQty = null, looseQty = null, packageQty = null),
+            StockBottleInfoDto(4L, 4L, "DrugD", "NDC-D", "LOTD", "EXPD", bottleQty = null, looseQty = null, packageQty = null),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
 
         assertTrue(raw.isNotEmpty())
         assertTrue("should contain MSH", raw.contains("MSH"))
@@ -513,29 +512,29 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildInventoryMessage handles null requestIdFromPMS and bucketId`() {
-        val batchNull = BatchEntity(
+        val batchNull = StockBatchEntity(
             batchId = 99L,
             requestIdFromPMS = null,
             bucketId = null,
         )
         val rawNull = HL7MessageBuilder.buildInventoryMessage(
             batch = batchNull,
-            txns = listOf(
-                BatchTxnDto(1L, 1L, "DrugX", "NDC-X", "LOTX", "EXPX", bottleQty = 1, looseQty = 0, packageQty = 2),
+            bottles = listOf(
+                StockBottleInfoDto(1L, 1L, "DrugX", "NDC-X", "LOTX", "EXPX", bottleQty = 1, looseQty = 0, packageQty = 2),
             ),
         )
         assertTrue(rawNull.isNotEmpty())
         assertTrue(rawNull.contains("NDC-X"))
 
-        // blank requestIdFromPMS / bucketId, empty txns
-        val batchBlank = BatchEntity(
+        // blank requestIdFromPMS / bucketId, empty bottles
+        val batchBlank = StockBatchEntity(
             batchId = 7L,
             requestIdFromPMS = "   ",
             bucketId = null,
         )
         val rawBlank = HL7MessageBuilder.buildInventoryMessage(
             batch = batchBlank,
-            txns = emptyList(),
+            bottles = emptyList(),
         )
         assertTrue(rawBlank.isNotEmpty())
         assertTrue(rawBlank.contains("MSH"))
@@ -543,10 +542,10 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildInventoryMessageChunks splits large batches and carries chunk metadata`() {
-        val batch = BatchEntity(batchId = 1L, requestIdFromPMS = "REQ", bucketId = "BUCKET-1")
-        val txns = (1..250).map { i ->
-            BatchTxnDto(
-                txnId = i.toLong(),
+        val batch = StockBatchEntity(batchId = 1L, requestIdFromPMS = "REQ", bucketId = "BUCKET-1")
+        val bottles = (1..250).map { i ->
+            StockBottleInfoDto(
+                bottleId = i.toLong(),
                 drugId = i.toLong(),
                 drugName = "Drug$i",
                 ndc = "NDC$i",
@@ -560,7 +559,7 @@ class HL7MessageBuilderTest {
 
         val chunks = HL7MessageBuilder.buildInventoryMessageChunks(
             batch = batch,
-            txns = txns,
+            bottles = bottles,
             maxRowsPerChunk = 200,
         )
 
@@ -574,21 +573,21 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildInventoryMessage emits IMG rows only for groups with photos`() {
-        val batch = BatchEntity(batchId = 5L, requestIdFromPMS = null, bucketId = "BUCKET-5")
-        val txns = listOf(
-            BatchTxnDto(
+        val batch = StockBatchEntity(batchId = 5L, requestIdFromPMS = null, bucketId = "BUCKET-5")
+        val bottles = listOf(
+            StockBottleInfoDto(
                 1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA",
                 bottleQty = 1, looseQty = 0, packageQty = 1,
                 imagePaths = listOf("images/a1.jpg", "images/a2.jpg"),
             ),
-            BatchTxnDto(
+            StockBottleInfoDto(
                 2L, 2L, "DrugB", "NDC-B", "LOTB", "EXPB",
                 bottleQty = 1, looseQty = 0, packageQty = 1,
                 imagePaths = null,
             ),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
 
         assertTrue("IMG001 present for first image", raw.contains("IMG001"))
         assertTrue("IMG002 present for second image", raw.contains("IMG002"))
@@ -611,13 +610,13 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildInventoryMessage links OBX rows to parent INV Set-ID across multiple groups`() {
-        val batch = BatchEntity(batchId = 6L, requestIdFromPMS = null, bucketId = "BUCKET-6")
-        val txns = listOf(
-            BatchTxnDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 0, packageQty = 1),
-            BatchTxnDto(2L, 2L, "DrugB", "NDC-B", "LOTB", "EXPB", bottleQty = 0, looseQty = 5, packageQty = 1),
+        val batch = StockBatchEntity(batchId = 6L, requestIdFromPMS = null, bucketId = "BUCKET-6")
+        val bottles = listOf(
+            StockBottleInfoDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 0, packageQty = 1),
+            StockBottleInfoDto(2L, 2L, "DrugB", "NDC-B", "LOTB", "EXPB", bottleQty = 0, looseQty = 5, packageQty = 1),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         val invLines = lines.filter { it.startsWith("INV|") }
@@ -633,13 +632,13 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildInventoryMessage carries bottle count as the second component of SEALED_QTY and OPEN_QTY`() {
-        val batch = BatchEntity(batchId = 8L, requestIdFromPMS = null, bucketId = "BUCKET-8")
-        val txns = listOf(
+        val batch = StockBatchEntity(batchId = 8L, requestIdFromPMS = null, bucketId = "BUCKET-8")
+        val bottles = listOf(
             // 2 sealed bottles x 1000 = 2000 sealed pills; 365 loose from this one open bottle
-            BatchTxnDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 365, packageQty = 1000),
+            StockBottleInfoDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 365, packageQty = 1000),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         val sealedRow = lines.first { it.startsWith("OBX|") && it.contains("SEALED_QTY") }
@@ -654,12 +653,12 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildInventoryMessage emits zero bottle counts as 0 caret 0`() {
-        val batch = BatchEntity(batchId = 9L, requestIdFromPMS = null, bucketId = "BUCKET-9")
-        val txns = listOf(
-            BatchTxnDto(1L, 1L, "DrugD", "NDC-D", "LOTD", "EXPD", bottleQty = null, looseQty = null, packageQty = null),
+        val batch = StockBatchEntity(batchId = 9L, requestIdFromPMS = null, bucketId = "BUCKET-9")
+        val bottles = listOf(
+            StockBottleInfoDto(1L, 1L, "DrugD", "NDC-D", "LOTD", "EXPD", bottleQty = null, looseQty = null, packageQty = null),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         val sealedRow = lines.first { it.startsWith("OBX|") && it.contains("SEALED_QTY") }
@@ -670,16 +669,16 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildInventoryMessage counts one open bottle per line with loose pills in a group`() {
-        val batch = BatchEntity(batchId = 10L, requestIdFromPMS = null, bucketId = "BUCKET-10")
+        val batch = StockBatchEntity(batchId = 10L, requestIdFromPMS = null, bucketId = "BUCKET-10")
         // Same drug/lot/expiry across three stock-txn rows, so all three land in one INV group.
-        val txns = listOf(
-            BatchTxnDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 200, packageQty = 100),
-            BatchTxnDto(2L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 165, packageQty = 100),
+        val bottles = listOf(
+            StockBottleInfoDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 200, packageQty = 100),
+            StockBottleInfoDto(2L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 165, packageQty = 100),
             // No loose pills: contributes sealed bottles only, never an open bottle.
-            BatchTxnDto(3L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 0, packageQty = 100),
+            StockBottleInfoDto(3L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 0, packageQty = 100),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         assertEquals(1, lines.count { it.startsWith("INV|") })
@@ -691,17 +690,17 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildInventoryMessage totals the shape the capture flow actually writes`() {
-        val batch = BatchEntity(batchId = 11L, requestIdFromPMS = null, bucketId = "BUCKET-11")
+        val batch = StockBatchEntity(batchId = 11L, requestIdFromPMS = null, bucketId = "BUCKET-11")
         // The real on-disk shape: persistActive writes sealed-only lines, and each
         // "Scan Pills" session writes its own loose-only line with bottleQty 0.
-        val txns = listOf(
-            BatchTxnDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 0, packageQty = 1000),
-            BatchTxnDto(2L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 200, packageQty = 1000),
-            BatchTxnDto(3L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 100, packageQty = 1000),
-            BatchTxnDto(4L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 65, packageQty = 1000),
+        val bottles = listOf(
+            StockBottleInfoDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 0, packageQty = 1000),
+            StockBottleInfoDto(2L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 200, packageQty = 1000),
+            StockBottleInfoDto(3L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 100, packageQty = 1000),
+            StockBottleInfoDto(4L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 65, packageQty = 1000),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         assertEquals(1, lines.count { it.startsWith("INV|") })
