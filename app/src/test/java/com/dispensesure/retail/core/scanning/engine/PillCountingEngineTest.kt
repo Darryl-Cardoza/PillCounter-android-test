@@ -4,33 +4,29 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.camera.core.ImageProxy
 import androidx.core.content.ContextCompat
+import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.ADD_COOLDOWN_MS
-import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.COUNT_CONFIRM_FRAMES
-import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.IDLE_STEP_MS
-import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.IDLE_TIMEOUT_MS
+import com.dispensesure.retail.core.scanning.engine.CountConfirmer.Companion.COUNT_CONFIRM_FRAMES
+import com.dispensesure.retail.core.scanning.engine.IdleWatchdog.Companion.IDLE_STEP_MS
+import com.dispensesure.retail.core.scanning.engine.IdleWatchdog.Companion.IDLE_TIMEOUT_MS
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.TrayColor
 import com.dispensesure.retail.core.utils.common.HelperFunctions
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.OverlayUtils
-import com.dispensesure.retail.core.utils.common.PhotoInfo
 import com.dispensesure.retail.core.utils.common.SoundUtils
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.util.MainDispatcherRule
-import io.mockk.CapturingSlot
-import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
-import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
@@ -130,8 +126,8 @@ class PillCountingEngineTest {
         return engine.captureCount(count) as CaptureResult.Captured
     }
 
-    /** No placeholder drawable, file writes return "/photos/<name>", the strip drawing is captured. */
-    private fun stubPhotoWrites(): CapturingSlot<PhotoInfo> {
+    /** No placeholder drawable, file writes return "/photos/<name>", the strip drawing returns its input. */
+    private fun stubPhotoWrites() {
         mockkStatic(ContextCompat::class)
         every { ContextCompat.getDrawable(any(), any()) } returns null
         mockkObject(HelperFunctions)
@@ -140,11 +136,7 @@ class PillCountingEngineTest {
             "/photos/$fileName"
         }
         mockkObject(OverlayUtils)
-        val stampedPhotoInfo = slot<PhotoInfo>()
-        every {
-            OverlayUtils.drawDetectionsOnBitmap(any(), any(), capture(stampedPhotoInfo), any(), any(), any())
-        } answers { firstArg() }
-        return stampedPhotoInfo
+        every { OverlayUtils.drawDetectionsOnBitmap(any(), any(), any(), any(), any(), any()) } answers { firstArg() }
     }
 
     // ─────────────────────────── model loading ───────────────────────────
@@ -263,8 +255,8 @@ class PillCountingEngineTest {
     @Test
     fun `count flicker that never holds still does not hold off the pause`() = runTest {
         // A still tray whose detector alternates 11 and 12 every frame.
-        repeat(40) { i ->
-            engine.onCountObserved(if (i % 2 == 0) 11 else 12)
+        repeat(40) { frameIndex ->
+            engine.feedCountFrameForTest(if (frameIndex % 2 == 0) 11 else 12)
             advanceTimeBy(2_000)
         }
 
@@ -275,7 +267,7 @@ class PillCountingEngineTest {
     @Test
     fun `a count held for the confirm window counts as activity`() = runTest {
         advanceTimeBy(IDLE_TIMEOUT_MS / 2)
-        repeat(COUNT_CONFIRM_FRAMES) { engine.onCountObserved(11) }
+        repeat(COUNT_CONFIRM_FRAMES) { engine.feedCountFrameForTest(11) }
         advanceTimeBy(IDLE_TIMEOUT_MS)
 
         assertFalse(engine.state.value.showIdleOverlay)
@@ -284,9 +276,9 @@ class PillCountingEngineTest {
     // SCAN_VM_047
     @Test
     fun `a confirmed count that then goes still still pauses`() = runTest {
-        repeat(COUNT_CONFIRM_FRAMES) { engine.onCountObserved(11) }
+        repeat(COUNT_CONFIRM_FRAMES) { engine.feedCountFrameForTest(11) }
         // Same count keeps arriving — confirmed once, so no further activity.
-        repeat(20) { engine.onCountObserved(11) }
+        repeat(20) { engine.feedCountFrameForTest(11) }
         advanceTimeBy(IDLE_TIMEOUT_MS + IDLE_STEP_MS + 1_000)
 
         assertTrue(engine.state.value.showIdleOverlay)
@@ -492,90 +484,13 @@ class PillCountingEngineTest {
     // ─────────────────────────── saveCountPhoto ───────────────────────────
 
     @Test
-    fun `saveCountPhoto writes the photo without a raw crop and recycles the frame`() = runTest {
-        stubPhotoWrites()
-        val frame = mockk<Bitmap>(relaxed = true)
-
-        val photo = engine.saveCountPhoto(captureWithFrame(frame), label, keepRawCrop = false)
-
-        assertTrue(photo.imagePath!!.startsWith("/photos/txn_detail_"))
-        assertNull(photo.rawImagePath)
-        verify { frame.recycle() }
-    }
-
-    @Test
-    fun `saveCountPhoto with keepRawCrop also writes the raw crop`() = runTest {
-        stubPhotoWrites()
-
-        val photo = engine.saveCountPhoto(captureWithFrame(), label, keepRawCrop = true)
-
-        assertTrue(photo.imagePath!!.endsWith(".jpg"))
-        assertTrue(photo.rawImagePath!!.endsWith("_raw.jpg"))
-    }
-
-    @Test
-    fun `saveCountPhoto stamps the label, count, user and location on the strip`() = runTest {
-        val stampedPhotoInfo = stubPhotoWrites()
-        coEvery { userDao.getByUserId(any()) } returns null
-
-        engine.saveCountPhoto(captureWithFrame(count = 7), label, keepRawCrop = false)
-
-        with(stampedPhotoInfo.captured) {
-            assertEquals("Amoxicillin 500 mg", drugName)
-            assertEquals("11111-1111-11", requestedNdc)
-            assertEquals("22222-2222-22", dispensedNdc)
-            assertEquals("L1", lotNumber)
-            assertEquals("S1", serialNumber)
-            assertEquals("04-30-2028", expirationDate)
-            assertEquals("123-2", rxRefill)
-            assertEquals("TARGET_VERIFICATION", stepLabel)
-            assertFalse(isStockCount)
-            assertEquals(7, count)
-            assertEquals("", userName)
-            // No lookup has finished yet, so the fallback text is shown.
-            assertEquals("Location unavailable", location)
-        }
-    }
-
-    @Test
-    fun `saveCountPhoto writes grayscale when the colour setting is off`() = runTest {
+    fun `saveCountPhoto passes grayscale to the writer when the colour setting is off`() = runTest {
         stubPhotoWrites()
         every { preferenceHelper.getIsColorImageEnabled() } returns false
 
         engine.saveCountPhoto(captureWithFrame(), label, keepRawCrop = false)
 
         verify { HelperFunctions.saveBitmapToFile(any(), any(), any(), any(), grayscale = true) }
-    }
-
-    @Test
-    fun `saveCountPhoto recycles the photo with the strip`() = runTest {
-        stubPhotoWrites()
-        val photoWithStrip = mockk<Bitmap>(relaxed = true)
-        every { OverlayUtils.drawDetectionsOnBitmap(any(), any(), any(), any(), any(), any()) } returns photoWithStrip
-
-        engine.saveCountPhoto(captureWithFrame(), label, keepRawCrop = false)
-
-        verify { photoWithStrip.recycle() }
-    }
-
-    @Test
-    fun `saveCountPhoto recycles the frame once when drawing fell back to it`() = runTest {
-        stubPhotoWrites() // drawing returns the input bitmap
-        val frame = mockk<Bitmap>(relaxed = true)
-
-        engine.saveCountPhoto(captureWithFrame(frame), label, keepRawCrop = false)
-
-        verify(exactly = 1) { frame.recycle() }
-    }
-
-    @Test
-    fun `saveCountPhoto refreshes the location even when the save throws`() = runTest {
-        stubPhotoWrites()
-        coEvery { userDao.getByUserId(any()) } throws IllegalStateException("db closed")
-
-        runCatching { engine.saveCountPhoto(captureWithFrame(), label, keepRawCrop = false) }
-
-        coVerify(timeout = 3000) { locationProvider.getCurrentLocationAsString() }
     }
 
     // ─────────────────────────── gloves ───────────────────────────
@@ -668,19 +583,43 @@ class PillCountingEngineTest {
     }
 
     @Test
-    fun `a non-hazardous drug on the hazardous tray warns once and reports nothing`() = runTest {
-        mockkObject(UserInterfaceUtils)
-        every { UserInterfaceUtils.showToast(any<String>(), any()) } returns Unit
+    fun `a non-hazardous drug on the hazardous tray sends one warning and saves nothing`() = runTest {
         every { preferenceHelper.getHazardousTrayColor() } returns "RED"
         val reportedEvents = collectEvents()
         engine.configureHazardous(isHazardousDrug = false)
 
         engine.feedTrayFrameForTest(TrayColor.RED)
         engine.feedTrayFrameForTest(TrayColor.RED)
-        runCurrent()
 
-        assertTrue(reportedEvents.isEmpty())
-        verify(exactly = 1) { UserInterfaceUtils.showToast(any<String>(), any()) }
+        assertEquals(listOf<EngineEvent>(EngineEvent.Warning(R.string.hazardous_tray_warning)), reportedEvents)
+    }
+
+    @Test
+    fun `a hazardous drug on another tray sends one swap-tray warning`() = runTest {
+        every { preferenceHelper.isHazardousDrugEnabled() } returns true
+        every { preferenceHelper.getHazardousTrayColor() } returns "RED"
+        val reportedEvents = collectEvents()
+        engine.configureHazardous(isHazardousDrug = true)
+
+        engine.feedTrayFrameForTest(TrayColor.BLUE)
+        engine.feedTrayFrameForTest(TrayColor.BLUE)
+
+        assertEquals(listOf<EngineEvent>(EngineEvent.Warning(R.string.non_hazardous_tray_warning)), reportedEvents)
+    }
+
+    @Test
+    fun `an idle pause closes the tray popup and Resume asks about the colour again`() = runTest {
+        every { preferenceHelper.isHazardousDrugEnabled() } returns true
+        engine.configureHazardous(isHazardousDrug = true)
+        engine.feedTrayFrameForTest(TrayColor.RED)
+        assertEquals(TrayColor.RED, engine.state.value.pendingTrayColor)
+
+        advanceTimeBy(IDLE_TIMEOUT_MS + 1_000)
+        assertNull(engine.state.value.pendingTrayColor)
+
+        engine.resumeFromIdle()
+        engine.feedTrayFrameForTest(TrayColor.RED)
+        assertEquals(TrayColor.RED, engine.state.value.pendingTrayColor)
     }
 
     // ─────────────────────────── pause controls ───────────────────────────

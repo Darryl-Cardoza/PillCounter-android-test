@@ -67,5 +67,15 @@ fun PillCountingEngine.feedTrayFrameForTest(color: TrayColor) = processDetection
     imageWidth = 1, imageHeight = 1,
 )
 
+/** One analyzed frame in which the detector counted [count] pills. */
+fun PillCountingEngine.feedCountFrameForTest(count: Int) = processDetections(
+    count = count,
+    detections = emptyList(),
+    trayDetections = emptyList(),
+    gloveDetections = emptyList(),
+    bitmap = mockk(relaxed = true),
+    imageWidth = 1, imageHeight = 1,
+)
+
 private fun engineField(name: String) =
     PillCountingEngine::class.java.getDeclaredField(name).apply { isAccessible = true }
