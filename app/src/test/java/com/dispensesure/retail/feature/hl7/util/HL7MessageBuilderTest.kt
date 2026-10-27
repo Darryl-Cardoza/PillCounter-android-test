@@ -482,7 +482,7 @@ class HL7MessageBuilderTest {
             bucketId = "BUCKET-7",
         )
 
-        val txns = listOf(
+        val bottles = listOf(
             // opened only (loose) -> sealed == 0
             StockBottleInfoDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 4, packageQty = 10),
             // sealed only (bottle * package) -> opened == 0
@@ -493,7 +493,7 @@ class HL7MessageBuilderTest {
             StockBottleInfoDto(4L, 4L, "DrugD", "NDC-D", "LOTD", "EXPD", bottleQty = null, looseQty = null, packageQty = null),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
 
         assertTrue(raw.isNotEmpty())
         assertTrue("should contain MSH", raw.contains("MSH"))
@@ -519,14 +519,14 @@ class HL7MessageBuilderTest {
         )
         val rawNull = HL7MessageBuilder.buildInventoryMessage(
             batch = batchNull,
-            txns = listOf(
+            bottles = listOf(
                 StockBottleInfoDto(1L, 1L, "DrugX", "NDC-X", "LOTX", "EXPX", bottleQty = 1, looseQty = 0, packageQty = 2),
             ),
         )
         assertTrue(rawNull.isNotEmpty())
         assertTrue(rawNull.contains("NDC-X"))
 
-        // blank requestIdFromPMS / bucketId, empty txns
+        // blank requestIdFromPMS / bucketId, empty bottles
         val batchBlank = StockBatchEntity(
             batchId = 7L,
             requestIdFromPMS = "   ",
@@ -534,7 +534,7 @@ class HL7MessageBuilderTest {
         )
         val rawBlank = HL7MessageBuilder.buildInventoryMessage(
             batch = batchBlank,
-            txns = emptyList(),
+            bottles = emptyList(),
         )
         assertTrue(rawBlank.isNotEmpty())
         assertTrue(rawBlank.contains("MSH"))
@@ -543,7 +543,7 @@ class HL7MessageBuilderTest {
     @Test
     fun `buildInventoryMessageChunks splits large batches and carries chunk metadata`() {
         val batch = StockBatchEntity(batchId = 1L, requestIdFromPMS = "REQ", bucketId = "BUCKET-1")
-        val txns = (1..250).map { i ->
+        val bottles = (1..250).map { i ->
             StockBottleInfoDto(
                 bottleId = i.toLong(),
                 drugId = i.toLong(),
@@ -559,7 +559,7 @@ class HL7MessageBuilderTest {
 
         val chunks = HL7MessageBuilder.buildInventoryMessageChunks(
             batch = batch,
-            txns = txns,
+            bottles = bottles,
             maxRowsPerChunk = 200,
         )
 
@@ -574,7 +574,7 @@ class HL7MessageBuilderTest {
     @Test
     fun `buildInventoryMessage emits IMG rows only for groups with photos`() {
         val batch = StockBatchEntity(batchId = 5L, requestIdFromPMS = null, bucketId = "BUCKET-5")
-        val txns = listOf(
+        val bottles = listOf(
             StockBottleInfoDto(
                 1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA",
                 bottleQty = 1, looseQty = 0, packageQty = 1,
@@ -587,7 +587,7 @@ class HL7MessageBuilderTest {
             ),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
 
         assertTrue("IMG001 present for first image", raw.contains("IMG001"))
         assertTrue("IMG002 present for second image", raw.contains("IMG002"))
@@ -611,12 +611,12 @@ class HL7MessageBuilderTest {
     @Test
     fun `buildInventoryMessage links OBX rows to parent INV Set-ID across multiple groups`() {
         val batch = StockBatchEntity(batchId = 6L, requestIdFromPMS = null, bucketId = "BUCKET-6")
-        val txns = listOf(
+        val bottles = listOf(
             StockBottleInfoDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 0, packageQty = 1),
             StockBottleInfoDto(2L, 2L, "DrugB", "NDC-B", "LOTB", "EXPB", bottleQty = 0, looseQty = 5, packageQty = 1),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         val invLines = lines.filter { it.startsWith("INV|") }
@@ -633,12 +633,12 @@ class HL7MessageBuilderTest {
     @Test
     fun `buildInventoryMessage carries bottle count as the second component of SEALED_QTY and OPEN_QTY`() {
         val batch = StockBatchEntity(batchId = 8L, requestIdFromPMS = null, bucketId = "BUCKET-8")
-        val txns = listOf(
+        val bottles = listOf(
             // 2 sealed bottles x 1000 = 2000 sealed pills; 365 loose from this one open bottle
             StockBottleInfoDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 365, packageQty = 1000),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         val sealedRow = lines.first { it.startsWith("OBX|") && it.contains("SEALED_QTY") }
@@ -654,11 +654,11 @@ class HL7MessageBuilderTest {
     @Test
     fun `buildInventoryMessage emits zero bottle counts as 0 caret 0`() {
         val batch = StockBatchEntity(batchId = 9L, requestIdFromPMS = null, bucketId = "BUCKET-9")
-        val txns = listOf(
+        val bottles = listOf(
             StockBottleInfoDto(1L, 1L, "DrugD", "NDC-D", "LOTD", "EXPD", bottleQty = null, looseQty = null, packageQty = null),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         val sealedRow = lines.first { it.startsWith("OBX|") && it.contains("SEALED_QTY") }
@@ -671,14 +671,14 @@ class HL7MessageBuilderTest {
     fun `buildInventoryMessage counts one open bottle per line with loose pills in a group`() {
         val batch = StockBatchEntity(batchId = 10L, requestIdFromPMS = null, bucketId = "BUCKET-10")
         // Same drug/lot/expiry across three stock-txn rows, so all three land in one INV group.
-        val txns = listOf(
+        val bottles = listOf(
             StockBottleInfoDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 200, packageQty = 100),
             StockBottleInfoDto(2L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 165, packageQty = 100),
             // No loose pills: contributes sealed bottles only, never an open bottle.
             StockBottleInfoDto(3L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 0, packageQty = 100),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         assertEquals(1, lines.count { it.startsWith("INV|") })
@@ -693,14 +693,14 @@ class HL7MessageBuilderTest {
         val batch = StockBatchEntity(batchId = 11L, requestIdFromPMS = null, bucketId = "BUCKET-11")
         // The real on-disk shape: persistActive writes sealed-only lines, and each
         // "Scan Pills" session writes its own loose-only line with bottleQty 0.
-        val txns = listOf(
+        val bottles = listOf(
             StockBottleInfoDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 0, packageQty = 1000),
             StockBottleInfoDto(2L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 200, packageQty = 1000),
             StockBottleInfoDto(3L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 100, packageQty = 1000),
             StockBottleInfoDto(4L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 65, packageQty = 1000),
         )
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         assertEquals(1, lines.count { it.startsWith("INV|") })

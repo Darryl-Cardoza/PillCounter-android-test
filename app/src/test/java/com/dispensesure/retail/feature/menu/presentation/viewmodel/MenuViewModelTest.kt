@@ -6,9 +6,7 @@ import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.models.StockBatchEntity
-import com.dispensesure.retail.core.room.models.dtos.DispenseStatusCount
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
-import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import io.mockk.coEvery
 import io.mockk.every
@@ -61,11 +59,7 @@ class MenuViewModelTest {
         sessionLockController = mockk(relaxed = true)
 
         // Sensible defaults so the init observers do not blow up.
-        every { preferenceHelper.getLocalId() } returns 1L
-        every { dispenseTxnDao.observeDashboardCountsGrouped(any()) } returns flowOf(emptyList())
         every { dispenseTxnDao.getTotalCompletedTransactionCount(any(), any()) } returns flowOf(0)
-        every { stockBatchDao.observeActiveInProgressCount() } returns flowOf(0)
-        every { stockBatchDao.observeCompletedBatchCount() } returns flowOf(0)
         every { stockBatchDao.getUnsyncedCompletedBatchCount(any()) } returns flowOf(0)
     }
 
@@ -79,29 +73,16 @@ class MenuViewModelTest {
         MenuViewModel(dispenseTxnDao, stockBatchDao, preferenceHelper, sessionLockController)
 
     @Test
-    fun `initial uiState has all counts at zero`() {
+    fun `initial uiState has unsynced count at zero`() {
         val state = createViewModel().uiState.value
 
-        assertEquals(0, state.dispenseCompleted)
-        assertEquals(0, state.dispensePartial)
-        assertEquals(0, state.regularPartial)
-        assertEquals(0, state.regularCompleted)
         assertEquals(0, state.unsyncedTransactionCount)
     }
 
     // ────────────────────────────── init observers (happy path) ──────────────────────────────
 
     @Test
-    fun `init maps dashboard counts and batch counts into ui state`() = runTest(testDispatcher) {
-        every { preferenceHelper.getLocalId() } returns 5L
-        every { dispenseTxnDao.observeDashboardCountsGrouped(5L) } returns flowOf(
-            listOf(
-                DispenseStatusCount(CountStatus.COMPLETED, 11),
-                DispenseStatusCount(CountStatus.PARTIAL, 7)
-            )
-        )
-        every { stockBatchDao.observeActiveInProgressCount() } returns flowOf(3)
-        every { stockBatchDao.observeCompletedBatchCount() } returns flowOf(4)
+    fun `init sums unsynced dispense and batch counts into ui state`() = runTest(testDispatcher) {
         every { dispenseTxnDao.getTotalCompletedTransactionCount(any(), any()) } returns flowOf(6)
         every { stockBatchDao.getUnsyncedCompletedBatchCount(any()) } returns flowOf(9)
 
@@ -109,58 +90,12 @@ class MenuViewModelTest {
         advanceUntilIdle()
 
         vm.uiState.test {
-            val state = awaitItem()
-            assertEquals(11, state.dispenseCompleted)
-            assertEquals(7, state.dispensePartial)
-            assertEquals(3, state.regularPartial)
-            assertEquals(4, state.regularCompleted)
             // combine: 6 dispense + 9 batch = 15
-            assertEquals(15, state.unsyncedTransactionCount)
+            assertEquals(15, awaitItem().unsyncedTransactionCount)
         }
     }
 
     // ────────────────────────────── init observers (catch branches) ──────────────────────────────
-
-    @Test
-    fun `observeDashboardCounts catch keeps default state`() = runTest(testDispatcher) {
-        every { dispenseTxnDao.observeDashboardCountsGrouped(any()) } returns
-            flow { throw RuntimeException("dashboard error") }
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.uiState.test {
-            val state = awaitItem()
-            assertEquals(0, state.dispenseCompleted)
-            assertEquals(0, state.dispensePartial)
-        }
-    }
-
-    @Test
-    fun `observeBatchCount catch keeps default regularPartial`() = runTest(testDispatcher) {
-        every { stockBatchDao.observeActiveInProgressCount() } returns
-            flow { throw RuntimeException("batch error") }
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.uiState.test {
-            assertEquals(0, awaitItem().regularPartial)
-        }
-    }
-
-    @Test
-    fun `observeCompletedBatchCount catch keeps default regularCompleted`() = runTest(testDispatcher) {
-        every { stockBatchDao.observeCompletedBatchCount() } returns
-            flow { throw RuntimeException("completed error") }
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.uiState.test {
-            assertEquals(0, awaitItem().regularCompleted)
-        }
-    }
 
     @Test
     fun `observeUnsyncedTransactionCount catch keeps default count`() = runTest(testDispatcher) {

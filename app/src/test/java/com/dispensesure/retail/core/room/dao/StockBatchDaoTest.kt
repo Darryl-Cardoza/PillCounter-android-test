@@ -224,38 +224,6 @@ class StockBatchDaoTest {
         assertEquals(1L, stockBatchDao.getActiveCount())
     }
 
-    @Test
-    fun `observeCountByStatus emits live updates as status changes`() = runTest {
-        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
-
-        stockBatchDao.observeCountByStatus(BatchStatus.COMPLETED).test {
-            assertEquals(0, awaitItem())
-            stockBatchDao.markAsCompleted(1L)
-            assertEquals(1, awaitItem())
-        }
-    }
-
-    @Test
-    fun `observeActiveInProgressCount wrapper reflects in progress rows`() = runTest {
-        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
-        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
-
-        stockBatchDao.observeActiveInProgressCount().test {
-            assertEquals(1, awaitItem())
-        }
-    }
-
-    @Test
-    fun `observeCompletedBatchCount wrapper reflects completed rows`() = runTest {
-        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.COMPLETED))
-        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
-        stockBatchDao.insert(StockBatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS))
-
-        stockBatchDao.observeCompletedBatchCount().test {
-            assertEquals(2, awaitItem())
-        }
-    }
-
     // ───────────────────────── Date-range queries ─────────────────────────
 
     @Test

@@ -10,7 +10,6 @@ import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.core.utils.common.HelperFunctions.mapCounts
 import com.dispensesure.retail.feature.menu.domain.model.MenuUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -19,7 +18,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -28,8 +26,7 @@ import javax.inject.Inject
  * ViewModel for the Menu screen.
  *
  * ### Responsibilities
- * - Listen for dashboard count changes via [DispenseTxnDao].
- * - Map grouped database rows into [MenuUiState] counts.
+ * - Listen for unsynced dispense and stock batch counts via [DispenseTxnDao] and [StockBatchDao].
  * - Expose reactive [StateFlow] for UI consumption.
  *
  * Threading:
@@ -56,59 +53,7 @@ class MenuViewModel @Inject constructor(
     private val logger = AppLogger.create<MenuViewModel>()
 
     init {
-        observeDashboardCounts()
-        observeBatchCount()
-        observeCompletedBatchCount()
         observeUnsyncedTransactionCount()
-    }
-
-    /**
-     * Observe pill count dashboard rows from DB and map into [MenuUiState].
-     *
-     * Uses [mapCounts] to ensure consistent logic across dashboard and menu screens.
-     * Provides:
-     * - Fixed Completed / Partial
-     */
-    private fun observeDashboardCounts() {
-        viewModelScope.launch {
-            dispenseTxnDao.observeDashboardCountsGrouped(preferenceHelper.getLocalId())
-                .map { rows -> mapCounts(rows) }
-                .catch { e ->
-                    logger.e("Failed to observe dashboard counts", e, event = LogEvent.DASHBOARD_LOAD_FAILED)
-                }
-                .collect { counts ->
-                    _uiState.update { current ->
-                        current.copy(
-                            dispenseCompleted = counts.dispenseCompleted,
-                            dispensePartial = counts.dispensePartial,
-                        )
-                    }
-                }
-        }
-    }
-
-    private fun observeBatchCount() {
-        viewModelScope.launch {
-            stockBatchDao.observeActiveInProgressCount()
-                .catch { e -> logger.e("Failed to observe active in-progress batch count", e, event = LogEvent.FUNCTIONALITY_ERROR) }
-                .collect { count ->
-                    _uiState.update { current ->
-                        current.copy(regularPartial = count)
-                    }
-                }
-        }
-    }
-
-    private fun observeCompletedBatchCount() {
-        viewModelScope.launch {
-            stockBatchDao.observeCompletedBatchCount()
-                .catch { e -> logger.e("Failed to observe completed batch count", e, event = LogEvent.FUNCTIONALITY_ERROR) }
-                .collect { count ->
-                    _uiState.update { current ->
-                        current.copy(regularCompleted = count)
-                    }
-                }
-        }
     }
 
     fun getSavedHistoryOption(): Int {

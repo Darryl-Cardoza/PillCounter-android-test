@@ -414,10 +414,10 @@ object HL7MessageBuilder {
 
     fun buildInventoryMessage(
         batch: StockBatchEntity,
-        txns: List<StockBottleInfoDto>,
+        bottles: List<StockBottleInfoDto>,
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS")
     ): String {
-        return buildInventoryMessageChunks(batch, txns, config).single().message
+        return buildInventoryMessageChunks(batch, bottles, config).single().message
     }
 
     /** One chunk of a (possibly split) inventory sync — see [buildInventoryMessageChunks]. */
@@ -464,7 +464,7 @@ object HL7MessageBuilder {
      */
     fun buildInventoryMessageChunks(
         batch: StockBatchEntity,
-        txns: List<StockBottleInfoDto>,
+        bottles: List<StockBottleInfoDto>,
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS"),
         maxRowsPerChunk: Int = 200
     ): List<InventoryChunk> {
@@ -483,22 +483,22 @@ object HL7MessageBuilder {
         )
 
         val grouped = linkedMapOf<Key, Qty>()
-        txns.forEach { txn ->
+        bottles.forEach { bottle ->
             val key = Key(
-                ndc = txn.ndc.orEmpty(),
-                name = txn.drugName.orEmpty(),
-                lot = txn.lotNo.orEmpty(),
-                expiry = txn.expiry.orEmpty()
+                ndc = bottle.ndc.orEmpty(),
+                name = bottle.drugName.orEmpty(),
+                lot = bottle.lotNo.orEmpty(),
+                expiry = bottle.expiry.orEmpty()
             )
-            val packageQty = txn.packageQty ?: 0
+            val packageQty = bottle.packageQty ?: 0
             val e = grouped.getOrPut(key) { Qty() }
-            e.opened += txn.looseQty ?: 0
-            e.sealed += (txn.bottleQty ?: 0) * packageQty
+            e.opened += bottle.looseQty ?: 0
+            e.sealed += (bottle.bottleQty ?: 0) * packageQty
             // No open-bottle column exists: a line with loose pills counts as one
             // open bottle, matching what the inventory screen already shows.
-            e.sealedBottles += txn.bottleQty ?: 0
-            if ((txn.looseQty ?: 0) > 0) e.openedBottles++
-            txn.imagePaths?.let { e.imagePaths.addAll(it) }
+            e.sealedBottles += bottle.bottleQty ?: 0
+            if ((bottle.looseQty ?: 0) > 0) e.openedBottles++
+            bottle.imagePaths?.let { e.imagePaths.addAll(it) }
         }
 
         // Zero-qty rows are still sent: omitting a counted-zero row would make it

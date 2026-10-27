@@ -145,21 +145,6 @@ interface StockBatchDao {
     @Query("SELECT COUNT(*) FROM stock_batch WHERE isDeleted = 0")
     suspend fun getActiveCount(): Long
 
-    /**
-     * Observes the count of non-deleted batches with the given [status].
-     *
-     * @param status The [BatchStatus] to count.
-     * @return A [Flow] emitting the live count.
-     */
-    @Query("SELECT COUNT(*) FROM stock_batch WHERE isDeleted = 0 AND status = :status")
-    fun observeCountByStatus(status: BatchStatus): Flow<Int>
-
-    /** Convenience wrapper — observes count of [BatchStatus.INPROGRESS] batches. */
-    fun observeActiveInProgressCount() = observeCountByStatus(BatchStatus.INPROGRESS)
-
-    /** Convenience wrapper — observes count of [BatchStatus.COMPLETED] batches. */
-    fun observeCompletedBatchCount() = observeCountByStatus(BatchStatus.COMPLETED)
-
     @Query("DELETE FROM stock_batch")
     suspend fun deleteAll()
 

@@ -651,7 +651,6 @@ class DispenseTxnDaoTest {
 
     @Test
     fun `getTotalCompletedTransactionCount counts unsynced hl7 completed and force completed rows`() = runTest {
-        dispenseTxnDao.observeDashboardCountsGrouped(userLocalId = 0L) // no-op to ensure flow interfaces compile
         dispenseTxnDao.getTotalCompletedTransactionCount().test {
             assertEquals(0, awaitItem())
 
@@ -683,7 +682,7 @@ class DispenseTxnDaoTest {
     }
 
     @Test
-    fun `tutorial txns are excluded from the partial queue, its count and the dashboard counts`() = runTest {
+    fun `tutorial txns are excluded from the partial queue and its count`() = runTest {
         val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Demo"))
         dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL).copy(drugId = demoDrugId))
         dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL).copy(rxNo = "${TutorialData.RX_PREFIX}9"))
@@ -693,30 +692,9 @@ class DispenseTxnDaoTest {
         dispenseTxnDao.observePartialDispenses(userLocalId = 1L, step = StepState.SCAN).test {
             assertEquals(1, awaitItem().size)
         }
-        dispenseTxnDao.observeDashboardCountsGrouped(1L).test {
-            assertEquals(1, awaitItem().sumOf { it.cnt })
-        }
     }
 
     // ───────────────────────── Dashboard / join queries ─────────────────────────
-
-    @Test
-    fun `observeDashboardCountsGrouped groups by status for user`() = runTest {
-        // userLocalId = 2L is FK-enforced against users.localId — seed it (localId 1L is seeded in setUp).
-        db.userDao().insertIgnore(UserEntity(localId = 2L, userId = "user-2"))
-
-        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL))
-        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL))
-        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 1L, status = CountStatus.COMPLETED))
-        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 2L, status = CountStatus.PARTIAL))
-
-        dispenseTxnDao.observeDashboardCountsGrouped(userLocalId = 1L).test {
-            val groups = awaitItem()
-            assertEquals(2, groups.size)
-            val partialGroup = groups.first { it.status == CountStatus.PARTIAL }
-            assertEquals(2, partialGroup.cnt)
-        }
-    }
 
     @Test
     fun `getDispenseTxnDetail returns null for missing or deleted transaction`() = runTest {

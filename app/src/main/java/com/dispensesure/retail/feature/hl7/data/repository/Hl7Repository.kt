@@ -258,7 +258,7 @@ class Hl7Repository @Inject constructor(
 
             val chunks = HL7MessageBuilder.buildInventoryMessageChunks(
                 batch = batch,
-                txns = bottles,
+                bottles = bottles,
                 config = currentHl7Config()
             )
 

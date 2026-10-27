@@ -16,10 +16,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.core.net.toUri
-import com.dispensesure.retail.core.room.models.dtos.DispenseStatusCount
-import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.menu.domain.model.CountBuckets
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -36,7 +33,6 @@ import kotlin.system.exitProcess
  * Provides functionality for:
  * - Email masking for UI display.
  * - Route resolution during app start.
- * - Dashboard count mapping.
  * - Immersive fullscreen toggling.
  * - Bitmap saving and Play Store navigation.
  */
@@ -126,30 +122,6 @@ object HelperFunctions {
         preferenceHelper.clearLoggedInAt()
         preferenceHelper.saveLocalId(0)
         preferenceHelper.clearHl7Config()
-    }
-
-    /**
-     * Maps aggregated status counts into [CountBuckets] for dashboard visualization.
-     *
-     * @param rows List of per-status dispense aggregates.
-     * @return Structured [CountBuckets] separating completed/partial dispense counts.
-     */
-    fun mapCounts(rows: List<DispenseStatusCount>): CountBuckets {
-        var dispenseCompleted = 0
-        var dispensePartial = 0
-
-        rows.forEach { row ->
-            when (row.status) {
-                CountStatus.COMPLETED -> dispenseCompleted = row.cnt
-                CountStatus.PARTIAL -> dispensePartial = row.cnt
-                else -> {}
-            }
-        }
-
-        return CountBuckets(
-            dispenseCompleted = dispenseCompleted,
-            dispensePartial = dispensePartial
-        )
     }
 
     /** Immediately terminates the app process. */

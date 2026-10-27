@@ -742,12 +742,12 @@ class InventoryScanViewModel @Inject constructor(
             try {
                 // Flush the in-memory count so the loaded rows include the active edit.
                 persistActive(active)
-                val txns = stockBottleInfoDao.getByBatchId(batchId)
+                val bottles = stockBottleInfoDao.getByBatchId(batchId)
                     .filter { it.ndc == active.ndc }
-                val sealed = txns
+                val sealed = bottles
                     .filter { (it.bottleQty ?: 0) > 0 }
                     .map { EditBatchRow(it.bottleId, it.lotNo.orEmpty(), it.expiry.orEmpty(), it.bottleQty ?: 0) }
-                val open = txns
+                val open = bottles
                     .filter { (it.looseQty ?: 0) > 0 }
                     .map { EditBatchRow(it.bottleId, it.lotNo.orEmpty(), it.expiry.orEmpty(), it.looseQty ?: 0) }
                 _editDetails.value = EditDrugDetails(
@@ -787,10 +787,10 @@ class InventoryScanViewModel @Inject constructor(
     private suspend fun buildActiveTotals(batchId: Long, ndc: String): ActiveNdc? {
         if (batchId == 0L) return null
         val drug = drugMasterDao.getDrugByNdc(ndc) ?: return null
-        val txns = stockBottleInfoDao.getByBatchId(batchId).filter { it.ndc == ndc }
-        if (txns.isEmpty()) return null
-        val sealedCount = txns.count { (it.bottleQty ?: 0) > 0 }
-        val anchor = txns.firstOrNull { (it.bottleQty ?: 0) > 0 } ?: txns.first()
+        val bottles = stockBottleInfoDao.getByBatchId(batchId).filter { it.ndc == ndc }
+        if (bottles.isEmpty()) return null
+        val sealedCount = bottles.count { (it.bottleQty ?: 0) > 0 }
+        val anchor = bottles.firstOrNull { (it.bottleQty ?: 0) > 0 } ?: bottles.first()
         return ActiveNdc(
             ndc = drug.ndc,
             drugName = drug.drugName ?: "",
@@ -798,8 +798,8 @@ class InventoryScanViewModel @Inject constructor(
             batchNo = anchor.lotNo.orEmpty(),
             expiry = anchor.expiry.orEmpty(),
             pillsPerBottle = drug.packageQty ?: 0,
-            bottles = txns.sumOf { it.bottleQty ?: 0 },
-            openPills = txns.sumOf { it.looseQty ?: 0 },
+            bottles = bottles.sumOf { it.bottleQty ?: 0 },
+            openPills = bottles.sumOf { it.looseQty ?: 0 },
             isHazardous = drug.isHazardous,
             // The bottle count spans multiple sealed transactions, so +/- can't be
             // attributed to one — guard persistActive from clobbering them.
@@ -1044,16 +1044,16 @@ private fun mergeRecentRows(
 private fun List<StockBottleInfoDto>.toRecentRows(): List<RecentBatchRow> {
     if (isEmpty()) return emptyList()
     return groupBy { it.drugId }
-        .map { (_, txns) ->
-            val first = txns.first()
-            val totalBottles = txns.sumOf { it.bottleQty ?: 0 }
-            val packageQty = txns.firstOrNull { it.packageQty != null }?.packageQty ?: 0
-            val totalLoose = txns.sumOf { it.looseQty ?: 0 }
+        .map { (_, bottles) ->
+            val first = bottles.first()
+            val totalBottles = bottles.sumOf { it.bottleQty ?: 0 }
+            val packageQty = bottles.firstOrNull { it.packageQty != null }?.packageQty ?: 0
+            val totalLoose = bottles.sumOf { it.looseQty ?: 0 }
             val totalPills = totalBottles * packageQty + totalLoose
             // Each opened/loose line is its own physical bottle (bottleQty stays 0 so it
             // doesn't add a sealed package to the pill total). Count those bottles toward
             // the displayed bottle count so an opened bottle shows as +1 bottle.
-            val openedBottles = txns.count { (it.looseQty ?: 0) > 0 }
+            val openedBottles = bottles.count { (it.looseQty ?: 0) > 0 }
             RecentBatchRow(
                 ndc = first.ndc.orEmpty(),
                 drugName = first.drugName.orEmpty(),

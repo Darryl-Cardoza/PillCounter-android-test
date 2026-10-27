@@ -1,7 +1,5 @@
 package com.dispensesure.retail.core.utils.common
 
-import com.dispensesure.retail.core.room.models.dtos.DispenseStatusCount
-import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.navigation.Screen
@@ -15,7 +13,6 @@ import org.junit.Test
  *  - maskEmail (all branches: null/blank, no/edge @, normal masking)
  *  - resolveStartDestinationAndClearIfExpired (logged-in vs not, threshold branches)
  *  - clearSessionIfNotRemembered (remember on/off, logged out)
- *  - mapCounts (every CountStatus incl. else branch)
  *
  * Android-dependent members (exitApp, enableImmersiveFullscreen, openPlayStore,
  * saveBitmapToFile, toGrayscaleBitmap) are NOT tested here — see the report's skip list.
@@ -186,35 +183,6 @@ class HelperFunctionsTest {
         HelperFunctions.clearSessionIfNotRemembered(pref)
         io.mockk.verify(exactly = 0) { pref.clearTokens() }
         io.mockk.verify(exactly = 0) { pref.setUserLoggedIn(any()) }
-    }
-
-    // ───────────────────────────── mapCounts ─────────────────────────────
-
-    @Test
-    fun mapCounts_emptyRows_returnsZeros() {
-        val result = HelperFunctions.mapCounts(emptyList())
-        assertEquals(0, result.dispenseCompleted)
-        assertEquals(0, result.dispensePartial)
-    }
-
-    @Test
-    fun mapCounts_completedAndPartial_areMapped() {
-        val rows = listOf(
-            DispenseStatusCount(CountStatus.COMPLETED, 1),
-            DispenseStatusCount(CountStatus.PARTIAL, 2)
-        )
-        val result = HelperFunctions.mapCounts(rows)
-        assertEquals(1, result.dispenseCompleted)
-        assertEquals(2, result.dispensePartial)
-    }
-
-    @Test
-    fun mapCounts_otherStatus_hitsElseBranch_andIsIgnored() {
-        // FORCE_COMPLETED falls through the else -> {} branch
-        val rows = listOf(DispenseStatusCount(CountStatus.FORCE_COMPLETED, 99))
-        val result = HelperFunctions.mapCounts(rows)
-        assertEquals(0, result.dispenseCompleted)
-        assertEquals(0, result.dispensePartial)
     }
 
 }

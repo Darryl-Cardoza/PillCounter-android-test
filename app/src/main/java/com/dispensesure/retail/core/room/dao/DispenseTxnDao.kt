@@ -9,7 +9,6 @@ import androidx.room.Update
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
-import com.dispensesure.retail.core.room.models.dtos.DispenseStatusCount
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
@@ -402,28 +401,6 @@ interface DispenseTxnDao {
     suspend fun deleteAllTransactions()
 
     // ─────────────────────────────── Relations ───────────────────────────────
-
-    /**
-     * Observes a summary count of transactions grouped by [CountStatus].
-     *
-     * Used for real-time dashboard tiles showing how many transactions are
-     * "Pending", "Partial", "Completed", etc.
-     *
-     * @return A [Flow] emitting lists of [DispenseStatusCount] aggregates.
-     */
-    @Query(
-        """
-    SELECT status AS status,
-           COUNT(*) AS cnt
-    FROM dispense_txn
-    WHERE isDeleted = 0
-      AND userLocalId = :userLocalId
-      AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
-      AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))
-    GROUP BY status
-    """
-    )
-    fun observeDashboardCountsGrouped(userLocalId: Long): Flow<List<DispenseStatusCount>>
 
     /**
      * Retrieves a detailed transaction with its associated drug and total pill count.
