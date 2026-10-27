@@ -66,7 +66,7 @@ fun CameraPreviewSection(
     onFilteredCountChanged: (Int) -> Unit,
     modifier: Modifier = Modifier,
     onPreviewStarted: (() -> Unit)? = null,
-    onPreviewSizeKnown: ((width: Int, height: Int) -> Unit)? = null
+    onCameraReady: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -193,8 +193,8 @@ fun CameraPreviewSection(
                     factory = { previewView },
                     modifier = Modifier
                         .fillMaxSize()
-                        .onSizeChanged { size ->
-                            onPreviewSizeKnown?.invoke(size.width, size.height)
+                        .onSizeChanged {
+                            onCameraReady?.invoke()
                         }
                 )
 

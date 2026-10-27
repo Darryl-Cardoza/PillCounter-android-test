@@ -10,6 +10,7 @@ import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.AppDatabase
+import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
@@ -26,6 +27,7 @@ import io.mockk.unmockkAll
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -70,6 +72,7 @@ class PillScanningViewModelStateTest {
     private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
+    private lateinit var engineFactory: TestEngineFactory
     private lateinit var viewModel: PillScanningViewModel
 
     @Before
@@ -80,6 +83,14 @@ class PillScanningViewModelStateTest {
         // observeAllForTxn is called from observeTxnDetailsForTxn (triggered via getDrugInfo)
         every { dispenseCountDao.observeAllForTxn(any(), any()) } returns flowOf(emptyList())
         coJustRun { performanceLogger.logPerformanceSnapshot(any()) }
+        engineFactory = TestEngineFactory(
+            context = application,
+            modelLoader = modelLoader,
+            performanceLogger = performanceLogger,
+            locationProvider = locationProvider,
+            userDao = userDao,
+            preferenceHelper = preferenceHelper,
+        )
         viewModel = PillScanningViewModel(
             app = application,
             preferenceHelper = preferenceHelper,
@@ -87,16 +98,13 @@ class PillScanningViewModelStateTest {
             stockTxnDao = stockTxnDao,
             stockBottleInfoDao = stockBottleInfoDao,
             stockBatchDao = stockBatchDao,
-            userDao = userDao,
             operatorNameProvider = operatorNameProvider,
             dispenseCountDao = dispenseCountDao,
-            locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
-            modelLoader = modelLoader,
-            performanceLogger = performanceLogger,
             scanDecoder = ScanDecoder(barcodeDecoder),
             hl7Repository = hl7Repository,
             appDatabase = appDatabase,
+            engineFactory = engineFactory,
         )
     }
 
@@ -205,6 +213,7 @@ class PillScanningViewModelStateTest {
     @Test
     fun `setCameraPaused(true) sets cameraPaused flow to true and clears detectedPills`() = runTest {
         viewModel.setCameraPaused(true)
+        runCurrent()
 
         assertTrue(viewModel.cameraPaused.value)
         assertTrue(viewModel.uiState.value.detectedPills.isEmpty())
@@ -214,8 +223,11 @@ class PillScanningViewModelStateTest {
     @Test
     fun `setCameraPaused(false) sets cameraPaused flow to false`() = runTest {
         viewModel.setCameraPaused(true)
+        runCurrent()
+        assertTrue(viewModel.cameraPaused.value)
 
         viewModel.setCameraPaused(false)
+        runCurrent()
 
         assertFalse(viewModel.cameraPaused.value)
     }

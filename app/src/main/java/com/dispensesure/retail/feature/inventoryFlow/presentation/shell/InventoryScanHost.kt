@@ -85,7 +85,7 @@ class InventoryScanScope(
  * [content], which receives a fully-wired [InventoryScanScope].
  *
  * Camera runs in NDC-only mode: the ML pill interpreter is never started (we omit
- * the onPreviewSizeKnown call). Frames go to the analyzer, which calls back to
+ * the onCameraReady call). Frames go to the analyzer, which calls back to
  * [InventoryScanViewModel.onBarcodeDetected].
  */
 @SuppressLint("LocalContextGetResourceValueCall")

@@ -16,6 +16,10 @@ import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
+import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
+import com.dispensesure.retail.core.scanning.engine.feedGloveFrameForTest
+import com.dispensesure.retail.core.scanning.engine.putFrameForTest
+import com.dispensesure.retail.core.scanning.logic.TrayColor
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
@@ -40,7 +44,11 @@ import io.mockk.slot
 import io.mockk.unmockkAll
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -84,6 +92,7 @@ class PillScanningViewModelEventTest {
     private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
+    private lateinit var engineFactory: TestEngineFactory
     private lateinit var viewModel: PillScanningViewModel
 
     // True while a withTransaction block runs, so tests can check a write happened inside one.
@@ -106,6 +115,14 @@ class PillScanningViewModelEventTest {
         // stub explicitly so getDrugInfo resolves to CONTAINER_INITIATE as expected.
         coEvery { dispenseCountDao.getLatestStep(any()) } returns null
         coJustRun { performanceLogger.logPerformanceSnapshot(any()) }
+        engineFactory = TestEngineFactory(
+            context = application,
+            modelLoader = modelLoader,
+            performanceLogger = performanceLogger,
+            locationProvider = locationProvider,
+            userDao = userDao,
+            preferenceHelper = preferenceHelper,
+        )
         viewModel = PillScanningViewModel(
             app = application,
             preferenceHelper = preferenceHelper,
@@ -113,16 +130,13 @@ class PillScanningViewModelEventTest {
             stockTxnDao = stockTxnDao,
             stockBottleInfoDao = stockBottleInfoDao,
             stockBatchDao = stockBatchDao,
-            userDao = userDao,
             operatorNameProvider = operatorNameProvider,
             dispenseCountDao = dispenseCountDao,
-            locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
-            modelLoader = modelLoader,
-            performanceLogger = performanceLogger,
             scanDecoder = ScanDecoder(barcodeDecoder),
             hl7Repository = hl7Repository,
             appDatabase = appDatabase,
+            engineFactory = engineFactory,
         )
     }
 
@@ -150,7 +164,7 @@ class PillScanningViewModelEventTest {
         assert(viewModel.currentStep.value == StepState.TARGET_VERIFICATION)
     }
 
-    // ─────────────────────────── updateFilteredPills ───────────────────────────
+    // ─────────────────────────── engine state and events ───────────────────────────
 
     @Test
     fun `resetTransaction returns false when the DB reset fails`() = runTest {
@@ -167,27 +181,51 @@ class PillScanningViewModelEventTest {
         assertTrue(viewModel.resetTransaction())
     }
 
-    // SCAN_VM_029
+    // SCAN_VM_029 (view model side)
     @Test
-    fun `updateFilteredPills with a new list updates filteredPills in uiState`() = runTest {
+    fun `updateFilteredPills reaches uiState through the engine`() = runTest {
         val newPills = listOf(DetectedPill(x = 10f, y = 20f, confidence = 0.9f))
 
         viewModel.updateFilteredPills(newPills)
+        runCurrent()
 
-        assert(viewModel.uiState.value.filteredPills == newPills)
+        assertEquals(newPills, viewModel.uiState.value.filteredPills)
     }
 
-    // SCAN_VM_030
     @Test
-    fun `updateFilteredPills with the same list reference is a no-op`() = runTest {
-        val pills = listOf(DetectedPill(x = 10f, y = 20f, confidence = 0.9f))
-        viewModel.updateFilteredPills(pills) // first call — updates state
+    fun `addPopEvents re-emits the engine's +N pop`() = runTest {
+        val addPopCounts = mutableListOf<Int>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.addPopEvents.toList(addPopCounts) }
+        engineFactory.engine.putFrameForTest(mockk(relaxed = true))
 
-        val stateBeforeSecondCall = viewModel.uiState.value
+        engineFactory.engine.captureCount(5)
 
-        viewModel.updateFilteredPills(pills) // same reference → dedupe guard returns early
+        assertEquals(listOf(5), addPopCounts)
+    }
 
-        assert(viewModel.uiState.value === stateBeforeSecondCall)
+    @Test
+    fun `gloves confirmed by the engine are saved on the dispense txn`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 42L
+        runCurrent() // starts the view model's event collector
+
+        repeat(3) { engineFactory.engine.feedGloveFrameForTest(confidence = 0.9f) }
+        advanceUntilIdle()
+
+        coVerify { dispenseTxnDao.updateGlovesPresent(42L, true, any()) }
+        assertTrue(viewModel.glovesDetected.value)
+    }
+
+    @Test
+    fun `a tray classification is saved on the dispense txn`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 42L
+        runCurrent()
+
+        viewModel.classifyTrayColor(TrayColor.RED, isHazardous = true)
+        advanceUntilIdle()
+
+        // The save runs on Dispatchers.IO, as before.
+        coVerify(timeout = 3000) { dispenseTxnDao.updateHazardousTrayDetected(42L, true, any()) }
+        assertEquals(null, viewModel.uiState.value.pendingTrayColorForClassification)
     }
 
     // ─────────────────────────── TransactionDetailDeleted ───────────────────────────

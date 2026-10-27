@@ -1,9 +1,6 @@
 package com.dispensesure.retail.core.scanning.presentation.viewmodel
 
 import android.app.Application
-import android.graphics.Bitmap
-import androidx.camera.core.ImageProxy
-import androidx.core.content.ContextCompat
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
@@ -14,13 +11,11 @@ import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.AppDatabase
+import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.IDLE_TIMEOUT_MS
+import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
-import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
-import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.COUNT_CONFIRM_FRAMES
-import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.IDLE_STEP_MS
-import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.IDLE_TIMEOUT_MS
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
@@ -30,29 +25,23 @@ import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.mockkStatic
 import io.mockk.unmockkAll
-import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
 /**
- * Unit tests for [PillScanningViewModel] frame-capture routing and [getDrugInfo]
- * step resolution.
- *
- * onFrameCaptured tests are limited to the short-circuit paths that don't require
- * the ML model to actually run: isPaused=true and model not in ModelState.Ready.
- * In both cases the ImageProxy must be closed immediately.
+ * Unit tests for [PillScanningViewModel.getDrugInfo] step resolution, and that the
+ * engine's idle pause reaches the flows the screen reads.
  *
  * getDrugInfo tests verify that the correct StepState is resolved from the DAO
  * state and any explicit forceStartStep override.
@@ -80,6 +69,7 @@ class PillScanningViewModelFrameTest {
     private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
+    private lateinit var engineFactory: TestEngineFactory
     private lateinit var viewModel: PillScanningViewModel
 
     @Before
@@ -92,6 +82,14 @@ class PillScanningViewModelFrameTest {
         // which would make getDrugInfo resolve to the wrong step. Force null explicitly.
         coEvery { dispenseCountDao.getLatestStep(any()) } returns null
         coJustRun { performanceLogger.logPerformanceSnapshot(any()) }
+        engineFactory = TestEngineFactory(
+            context = application,
+            modelLoader = modelLoader,
+            performanceLogger = performanceLogger,
+            locationProvider = locationProvider,
+            userDao = userDao,
+            preferenceHelper = preferenceHelper,
+        )
         viewModel = PillScanningViewModel(
             app = application,
             preferenceHelper = preferenceHelper,
@@ -99,45 +97,18 @@ class PillScanningViewModelFrameTest {
             stockTxnDao = stockTxnDao,
             stockBottleInfoDao = stockBottleInfoDao,
             stockBatchDao = stockBatchDao,
-            userDao = userDao,
             operatorNameProvider = operatorNameProvider,
             dispenseCountDao = dispenseCountDao,
-            locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
-            modelLoader = modelLoader,
-            performanceLogger = performanceLogger,
             scanDecoder = ScanDecoder(barcodeDecoder),
             hl7Repository = hl7Repository,
             appDatabase = appDatabase,
+            engineFactory = engineFactory,
         )
     }
 
     @After
     fun tearDown() { unmockkAll() }
-
-    // ─────────────────────────── onFrameCaptured short-circuit paths ───────────────────────────
-
-    // SCAN_VM_014
-    @Test
-    fun `onFrameCaptured closes image immediately when model is not in Ready state`() = runTest {
-        // Model starts as ModelState.Idle — never explicitly loaded in this test
-        val image = mockk<ImageProxy>(relaxed = true)
-
-        viewModel.onFrameCaptured(image)
-
-        verify { image.close() }
-    }
-
-    // SCAN_VM_015
-    @Test
-    fun `onFrameCaptured closes image immediately when pill detection is paused`() = runTest {
-        val image = mockk<ImageProxy>(relaxed = true)
-        viewModel.pausePillDetection() // sets isPaused = true
-
-        viewModel.onFrameCaptured(image)
-
-        verify { image.close() }
-    }
 
     // ─────────────────────────── getDrugInfo step resolution ───────────────────────────
 
@@ -163,116 +134,15 @@ class PillScanningViewModelFrameTest {
         assertEquals(StepState.TARGET_VERIFICATION, viewModel.currentStep.value)
     }
 
-    // ─────────────────────────── idle watchdog ───────────────────────────
-    // The overlay must only fire on a genuinely static scene. A changing pill
-    // count is active counting and has to keep pushing the deadline forward.
+    // ─────────────────────────── idle pause reaches the screen ───────────────────────────
 
-    // SCAN_VM_039
+    // SCAN_VM_040 (view model side; the watchdog itself is in PillCountingEngineTest)
     @Test
-    fun `count activity inside the window keeps the idle overlay hidden past the timeout`() = runTest {
-        advanceTimeBy(IDLE_TIMEOUT_MS / 2)
-        viewModel.noteCountActivity()
-        advanceTimeBy(IDLE_TIMEOUT_MS)
-
-        assertFalse(viewModel.uiState.value.showIdleOverlay)
-        assertFalse(viewModel.cameraPaused.value)
-    }
-
-    // SCAN_VM_040
-    @Test
-    fun `no count activity for a full window shows the idle overlay and pauses the camera`() = runTest {
+    fun `the engine's idle pause reaches uiState and cameraPaused`() = runTest {
         advanceTimeBy(IDLE_TIMEOUT_MS + 1_000)
+        runCurrent()
 
         assertTrue(viewModel.uiState.value.showIdleOverlay)
         assertTrue(viewModel.cameraPaused.value)
-    }
-
-    // SCAN_VM_041
-    @Test
-    fun `pauseIdleTimer stops the overlay from ever firing`() = runTest {
-        viewModel.pauseIdleTimer()
-        advanceTimeBy(IDLE_TIMEOUT_MS * 3)
-
-        assertFalse(viewModel.uiState.value.showIdleOverlay)
-    }
-
-    // SCAN_VM_042
-    @Test
-    fun `resetIdleOverlay re-arms the watchdog so it can fire again`() = runTest {
-        advanceTimeBy(IDLE_TIMEOUT_MS + 1_000)
-        assertTrue(viewModel.uiState.value.showIdleOverlay)
-
-        viewModel.resetIdleOverlay()
-        assertFalse(viewModel.uiState.value.showIdleOverlay)
-
-        advanceTimeBy(IDLE_TIMEOUT_MS + 1_000)
-        assertTrue(viewModel.uiState.value.showIdleOverlay)
-    }
-
-    // SCAN_VM_043
-    @Test
-    fun `add tap re-arms the watchdog`() = runTest {
-        // Add needs a frame now; stub the placeholder so the background save doesn't throw.
-        mockkStatic(ContextCompat::class)
-        every { ContextCompat.getDrawable(any(), any()) } returns null
-        advanceTimeBy(IDLE_TIMEOUT_MS / 2)
-        PillScanningViewModel::class.java.getDeclaredField("currentFrameBitmap").apply {
-            isAccessible = true
-            set(viewModel, mockk<Bitmap>(relaxed = true))
-        }
-        viewModel.onEvent(
-            PillScanningEvent.AddTransactionDetailClicked(
-                filteredCount = 5,
-                stepType = StepState.TARGET_VERIFICATION,
-            )
-        )
-        advanceTimeBy(IDLE_TIMEOUT_MS)
-
-        assertFalse(viewModel.uiState.value.showIdleOverlay)
-    }
-
-    // SCAN_VM_044
-    @Test
-    fun `a single early activity tick does not delay the pause by a whole extra window`() = runTest {
-        advanceTimeBy(3_000)
-        viewModel.noteCountActivity()
-
-        // Deadline is ~3s + timeout, not ~2x timeout.
-        advanceTimeBy(IDLE_TIMEOUT_MS + IDLE_STEP_MS + 1_000)
-
-        assertTrue(viewModel.uiState.value.showIdleOverlay)
-    }
-
-    // SCAN_VM_045
-    @Test
-    fun `count flicker that never holds still does not hold off the pause`() = runTest {
-        // A still tray whose detector alternates 11 and 12 every frame.
-        repeat(40) { i ->
-            viewModel.onCountObserved(if (i % 2 == 0) 11 else 12)
-            advanceTimeBy(2_000)
-        }
-
-        assertTrue(viewModel.uiState.value.showIdleOverlay)
-    }
-
-    // SCAN_VM_046
-    @Test
-    fun `a count held for the confirm window counts as activity`() = runTest {
-        advanceTimeBy(IDLE_TIMEOUT_MS / 2)
-        repeat(COUNT_CONFIRM_FRAMES) { viewModel.onCountObserved(11) }
-        advanceTimeBy(IDLE_TIMEOUT_MS)
-
-        assertFalse(viewModel.uiState.value.showIdleOverlay)
-    }
-
-    // SCAN_VM_047
-    @Test
-    fun `a confirmed count that then goes still still pauses`() = runTest {
-        repeat(COUNT_CONFIRM_FRAMES) { viewModel.onCountObserved(11) }
-        // Same count keeps arriving — confirmed once, so no further activity.
-        repeat(20) { viewModel.onCountObserved(11) }
-        advanceTimeBy(IDLE_TIMEOUT_MS + IDLE_STEP_MS + 1_000)
-
-        assertTrue(viewModel.uiState.value.showIdleOverlay)
     }
 }

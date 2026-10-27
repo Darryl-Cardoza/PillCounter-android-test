@@ -4,15 +4,8 @@ import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
-import androidx.annotation.VisibleForTesting
 import androidx.camera.core.ImageProxy
-import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.toBitmap
+import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
@@ -31,7 +24,6 @@ import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.StockBottleInfoEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
@@ -43,17 +35,12 @@ import com.dispensesure.retail.core.models.ScheduleCode
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.common.HelperFunctions.saveBitmapToFile
-import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.OverlayUtils
-import com.dispensesure.retail.core.utils.common.PhotoInfo
 import com.dispensesure.retail.core.utils.common.SoundUtils
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
-import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.NavigationEvent
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
@@ -62,10 +49,11 @@ import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
+import com.dispensesure.retail.core.scanning.engine.CaptureResult
+import com.dispensesure.retail.core.scanning.engine.EngineEvent
+import com.dispensesure.retail.core.scanning.engine.PhotoLabel
+import com.dispensesure.retail.core.scanning.engine.PillCountingEngine
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
-import com.dispensesure.retail.core.scanning.logic.Detection
-import com.dispensesure.retail.core.scanning.logic.GloveDetection
-import com.dispensesure.retail.core.scanning.logic.PillAnalyzer
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.logic.TrayColor
 import com.dispensesure.retail.core.scanning.logic.TrayDetection
@@ -75,27 +63,27 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.util.ArrayDeque
-import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
-import kotlin.math.min
 
 /**
  * ViewModel responsible for:
- * - Managing camera frame analysis (via Singleton ModelLoader).
+ * - Managing camera frame analysis (via [PillCountingEngine]).
  * - Updating UI state for pill counting workflow.
  * - Managing database transactions.
  * - Preventing duplicate "Add" operations without a new scan.
@@ -108,68 +96,35 @@ class PillScanningViewModel @Inject constructor(
     private val stockTxnDao: StockTxnDao,
     private val stockBottleInfoDao: StockBottleInfoDao,
     private val stockBatchDao: StockBatchDao,
-    private val userDao: UserDao,
     private val operatorNameProvider: OperatorNameProvider,
     private val dispenseCountDao: DispenseCountDao,
-    private val locationProvider: LocationProvider,
     private val drugMasterDao: DrugMasterDao,
-    private val modelLoader: PillDetectionModelLoader,
-    private val performanceLogger: PerformanceLogger,
     private val scanDecoder: ScanDecoder,
     private val hl7Repository: Hl7Repository,
     private val appDatabase: AppDatabase,
+    engineFactory: PillCountingEngine.Factory,
 ) : AndroidViewModel(app) {
 
     private val logger = AppLogger("PillScanningVM")
     val context: Context = getApplication<Application>().applicationContext
-    private var currentFrameBitmap: Bitmap? = null
-    // Frames are swapped on Dispatchers.Default and taken on Main; guards both.
-    private val frameLock = Any()
-    // Last looked-up location for the photo strip; Add never waits for a fresh one.
-    @Volatile private var cachedLocation: String? = null
-    private var locationJob: Job? = null
-    private var lastTransformationMatrix: Matrix? = null
-    @Volatile private var isAnalyzingFrame = false
-    private var isPaused = false
-    private var idleJob: Job? = null
+    // Camera, ML, idle, gloves, tray and the Add photo. Declared before anything that reads it.
+    private val engine = engineFactory.create(viewModelScope)
     private var resetAvailabilityJob: Job? = null
-    // Bumped on counting activity. Atomic because the analyzer thread and Main
-    // both bump it.
-    private val activityTicks = AtomicLong(0)
-
-    // Count-confirmation state. See onCountObserved().
-    private var pendingCount = -1
-    private var confirmedCount = -1
-    private var consecutiveSameCount = 0
 
     private val _uiState = MutableStateFlow(PillScanningUiState())
     val uiState: StateFlow<PillScanningUiState> = _uiState.asStateFlow()
 
-    private val _modelState = MutableStateFlow<ModelState>(ModelState.Idle)
     private val _navigationEvent = Channel<NavigationEvent>()
     val navigationEvent = _navigationEvent.receiveAsFlow()
 
-    private val _lastTenDetections = MutableStateFlow(ArrayDeque<Int>())
-    private val _cameraPaused = MutableStateFlow(false)
-    val cameraPaused = _cameraPaused.asStateFlow()
-
-    private var cameraHelper: CameraHelper? = null
-
-    // --- Duplicate prevention ---
-    private var currentScanId: Long = 0L
-
-    // Last frame that showed a complete tray. Drives the AE/AWB lock release
-    // delay so a flickering tray gate can't cause lock/unlock churn.
-    private var lastCompleteTrayMs: Long = 0L
+    val cameraPaused: StateFlow<Boolean> = engine.state
+        .map { engineState -> engineState.isCameraPaused }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** Public read-only flow for observing recent detection counts. */
-    val lastTenDetections: StateFlow<ArrayDeque<Int>> = _lastTenDetections
+    val lastTenDetections: StateFlow<ArrayDeque<Int>> = engine.lastTenDetections
 
-    // --- Duplicate prevention ---
-    private var lastAddedScanSignature: String? = null
-    private var lastAddClickTime: Long = 0L
-    private val _addPopEvents = MutableSharedFlow<Int>(extraBufferCapacity = 1)
-    val addPopEvents = _addPopEvents.asSharedFlow()
+    val addPopEvents: Flow<Int> = engine.addPops
 
     private val _currentStep = MutableStateFlow(StepState.TARGET_VERIFICATION)
     val currentStep = _currentStep.asStateFlow()
@@ -246,7 +201,7 @@ class PillScanningViewModel @Inject constructor(
         stockLotNo = lotNo
         stockExpNo = expNo
         stockSerialNo = serialNo
-        isPaused = false
+        engine.resumeDetection()
         viewModelScope.launch {
             try {
                 val drug = drugMasterDao.getDrugById(drugId) ?: return@launch
@@ -278,42 +233,15 @@ class PillScanningViewModel @Inject constructor(
     private val _txnInfo = MutableStateFlow<DispenseTxnDetail?>(null)
     val txnInfo: StateFlow<DispenseTxnDetail?> = _txnInfo
 
-    // ── Glove detection control: stop running glove model once gloves are detected ──
-    private val _glovesDetected = MutableStateFlow(false)
-    val glovesDetected: StateFlow<Boolean> = _glovesDetected.asStateFlow()
-
-    var shouldRunGloveDetection = true
-
-    // Consecutive-frame counter guarding against single-frame flicker between
-    // "gloves" and "no_gloves" classes — require several consecutive strong
-    // detections before locking the session state, so one flickery frame
-    // doesn't permanently commit "gloves detected".
-    private var consecutiveGloveFrames = 0
-
-    // Tray color detection: always enabled during COUNTING stage.
-    // @Volatile ensures main-thread write is visible to Dispatchers.Default immediately.
-    @Volatile var isTrayColorDetectionEnabled = false
-    // true when drug is hazardous AND global "Hazardous Drug" setting is ON → show popup.
-    private var hazardousTrayPopupEnabled = false
-    // Prevents saving hazardousTrayDetected to DB more than once per transaction.
-    private var hazardousTrayResultSaved = false
-    // Remembered so resetIdleOverlay() can restore detection without re-calling setHazardousTransaction.
-    private var lastHazardousByDrug = false
-    // Tracks colors already prompted this session to avoid repeated popups per color.
-    private val promptedTrayColors = mutableSetOf<TrayColor>()
-    // In-memory cache of the single saved hazardous tray color (null if none saved yet).
-    private var cachedHazardousColor: String? = null
-    // Whether the current transaction is for a hazardous drug.
-    private var isHazardousTxn = false
-    // Prevents the "using hazardous tray" toast from firing on every frame for non-hazardous txns.
-    private var hazardousTrayToastShown = false
-
-    private var lastPreviewWidth = 0
-    private var lastPreviewHeight = 0
+    // From [EngineState.glovesDetected].
+    val glovesDetected: StateFlow<Boolean> = engine.state
+        .map { engineState -> engineState.glovesDetected }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     // ── NEW: expose tray detections so the UI can draw the tray boundary ──────
-    private val _trayDetections = MutableStateFlow<List<TrayDetection>>(emptyList())
-    val trayDetections: StateFlow<List<TrayDetection>> = _trayDetections.asStateFlow()
+    val trayDetections: StateFlow<List<TrayDetection>> = engine.state
+        .map { engineState -> engineState.trayDetections }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private var observeTxnDetailsJob: Job? = null
     private var stockCountBaseTotal: Int = -1
@@ -340,79 +268,37 @@ class PillScanningViewModel @Inject constructor(
     private val _isSoundOverride = MutableStateFlow(preferenceHelper.isSoundOverride())
     val isSoundEnabled: StateFlow<Boolean> = _isSoundOverride.asStateFlow()
 
-    // Performance monitoring
-    private var performanceMonitorJob: Job? = null
-    private val performanceSnapshotInterval = 10_000L // 10 seconds
-
-    companion object {
-        private const val ZERO_DETECTIONS_THRESHOLD = 25
-
-        // How long the tray must be gone before AE/AWB unlock. Rides on top of
-        // PillAnalyzer's TRAY_HOLD_FRAMES so a brief gate drop doesn't unlock.
-        private const val AE_LOCK_RELEASE_DELAY_MS = 1000L
-
-        // Log prefix for the idle watchdog. Filter: logcat -s PillScanningVM.
-        private const val IDLE_TAG = "IDLE_WATCHDOG"
-
-        // Quiet time before the camera pauses.
-        @VisibleForTesting
-        internal const val IDLE_TIMEOUT_MS = 60_000L
-
-        // Watchdog poll step. Sets how close to the timeout the pause lands.
-        @VisibleForTesting
-        internal const val IDLE_STEP_MS = 5_000L
-
-        /**
-         * How long Add stays disabled after a tap. The Add handler captures the
-         * current camera frame, draws the detection overlay, and writes a JPEG to
-         * disk on a background thread. This debounce guards that window so a second
-         * Add can't fire before the frame + detections have refreshed and the save
-         * has run — otherwise we'd persist a stale/duplicate image for the next
-         * transaction detail. Kept short so the UI stays responsive.
-         */
-        private const val ADD_COOLDOWN_MS = 1000L
-
-        /**
-         * Consecutive frames of a strong "gloves" detection required before the
-         * gate locks in. At ~4 fps glove inference, 3 frames is a brief ~750ms
-         * hold — enough to reject a single flickery misclassification without
-         * feeling slow to the user.
-         */
-        private const val GLOVE_CONFIRM_FRAMES = 3
-
-        // Frames a count must hold before it counts as activity. Rejects
-        // single-frame flicker on a still tray.
-        @VisibleForTesting
-        internal const val COUNT_CONFIRM_FRAMES = 3
-    }
-
-    /** Model initialization states */
-    sealed class ModelState {
-        object Idle : ModelState()
-        object Loading : ModelState()
-        data class Ready(val analyzer: PillAnalyzer) : ModelState()
-        data class Error(val message: String, val cause: Throwable? = null) : ModelState()
-    }
-
+    // Must stay below _uiState: the first copy runs here.
     init {
-        resetIdleTimer()
-        startPerformanceMonitoring()
+        mirrorEngineState()
+        viewModelScope.launch { engine.events.collect { engineEvent -> onEngineEvent(engineEvent) } }
     }
 
-    /**
-     * Start periodic performance monitoring
-     */
-    private fun startPerformanceMonitoring() {
-        performanceMonitorJob?.cancel()
-        performanceMonitorJob = viewModelScope.launch(Dispatchers.IO) {
-            while (true) {
-                delay(performanceSnapshotInterval)
-                try {
-                    performanceLogger.logPerformanceSnapshot("PERIODIC_MONITORING")
-                } catch (e: Exception) {
-                    logger.eThrottled("Performance monitoring failed", e, event = LogEvent.FUNCTIONALITY_ERROR)
+    /** Copies the engine's state into the flows the count screens already read. */
+    private fun mirrorEngineState() {
+        viewModelScope.launch {
+            engine.state.collect { engineState ->
+                _uiState.update {
+                    it.copy(
+                        detectedPills = engineState.detectedPills,
+                        filteredPills = engineState.filteredPills,
+                        gloveDetections = engineState.gloveDetections,
+                        imageFrameWidth = engineState.frameWidth,
+                        imageFrameHeight = engineState.frameHeight,
+                        showIdleOverlay = engineState.showIdleOverlay,
+                        isAddCooldown = engineState.isAddCooldown,
+                        pendingTrayColorForClassification = engineState.pendingTrayColor,
+                    )
                 }
             }
+        }
+    }
+
+    /** Saves the engine's gloves / tray results on the dispense txn; the +N pop goes straight to the screen. */
+    private fun onEngineEvent(event: EngineEvent) {
+        when (event) {
+            EngineEvent.GlovesConfirmed -> saveGlovesPresent()
+            is EngineEvent.HazardousTrayResult -> saveHazardousTrayDetected(event.detected)
         }
     }
 
@@ -422,10 +308,9 @@ class PillScanningViewModel @Inject constructor(
 
     /** Attach a CameraHelper instance for lifecycle control. */
     fun attachCameraHelper(helper: CameraHelper) {
-        cameraHelper = helper
+        engine.attachCamera(helper)
         // A capture lost to an unbound camera never calls back, so clear the stuck flag here.
         _isCapturing.value = false
-        refreshLocation()
     }
 
     /** Observe all transaction details for the current transaction. */
@@ -747,545 +632,64 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Initialize TensorFlow Lite interpreters using the Singleton Loader.
-     *
-     * Now calls [PillDetectionModelLoader.getOrLoadInterpreters] which returns
-     * both the pill and tray interpreters loaded in parallel.
-     */
-    fun initializeInterpreter(
-        retryCount: Int = 1, viewWidth: Int, viewHeight: Int
-    ) {
-        lastPreviewWidth = viewWidth
-        lastPreviewHeight = viewHeight
+    /** Loads the ML models once the preview size is known; see [PillCountingEngine.start]. */
+    fun initializeInterpreter() = engine.start()
 
-        if (_modelState.value is ModelState.Ready) {
-            logger.w("Interpreter already initialized, skipping reinitialization.")
-            return
-        }
-
-        viewModelScope.launch {
-            _modelState.value = ModelState.Loading
-
-            try {
-                // Load pill + tray only; glove is deferred until a hazardous drug is confirmed.
-                val models = modelLoader.getOrLoadInterpreters(includeGlove = false)
-
-                val analyzer = PillAnalyzer(
-                    pillInterpreter  = models.pillInterpreter,
-                    traySegDetector = models.traySegDetector,
-                    gloveInterpreter = models.gloveInterpreter,
-                    performanceLogger = performanceLogger,
-                    shouldRunGloveDetection = { shouldRunGloveDetection },
-                    shouldDetectTrayColor = { isTrayColorDetectionEnabled },
-                    onResult = { count, detections, trayDetections, gloveDetections, bitmap, matrix, imageWidth, imageHeight ->
-                        processDetections(
-                            count         = count,
-                            detections    = detections,
-                            trayDets      = trayDetections,
-                            gloveDets     = gloveDetections,
-                            bitmap        = bitmap,
-                            matrix        = matrix,
-                            previewWidth  = viewWidth,
-                            previewHeight = viewHeight,
-                            imageWidth    = imageWidth,
-                            imageHeight   = imageHeight
-                        )
-                    }
-                )
-
-                _modelState.value = ModelState.Ready(analyzer)
-                logger.i("Pill + tray interpreters initialized (glove deferred).")
-
-            } catch (e: Exception) {
-                logger.e("Interpreter init failed", e, event = LogEvent.MODEL_LOAD_FAILED)
-                _modelState.value = ModelState.Error("Interpreter initialization failed", e)
-            }
-        }
-    }
-
-    /**
-     * Loads the glove detection model and rebuilds [PillAnalyzer] to include it.
-     * Called only when the confirmed drug is hazardous and the COUNTING stage begins.
-     * Starts a 20-second timeout: if gloves are not confirmed by then, the model is
-     * unloaded automatically to free memory.
-     * No-op if glove is already loaded.
-     */
-    fun loadGloveModelAndRebuildAnalyzer() {
-        if ((_modelState.value as? ModelState.Ready)?.analyzer?.hasGloveInterpreter == true) {
-            logger.i("Glove model already loaded — skipping rebuild")
-            return
-        }
-
-        viewModelScope.launch {
-            try {
-                val models = modelLoader.getOrLoadInterpreters(includeGlove = true)
-                val w = lastPreviewWidth
-                val h = lastPreviewHeight
-
-                val analyzer = PillAnalyzer(
-                    pillInterpreter  = models.pillInterpreter,
-                    traySegDetector = models.traySegDetector,
-                    gloveInterpreter = models.gloveInterpreter,
-                    performanceLogger = performanceLogger,
-                    shouldRunGloveDetection = { shouldRunGloveDetection },
-                    onResult = { count, detections, trayDetections, gloveDetections, bitmap, matrix, imageWidth, imageHeight ->
-                        processDetections(
-                            count         = count,
-                            detections    = detections,
-                            trayDets      = trayDetections,
-                            gloveDets     = gloveDetections,
-                            bitmap        = bitmap,
-                            matrix        = matrix,
-                            previewWidth  = w,
-                            previewHeight = h,
-                            imageWidth    = imageWidth,
-                            imageHeight   = imageHeight
-                        )
-                    }
-                )
-
-                _modelState.value = ModelState.Ready(analyzer)
-                logger.i("Glove model loaded — analyzer rebuilt for hazardous drug.")
-            } catch (e: Exception) {
-                logger.e("Glove model load failed", e, event = LogEvent.MODEL_LOAD_FAILED)
-            }
-        }
-    }
-
-    /**
-     * Closes the glove TFLite interpreter and rebuilds [PillAnalyzer] without it.
-     * Pill + tray interpreters remain in the loader cache so detection continues uninterrupted.
-     */
-    private suspend fun unloadGloveAndRebuildAnalyzer() {
-        modelLoader.unloadGloveModel()
-        val models = modelLoader.getOrLoadInterpreters(includeGlove = false)
-        val w = lastPreviewWidth
-        val h = lastPreviewHeight
-        val analyzer = PillAnalyzer(
-            pillInterpreter  = models.pillInterpreter,
-            traySegDetector = models.traySegDetector,
-            gloveInterpreter = null,
-            performanceLogger = performanceLogger,
-            shouldRunGloveDetection = { shouldRunGloveDetection },
-            onResult = { count, detections, trayDetections, gloveDetections, bitmap, matrix, imageWidth, imageHeight ->
-                processDetections(
-                    count         = count,
-                    detections    = detections,
-                    trayDets      = trayDetections,
-                    gloveDets     = gloveDetections,
-                    bitmap        = bitmap,
-                    matrix        = matrix,
-                    previewWidth  = w,
-                    previewHeight = h,
-                    imageWidth    = imageWidth,
-                    imageHeight   = imageHeight
-                )
-            }
-        )
-        _modelState.value = ModelState.Ready(analyzer)
-        logger.i("Analyzer rebuilt without glove model")
-    }
+    /** Loads the glove model for a hazardous drug; see [PillCountingEngine.loadGloveModel]. */
+    fun loadGloveModelAndRebuildAnalyzer() = engine.loadGloveModel()
 
     // ------------------------------------------------------------------------
     // Frame Processing and Detection Logic
     // ------------------------------------------------------------------------
 
-    /**
-     * Handle each analyzed frame and maintain rolling detection state.
-     *
-     * [trayDets] is forwarded to [_trayDetections] so [CameraPreviewSection]
-     * can draw the tray bounding box overlay.
-     */
-    private fun processDetections(
-        count: Int,
-        detections: List<Detection>,
-        trayDets: List<TrayDetection>,
-        gloveDets: List<GloveDetection>,
-        bitmap: Bitmap,
-        matrix: Matrix,
-        previewWidth: Int,
-        previewHeight: Int,
-        imageWidth: Int,
-        imageHeight: Int
-    ) {
-        if (isPaused) {
-            bitmap.recycle()
-            return
-        }
-
-        currentScanId++
-        synchronized(frameLock) {
-            currentFrameBitmap?.recycle()
-            currentFrameBitmap = bitmap
-        }
-        lastTransformationMatrix = Matrix(matrix)
-
-        logger.d("Frame analyzed | count=$count | scanId=$currentScanId")
-
-        // ── Publish tray & glove detections for the UI overlay ───────────────
-        _trayDetections.value = trayDets
-        _uiState.update { it.copy(gloveDetections = gloveDets) }
-
-        // ── AE/AWB lock ──────────────────────────────────────────────────────
-        // trayDets is only populated when PillAnalyzer saw a COMPLETE tray, so a
-        // non-empty list is the "tray in view" signal. Lock exposure and white
-        // balance while it is, so the detector sees a consistent image instead of
-        // one the camera keeps re-metering. Release is delayed so a flickering
-        // tray gate can't cause lock/unlock churn.
-        if (trayDets.isNotEmpty()) {
-            lastCompleteTrayMs = System.currentTimeMillis()
-            cameraHelper?.setAeAwbLock(true)
-        } else if (lastCompleteTrayMs != 0L &&
-            System.currentTimeMillis() - lastCompleteTrayMs >= AE_LOCK_RELEASE_DELAY_MS
-        ) {
-            cameraHelper?.setAeAwbLock(false)
-            lastCompleteTrayMs = 0L
-        }
-
-        // ── Tray color classification + hazardousTrayDetected DB save ────────
-        // Runs only for hazardous drug transactions. Saves exactly once per txn.
-        //
-        // Scenario 1 (setting OFF): immediate save — true if in hazardous list, false otherwise.
-        // Scenario 2 (setting ON):  true if in hazardous list (immediate), otherwise show popup;
-        //                           user response (yes/no) determines the saved value.
-        logger.d(
-            "Frame: detectionEnabled=$isTrayColorDetectionEnabled popupEnabled=$hazardousTrayPopupEnabled " +
-            "resultSaved=$hazardousTrayResultSaved trays=${trayDets.size} " +
-            "pending=${_uiState.value.pendingTrayColorForClassification?.label}"
-        )
-        if (isTrayColorDetectionEnabled) {
-            val trayColor = trayDets.firstOrNull { it.trayColor != TrayColor.UNKNOWN }?.trayColor
-            logger.d("  First known tray color: ${trayColor?.label ?: "none"} hazardousColor=$cachedHazardousColor isHazardousTxn=$isHazardousTxn")
-
-            if (trayColor != null) {
-                if (isHazardousTxn && !hazardousTrayResultSaved) {
-                    when {
-                        cachedHazardousColor == null -> {
-                            // No hazardous color saved yet — first hazardous transaction.
-                            // Show prompt so the user can designate this tray (setting must be ON).
-                            if (hazardousTrayPopupEnabled &&
-                                _uiState.value.pendingTrayColorForClassification == null &&
-                                trayColor !in promptedTrayColors) {
-                                promptedTrayColors.add(trayColor)
-                                _uiState.update { it.copy(pendingTrayColorForClassification = trayColor) }
-                                logger.i("[HAZARDOUS] First hazardous txn — showing tray classification popup for ${trayColor.label}")
-                            } else if (!hazardousTrayPopupEnabled) {
-                                // Global setting OFF — nothing to classify, save false.
-                                logger.i("[HAZARDOUS] No saved color, setting OFF — saving false for ${trayColor.label}")
-                                saveHazardousTrayDetected(false)
-                            }
-                        }
-                        trayColor.name == cachedHazardousColor -> {
-                            // Correct hazardous tray detected — save true.
-                            logger.i("[HAZARDOUS] Tray ${trayColor.label} matches hazardous color — saving true")
-                            saveHazardousTrayDetected(true)
-                        }
-                        else -> {
-                            // A hazardous color is saved but this tray does not match it.
-                            if (!hazardousTrayPopupEnabled) {
-                                // Global setting OFF — save false silently.
-                                logger.i("[HAZARDOUS] Setting OFF, tray ${trayColor.label} != hazardous color — saving false")
-                                saveHazardousTrayDetected(false)
-                            } else if (!hazardousTrayToastShown) {
-                                // Setting ON — warn user to swap to the correct hazardous tray.
-                                hazardousTrayToastShown = true
-                                logger.i("[HAZARDOUS] Tray ${trayColor.label} is NOT the hazardous tray — showing warning toast")
-                                viewModelScope.launch(Dispatchers.Main) {
-                                    showToast(context.getString(R.string.non_hazardous_tray_warning))
-                                }
-                            }
-                        }
-                    }
-                } else if (!isHazardousTxn && !hazardousTrayToastShown && trayColor.name == cachedHazardousColor) {
-                    // Non-hazardous transaction using the hazardous tray — warn the user.
-                    hazardousTrayToastShown = true
-                    logger.i("[HAZARDOUS] Hazardous tray ${trayColor.label} detected in non-hazardous transaction — showing toast")
-                    viewModelScope.launch(Dispatchers.Main) {
-                        showToast(context.getString(R.string.hazardous_tray_warning))
-                    }
-                }
-            }
-        }
-
-        // ── Check if gloves detected - if yes, stop running glove detection ──
-        // Require several CONSECUTIVE strong detections before locking the session
-        // state — a single flickery frame (e.g. a bare hand momentarily misclassified
-        // as "gloves") must not permanently commit "gloves detected".
-        if (!_glovesDetected.value) {
-            val strongGloveThisFrame = gloveDets.any { it.classId == 0 && it.confidence >= 0.75f }
-            consecutiveGloveFrames = if (strongGloveThisFrame) consecutiveGloveFrames + 1 else 0
-
-            if (consecutiveGloveFrames >= GLOVE_CONFIRM_FRAMES) {
-                _glovesDetected.value = true
-                shouldRunGloveDetection = false
-                val best = gloveDets.filter { it.classId == 0 }.maxByOrNull { it.confidence }
-                logger.i("GLOVE_ICON — turning GREEN (bestConfidence=${best?.confidence}, consecutiveFrames=$consecutiveGloveFrames) - unloading glove model and saving DB flag")
-                viewModelScope.launch {
-                    try {
-                        unloadGloveAndRebuildAnalyzer()
-                        val txnId = preferenceHelper.getTxnId()
-                        if (txnId != 0L) {
-                            dispenseTxnDao.updateGlovesPresent(txnId, true)
-                            logger.i("isGlovesPresent saved for txn=$txnId")
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        logger.e("Failed to unload glove model / save glovesPresent flag", e, event = LogEvent.GLOVE_DETECT_FAILED)
-                    }
-                }
-            }
-        }
-
-        // Rolling count buffer
-        val buffer = ArrayDeque(_lastTenDetections.value)
-        if (buffer.size >= ZERO_DETECTIONS_THRESHOLD) buffer.removeFirst()
-        buffer.addLast(count)
-        _lastTenDetections.value = buffer
-
-        onCountObserved(count)
-
-        // Map pill centres to normalised [0..1] coordinates
-        updateDetectedPills(
-            pills = detections.map { det ->
-                DetectedPill(
-                    x = (det.rect.centerX() / imageWidth.toFloat()).coerceIn(0f, 1f),
-                    y = (det.rect.centerY() / imageHeight.toFloat()).coerceIn(0f, 1f),
-                    confidence = det.confidence
-                )
-            }, frameWidth = imageWidth, frameHeight = imageHeight
-        )
-    }
-
-    /** Update the list of detected pills in UI state AND the frame dimensions. */
-    private fun updateDetectedPills(
-        pills: List<DetectedPill>, frameWidth: Int, frameHeight: Int
-    ) {
-        _uiState.update {
-            it.copy(
-                detectedPills = pills, imageFrameWidth = frameWidth, imageFrameHeight = frameHeight,
-            )
-        }
-    }
-
-    // Fired by the watchdog after a window with no count change.
-    private fun pauseAndClearBuffers() {
-        _lastTenDetections.value.clear()
-        resetCountConfirmation()
-        lastCompleteTrayMs = 0L
-        cameraHelper?.setAeAwbLock(false)
-        _uiState.update { it.copy(showIdleOverlay = true, gloveDetections = emptyList(), pendingTrayColorForClassification = null) }
-        _trayDetections.value = emptyList()
-        isTrayColorDetectionEnabled = false
-        hazardousTrayPopupEnabled = false
-        promptedTrayColors.clear()
-        isHazardousTxn = false
-        hazardousTrayToastShown = false
-        isPaused = true
-        _cameraPaused.value = true
-        logger.w("$IDLE_TAG camera paused due to idle timeout. Buffers cleared.")
-    }
-
-    fun resetIdleTimer() {
-        idleJob?.cancel()
-        idleJob = viewModelScope.launch {
-            val quietStepsNeeded = (IDLE_TIMEOUT_MS / IDLE_STEP_MS).toInt()
-            var seen = activityTicks.get()
-            var quietSteps = 0
-            logger.d("$IDLE_TAG armed | timeout=${IDLE_TIMEOUT_MS}ms step=${IDLE_STEP_MS}ms ticks=$seen")
-            while (true) {
-                delay(IDLE_STEP_MS)
-                val ticks = activityTicks.get()
-                if (ticks != seen) {
-                    logger.d("$IDLE_TAG activity=${ticks - seen} -> deadline pushed")
-                    seen = ticks
-                    quietSteps = 0
-                    continue
-                }
-                quietSteps++
-                if (quietSteps >= quietStepsNeeded) {
-                    logger.d("$IDLE_TAG quiet ${quietSteps * IDLE_STEP_MS}ms -> pausing")
-                    pauseAndClearBuffers()
-                    return@launch
-                }
-            }
-        }
-    }
+    fun resetIdleTimer() = engine.armIdleTimer()
 
     /** Mark counting activity so the watchdog holds off. */
-    fun noteCountActivity() {
-        activityTicks.incrementAndGet()
-    }
+    fun noteCountActivity() = engine.noteActivity()
 
-    // A count must repeat for COUNT_CONFIRM_FRAMES frames to count as activity,
-    // so detector flicker can't hold the watchdog open forever.
-    @VisibleForTesting
-    internal fun onCountObserved(count: Int) {
-        if (count == pendingCount) {
-            consecutiveSameCount++
-        } else {
-            pendingCount = count
-            consecutiveSameCount = 1
-        }
-        if (consecutiveSameCount == COUNT_CONFIRM_FRAMES && count != confirmedCount) {
-            confirmedCount = count
-            noteCountActivity()
-        }
-    }
-
-    private fun resetCountConfirmation() {
-        pendingCount = -1
-        confirmedCount = -1
-        consecutiveSameCount = 0
-    }
-
-    fun pauseIdleTimer() {
-        idleJob?.cancel()
-        idleJob = null
-        logger.d("$IDLE_TAG cancelled")
-    }
+    fun pauseIdleTimer() = engine.stopIdleTimer()
 
     /** Process an incoming frame from CameraX. */
-    fun onFrameCaptured(image: ImageProxy) {
-        if (isPaused) {
-            image.close()
-            return
-        }
-        val currentState = _modelState.value
-        if (currentState !is ModelState.Ready) {
-            image.close()
-            return
-        }
-        if (isAnalyzingFrame) {
-            image.close()
-            return
-        }
-
-        isAnalyzingFrame = true
-        viewModelScope.launch(Dispatchers.Default) {
-            try {
-                currentState.analyzer.analyze(image)
-            } catch (e: Exception) {
-                logger.eThrottled("Frame analysis failed.", e, event = LogEvent.PILL_COUNT_FAILED)
-                image.close()
-            } finally {
-                isAnalyzingFrame = false
-            }
-        }
-    }
+    fun onFrameCaptured(image: ImageProxy) = engine.onFrame(image)
 
     /** Reset idle overlay and resume camera analysis. */
-    fun resetIdleOverlay() {
-        _uiState.update { it.copy(showIdleOverlay = false, pendingTrayColorForClassification = null) }
+    fun resetIdleOverlay() = engine.resumeFromIdle()
 
-        _lastTenDetections.value.clear()
-        resetCountConfirmation()
-        lastCompleteTrayMs = 0L
-        cameraHelper?.setAeAwbLock(false)
-        lastAddedScanSignature = null
-        _trayDetections.value = emptyList()
-        _uiState.update { it.copy(gloveDetections = emptyList()) }
+    fun updateFilteredPills(filtered: List<DetectedPill>) = engine.onFilteredPills(filtered)
 
-        // Restore detection flags using the drug flag remembered from setHazardousTransaction().
-        // Do NOT reset hazardousTrayResultSaved — the transaction is the same, result already saved.
-        val globalSettingOn = preferenceHelper.isHazardousDrugEnabled()
-        isTrayColorDetectionEnabled = true
-        isHazardousTxn = lastHazardousByDrug
-        hazardousTrayPopupEnabled = lastHazardousByDrug && globalSettingOn
-        hazardousTrayToastShown = false
-        cachedHazardousColor = preferenceHelper.getHazardousTrayColor()
-        if (lastHazardousByDrug) {
-            promptedTrayColors.clear()
-        }
-
-        // Reset glove detection state
-        resetGloveDetection()
-
-        isPaused = false
-        _cameraPaused.value = false
-
-        // The watchdog job ended when it fired, so re-arm it.
-        resetIdleTimer()
-
-        logger.d("$IDLE_TAG overlay reset -> Analysis resumed.")
-    }
-
-    fun updateFilteredPills(filtered: List<DetectedPill>) {
-        // The Canvas overlay calls this from inside its draw block on every recompose.
-        // Without a dedupe, every frame triggers a new _uiState emission, which
-        // triggers another recompose, which redraws the Canvas — a tight loop that
-        // burns frame budget on weak devices. Compare references first (cheap),
-        // and only escalate to a structural compare when the reference differs.
-        val current = _uiState.value.filteredPills
-        if (current === filtered) return
-        if (current.size == filtered.size &&
-            current.indices.all { i -> current[i] === filtered[i] }) {
-            return
-        }
-        _uiState.update { it.copy(filteredPills = filtered) }
-    }
-
-    /**
-     * Called when the COUNTING stage begins. Enables tray color detection and caches
-     * the current hazardous/non-hazardous color lists from preferences.
-     */
-    /**
-     * Called when COUNTING stage begins.
-     *
-     * Scenario 1 — setting OFF + drug hazardous:
-     *   Detection runs, no popup. Result saved immediately based on hazardous-list lookup.
-     * Scenario 2 — setting ON + drug hazardous:
-     *   Detection runs, popup shown if color not in hazardous list. Result saved on user response.
-     * If drug is NOT hazardous: nothing runs, no DB write.
-     */
-    fun setHazardousTransaction(isHazardousByDrug: Boolean) {
-        val globalSettingOn = preferenceHelper.isHazardousDrugEnabled()
-        lastHazardousByDrug = isHazardousByDrug
-        isHazardousTxn = isHazardousByDrug
-        isTrayColorDetectionEnabled = true
-        hazardousTrayPopupEnabled = isHazardousByDrug && globalSettingOn
-        hazardousTrayResultSaved = false
-        hazardousTrayToastShown = false
-        cachedHazardousColor = preferenceHelper.getHazardousTrayColor()
-
-        logger.d("=== setHazardousTransaction ===")
-        logger.d("  drugFlag=$isHazardousByDrug  globalSettingOn=$globalSettingOn")
-        logger.d("  detectionEnabled=$isTrayColorDetectionEnabled  popupEnabled=$hazardousTrayPopupEnabled  hazardousColor=$cachedHazardousColor")
-
-        if (isHazardousByDrug) {
-            promptedTrayColors.clear()
-            logger.i("Hazardous drug transaction. popupEnabled=$hazardousTrayPopupEnabled hazardousColor=$cachedHazardousColor")
-        } else {
-            logger.i("Non-hazardous drug — tray detection active for hazardous tray warning. hazardousColor=$cachedHazardousColor")
-        }
-    }
+    /** Called when the COUNTING stage begins; see [PillCountingEngine.configureHazardous]. */
+    fun setHazardousTransaction(isHazardousByDrug: Boolean) = engine.configureHazardous(isHazardousByDrug)
 
     /**
      * Saves the user's classification choice for the pending tray color.
      * Adds the color to the appropriate preference list and dismisses the popup.
      */
-    fun classifyTrayColor(color: TrayColor, isHazardous: Boolean) {
-        if (isHazardous) {
-            preferenceHelper.setHazardousTrayColor(color.name)
-            cachedHazardousColor = color.name
-            logger.i("Tray color ${color.label} saved as hazardous color → saving true to DB")
-        } else {
-            logger.i("Tray color ${color.label} not classified as hazardous → saving false to DB")
-        }
-        saveHazardousTrayDetected(isHazardous)
-        _uiState.update { it.copy(pendingTrayColorForClassification = null) }
-    }
+    fun classifyTrayColor(color: TrayColor, isHazardous: Boolean) = engine.classifyTray(color, isHazardous)
 
     private fun saveHazardousTrayDetected(detected: Boolean) {
-        if (hazardousTrayResultSaved) return
-        hazardousTrayResultSaved = true
         viewModelScope.launch(Dispatchers.IO) {
             val txnId = preferenceHelper.getTxnId()
             if (txnId != 0L) {
                 dispenseTxnDao.updateHazardousTrayDetected(txnId, detected)
                 logger.i("hazardousTrayDetected=$detected saved for txnId=$txnId")
                 logger.d("DB updated: hazardousTrayDetected=$detected txnId=$txnId")
+            }
+        }
+    }
+
+    /** Saves the engine's glove lock-in on the current dispense txn. */
+    private fun saveGlovesPresent() {
+        viewModelScope.launch {
+            try {
+                val txnId = preferenceHelper.getTxnId()
+                if (txnId != 0L) {
+                    dispenseTxnDao.updateGlovesPresent(txnId, true)
+                    logger.i("isGlovesPresent saved for txn=$txnId")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to save glovesPresent flag", e, event = LogEvent.GLOVE_DETECT_FAILED)
             }
         }
     }
@@ -1336,9 +740,9 @@ class PillScanningViewModel @Inject constructor(
         stockCountBaseTotal = -1
         _capturedBitmap.value = null
         _txnInfo.value = null
+        engine.clearDetectedPills()
         _uiState.update {
             it.copy(
-                detectedPills = emptyList(),
                 txnDetailHistory = emptyList(),
                 stockCountSessionTotal = 0,
             )
@@ -1391,41 +795,11 @@ class PillScanningViewModel @Inject constructor(
      * Reset glove detection state.
      * Called when the pill scanning screen is loaded or when resuming from idle.
      */
-    fun resetGloveDetection() {
-        _glovesDetected.value = false
-        shouldRunGloveDetection = true
-        consecutiveGloveFrames = 0
-        // Also re-enable the analyzer's fast initial cadence so the first detection
-        // after a reset arrives in one frame, not after the rate-limit window.
-        (_modelState.value as? ModelState.Ready)?.analyzer?.resetGloveCadence()
-        logger.i("🔄 Glove detection reset - Model will run on next frame")
-    }
+    fun resetGloveDetection() = engine.resetGloves()
 
     override fun onCleared() {
         super.onCleared()
-
-        // Stop performance monitoring
-        performanceMonitorJob?.cancel()
-
-        // Generate final summary report
-        try {
-            performanceLogger.generateSummaryReport()
-            logger.i("Performance summary generated")
-        } catch (e: Exception) {
-            logger.e("Failed to generate performance summary", e, event = LogEvent.FUNCTIONALITY_ERROR)
-        }
-
-        synchronized(frameLock) {
-            try {
-                currentFrameBitmap?.recycle()
-            } catch (e: Exception) {
-                logger.w("Error recycling bitmap: ${e.message}")
-            } finally {
-                currentFrameBitmap = null
-            }
-        }
-        _modelState.value = ModelState.Idle
-        logger.i("ViewModel cleared. Model remains loaded in Singleton.")
+        engine.close()
     }
 
     // ------------------------------------------------------------------------
@@ -1453,26 +827,6 @@ class PillScanningViewModel @Inject constructor(
             is PillScanningEvent.CancelReplaceBottle -> handleCancelBottleDialog(isAdd = false)
         }
     }
-
-    private var addCooldownJob: Job? = null
-
-    /** Disables Add for [ADD_COOLDOWN_MS] while the captured frame is saved. */
-    private fun startAddCooldown() {
-        addCooldownJob?.cancel()
-        _uiState.update { it.copy(isAddCooldown = true) }
-        addCooldownJob = viewModelScope.launch {
-            delay(ADD_COOLDOWN_MS)
-            _uiState.update { it.copy(isAddCooldown = false) }
-            lastAddClickTime = 0L
-        }
-    }
-
-    /** Scanning-screen drug-image fallback, as a bitmap for the saved photo (keeps its aspect). */
-    private fun drugImagePlaceholder(): Bitmap? =
-        ContextCompat.getDrawable(getApplication(), R.drawable.prescription_icon)?.let { d ->
-            val h = if (d.intrinsicWidth > 0) 300 * d.intrinsicHeight / d.intrinsicWidth else 225
-            d.toBitmap(300, h.coerceAtLeast(1))
-        }
 
     /** Tutorial txns are marked by the demo Rx prefix or the demo drug, the same markers the purge uses. */
     private suspend fun isDemoTxn(txnId: Long): Boolean {
@@ -1520,34 +874,12 @@ class PillScanningViewModel @Inject constructor(
         })
     }
 
-    /** Hands over the latest analyzed frame; the caller now owns and recycles it. */
-    private fun takeCurrentFrame(): Bitmap? = synchronized(frameLock) {
-        val frame = currentFrameBitmap?.takeIf { !it.isRecycled }
-        currentFrameBitmap = null
-        frame
-    }
-
-    /** Refreshes [cachedLocation] in the background; skipped while a lookup is running. */
-    private fun refreshLocation() {
-        if (locationJob?.isActive == true) return
-        locationJob = viewModelScope.launch(Dispatchers.IO) {
-            cachedLocation = locationProvider.getCurrentLocationAsString()
-        }
-    }
-
     private fun handleAddTransaction(event: PillScanningEvent.AddTransactionDetailClicked) {
         val context: Context = getApplication<Application>().applicationContext
-        val currentTime = System.currentTimeMillis()
-
-        if (_uiState.value.isAddCooldown) {
-            showToast(context.getString(R.string.add_button_wait))
-            logger.w("Add action ignored: cooldown active.")
-            return
-        }
 
         val stepType = event.stepType
         val totalBatchCount =
-            _uiState.value.txnDetailHistory.filter { it.type == stepType }.sumOf { it.count }
+            _uiState.value.txnDetailHistory.filter { historyRow -> historyRow.type == stepType }.sumOf { historyRow -> historyRow.count }
         val targetCount = _uiState.value.targetCount
         val currentCount = event.filteredCount
         val predictedTotal = totalBatchCount + currentCount
@@ -1560,156 +892,63 @@ class PillScanningViewModel @Inject constructor(
                 return
             }
         }
-        if (currentCount == 0) {
-            showToast(context.getString(R.string.add_zero_detected))
-            logger.w("Add blocked: detected count is 0.")
-            return
+        val capturedAdd = when (val captureResult = engine.captureCount(currentCount)) {
+            is CaptureResult.Rejected -> {
+                showToast(context.getString(addRejectedToastText(captureResult.reason)))
+                return
+            }
+            is CaptureResult.Captured -> captureResult
         }
-        // Fix the frame, pills and tray at the tap; the save must not pick up a later frame.
-        val frame = takeCurrentFrame()
-        if (frame == null) {
-            showToast(context.getString(R.string.add_camera_not_ready))
-            logger.w("Add blocked: no camera frame at tap.")
-            return
-        }
-        val filteredPills = _uiState.value.filteredPills
-        val trays = _trayDetections.value
-        triggerAddPop(currentCount)
-
-        val signature = _uiState.value.detectedPills.joinToString(separator = "|") {
-            "${"%.3f".format(it.x)}-${"%.3f".format(it.y)}"
-        } + "|count=$currentCount"
-
-        if (signature == lastAddedScanSignature) {
-            frame.recycle()
-            showToast(context.getString(R.string.duplicate_scan_ignored))
-            logger.w("Duplicate add prevented: no change in detection pattern.")
-            return
-        }
-
-        startAddCooldown()
-
-        lastAddClickTime = currentTime
-        lastAddedScanSignature = signature
-        noteCountActivity()
         logger.i("Adding transaction detail. Count=$currentCount")
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val userId = preferenceHelper.getUserId().orEmpty()
-                val user = userDao.getByUserId(userId)
-                // No lookup finished yet: show the fallback rather than wait.
-                val location = cachedLocation ?: context.getString(R.string.location_unavailable)
-
-                val workingBitmap = frame
-
                 val txnId = preferenceHelper.getTxnId()
-                val txn = dispenseTxnDao.getById(txnId)
+                val dispenseTxn = dispenseTxnDao.getById(txnId)
                 // A stock session has no dispense_txn row: its drug comes from the session instead.
-                val drug = drugMasterDao.getDrugById(if (isStockCountSession) stockDrugId else txn?.drugId)
+                val orderedDrug = drugMasterDao.getDrugById(if (isStockCountSession) stockDrugId else dispenseTxn?.drugId)
 
                 // Resolve the currently active bottle (last one scanned) once — used both to
                 // watermark this photo with its lot/exp/serial and to tag the detail row below.
-                val bottles = DispenseBottleJson.decode(txn?.bottlesJson)
-                val activeBottle = bottles.lastOrNull()
+                val scannedBottles = DispenseBottleJson.decode(dispenseTxn?.bottlesJson)
+                val activeBottle = scannedBottles.lastOrNull()
                 // Stock lot/serial/expiry come from the line being counted onto; with none yet
                 // (it's created at Done) they are the values scanned for that new line.
-                val stockBottle = if (isStockCountSession && stockBottleId != 0L) stockBottleInfoDao.getById(stockBottleId) else null
+                val stockBottleLine = if (isStockCountSession && stockBottleId != 0L) stockBottleInfoDao.getById(stockBottleId) else null
 
                 // Name, image and dispensed NDC follow the substitute when there is one.
-                val dispensedDrug = if (isStockCountSession) drug
-                    else txn?.takeIf { it.isSubstitute }?.substitutedDrugId?.let { drugMasterDao.getDrugById(it) } ?: drug
-                val drugImage = dispensedDrug?.drugImagePath?.takeIf { it.isNotBlank() }
-                    ?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
-                    ?: drugImagePlaceholder()
+                val dispensedDrug = if (isStockCountSession) orderedDrug
+                    else dispenseTxn?.takeIf { txn -> txn.isSubstitute }?.substitutedDrugId
+                        ?.let { substituteDrugId -> drugMasterDao.getDrugById(substituteDrugId) } ?: orderedDrug
 
-                // Crop to tray + chute when a complete tray is in view; else keep the full frame.
-                val frameW = workingBitmap.width
-                val frameH = workingBitmap.height
-                val crop = OverlayUtils.savedPhotoCropRegion(trays, frameW, frameH)
-                val photoBitmap = if (crop != null) {
-                    Bitmap.createBitmap(workingBitmap, crop.left, crop.top, crop.width(), crop.height())
-                } else workingBitmap
-                val photoPills = if (crop != null) {
-                    OverlayUtils.pillsInCrop(filteredPills, crop, frameW, frameH)
-                } else filteredPills
-
-                val info = PhotoInfo(
+                val photoLabel = PhotoLabel(
                     drugName = dispensedDrug?.drugName,
-                    drugImage = drugImage,
-                    isStockCount = isStockCountSession || txn == null,
-                    requestedNdc = drug?.ndc,
+                    drugImagePath = dispensedDrug?.drugImagePath,
+                    isStockCount = isStockCountSession || dispenseTxn == null,
+                    requestedNdc = orderedDrug?.ndc,
                     dispensedNdc = dispensedDrug?.ndc,
                     lotNumber = if (!isStockCountSession) activeBottle?.lotNumber
-                        else if (stockBottle != null) stockBottle.lotNo else stockLotNo,
+                        else if (stockBottleLine != null) stockBottleLine.lotNo else stockLotNo,
                     serialNumber = if (!isStockCountSession) activeBottle?.serialNumber
-                        else if (stockBottle != null) stockBottle.serialNo else stockSerialNo,
+                        else if (stockBottleLine != null) stockBottleLine.serialNo else stockSerialNo,
                     expirationDate = if (!isStockCountSession) activeBottle?.expirationDate
-                        else if (stockBottle != null) stockBottle.expNo else stockExpNo,
-                    count = currentCount,
-                    rxRefill = if (isStockCountSession) null else OverlayUtils.rxRefill(txn?.rxNo, txn?.refillNo),
+                        else if (stockBottleLine != null) stockBottleLine.expNo else stockExpNo,
+                    rxRefill = if (isStockCountSession) null else OverlayUtils.rxRefill(dispenseTxn?.rxNo, dispenseTxn?.refillNo),
                     stepLabel = stepType.name,
-                    userName = listOfNotNull(user?.fName, user?.lName).joinToString(" "),
-                    location = location,
-                    timestamp = System.currentTimeMillis(),
                 )
-                val overlayBitmap = try {
-                    OverlayUtils.drawDetectionsOnBitmap(
-                        bitmap = photoBitmap,
-                        detectedPills = photoPills,
-                        info = info,
-                        res = getApplication<Application>().resources,
-                        scaleRefSide = min(frameW, frameH),
-                        // Same breakpoint as UserInterfaceUtils.isTablet(), read outside Compose.
-                        isPhone = getApplication<Application>().resources.configuration.smallestScreenWidthDp <
-                            UserInterfaceUtils.TABLET_BREAKPOINT_DP,
-                    )
-                } catch (e: Exception) {
-                    logger.e("Overlay drawing failed, using bitmap without overlay", e, event = LogEvent.PILL_COUNT_FAILED)
-                    photoBitmap
-                }
-                drugImage?.recycle()
-
-                val stamp = System.currentTimeMillis()
-                val filePath = try {
-                    if (!overlayBitmap.isRecycled) {
-                        saveBitmapToFile(
-                            getApplication(),
-                            overlayBitmap,
-                            "txn_detail_$stamp.jpg",
-                            "transaction_details",
-                            grayscale = isGrayscaleImage(),
-                        )
-                    } else null
-                } catch (e: Exception) {
-                    logger.e("Failed saving bitmap", e, event = LogEvent.FILE_WRITE_ERROR)
-                    null
-                }
                 // TARGET_VERIFICATION also keeps the crop with nothing drawn on it, for PMS.
                 // Stock sessions land on the same step but get no raw image.
-                val rawPath = if (stepType == StepState.TARGET_VERIFICATION && !isStockCountSession) {
-                    try {
-                        if (!photoBitmap.isRecycled) {
-                            saveBitmapToFile(
-                                getApplication(),
-                                photoBitmap,
-                                "txn_detail_${stamp}_raw.jpg",
-                                "transaction_details",
-                            )
-                        } else null
-                    } catch (e: Exception) {
-                        logger.e("Failed saving raw bitmap", e, event = LogEvent.FILE_WRITE_ERROR)
-                        null
-                    }
-                } else null
-                // createBitmap can hand back the source itself when the crop is the whole frame.
-                if (photoBitmap !== workingBitmap && !photoBitmap.isRecycled) photoBitmap.recycle()
+                val savedPhoto = engine.saveCountPhoto(
+                    capturedAdd,
+                    photoLabel,
+                    keepRawCrop = stepType == StepState.TARGET_VERIFICATION && !isStockCountSession,
+                )
 
-                val detail = DispenseCountEntity(
+                val countRow = DispenseCountEntity(
                     txnId = txnId,
                     pillCount = currentCount,
-                    imagePath = filePath,
-                    rawImagePath = rawPath,
+                    imagePath = savedPhoto.imagePath,
+                    rawImagePath = savedPhoto.rawImagePath,
                     createdAt = System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis(),
                     step = stepType.toString(),
@@ -1724,13 +963,12 @@ class PillScanningViewModel @Inject constructor(
                     // / handleDone flush blocks). On back-out these are discarded.
                     // Bottle linkage (countIds) is done in flushStagedDetails, once
                     // real row ids exist — staged rows have no id yet.
-                    stagedDetails.add(detail)
+                    stagedDetails.add(countRow)
                     stagingActive = true
 
-                    if (!workingBitmap.isRecycled) workingBitmap.recycle()
                     refreshStagedHistory(stepType)
 
-                    logger.i("Transaction detail STAGED (in memory). Count=$currentCount, File=$filePath, stagedCount=${stagedDetails.size}")
+                    logger.i("Transaction detail STAGED (in memory). Count=$currentCount, File=${savedPhoto.imagePath}, stagedCount=${stagedDetails.size}")
                 } else {
                     // Regular dispense flow: persist each ADD immediately so a session
                     // backed out before Done is still saved (shows under Pending). The
@@ -1739,33 +977,35 @@ class PillScanningViewModel @Inject constructor(
                     // per-ADD here to match the per-row insert.
                     // One transaction so a View All delete can't overwrite the bottle list mid-link.
                     appDatabase.withTransaction {
-                        val newCountId = dispenseCountDao.insert(detail)
-                        linkCountToActiveBottle(txnId, bottles, newCountId)
+                        val newCountId = dispenseCountDao.insert(countRow)
+                        linkCountToActiveBottle(txnId, scannedBottles, newCountId)
                     }
 
-                    if (!workingBitmap.isRecycled) workingBitmap.recycle()
-
-                    logger.i("Transaction detail INSERTED (immediate). Count=$currentCount, File=$filePath")
+                    logger.i("Transaction detail INSERTED (immediate). Count=$currentCount, File=${savedPhoto.imagePath}")
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 logger.e("Failed to add transaction detail", e, event = LogEvent.PILL_COUNT_FAILED)
                 // Let the same pills be added again.
-                lastAddedScanSignature = null
+                engine.forgetLastAdd()
                 showGenericError()
             } finally {
-                if (!frame.isRecycled) frame.recycle()
+                if (!capturedAdd.frame.isRecycled) capturedAdd.frame.recycle()
             }
-            refreshLocation()
         }
     }
 
-    private fun handleRescan() {
-        _uiState.update { it.copy(detectedPills = emptyList()) }
-        lastAddedScanSignature = null
-        logger.i("Rescan triggered.")
+    /** Toast text for an Add the engine turned down. */
+    @StringRes
+    private fun addRejectedToastText(reason: CaptureResult.Reason): Int = when (reason) {
+        CaptureResult.Reason.Cooldown -> R.string.add_button_wait
+        CaptureResult.Reason.ZeroCount -> R.string.add_zero_detected
+        CaptureResult.Reason.NoFrame -> R.string.add_camera_not_ready
+        CaptureResult.Reason.Duplicate -> R.string.duplicate_scan_ignored
     }
+
+    private fun handleRescan() = engine.rescan()
 
     fun showEndStockCountDialog(){
         _uiState.update {
@@ -2109,7 +1349,7 @@ class PillScanningViewModel @Inject constructor(
     // ------------------------------------------------------------------------
 
     /** True when the backend's colour-image setting is off, so saved photos go grayscale. */
-    fun isGrayscaleImage(): Boolean = !preferenceHelper.getIsColorImageEnabled()
+    fun isGrayscaleImage(): Boolean = engine.isGrayscale()
 
     fun resetRestrictAdd() = _uiState.update { it.copy(restrictAdd = false) }
 
@@ -2436,36 +1676,7 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
-    fun triggerAddPop(count: Int) {
-        _addPopEvents.tryEmit(count)
-    }
-
-    fun playCountSoundIfEnabled() {
-        if (preferenceHelper.isSoundEnabled()) {
-            SoundUtils.playCountSound(context)
-        }
-        if (preferenceHelper.isHapticEnabled()) {
-            triggerHaptic(context)
-        }
-    }
-
-    private fun triggerHaptic(context: Context) {
-        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val manager =
-                context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-            manager.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION") context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        }
-
-        if (!vibrator.hasVibrator()) return
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(120, 255))
-        } else {
-            @Suppress("DEPRECATION") vibrator.vibrate(120)
-        }
-    }
+    fun playCountSoundIfEnabled() = engine.playCountSoundIfEnabled()
 
     fun moveNextStep() {
         val steps = _steps.value
@@ -2634,25 +1845,24 @@ class PillScanningViewModel @Inject constructor(
      * flash, no capture request. See [isCapturing].
      */
     fun captureImage(autoConfirm: Boolean = false) {
-        val helper = cameraHelper ?: return
         if (_isCapturing.value) return
         _isCapturing.value = true
 
-        val requested = helper.captureImage(
-            onCaptured = { bitmap ->
+        val captureStarted = engine.captureStill(
+            onCaptured = { vialStill ->
                 _isCapturing.value = false
                 // A capture that lands after the user already left VIAL would
                 // re-show the still overlay on top of the next step.
                 if (_currentStep.value == StepState.VIAL) {
-                    _capturedBitmap.value = bitmap
+                    _capturedBitmap.value = vialStill
                     // A fresh still is unsaved, so the flag can never outlive the still it guards.
                     captureCommitted = false
                     if (autoConfirm) saveCaptureImage()
                 }
             },
-            onCaptureError = { _isCapturing.value = false }
+            onError = { _isCapturing.value = false }
         )
-        if (!requested) {
+        if (!captureStarted) {
             _isCapturing.value = false
             return
         }
@@ -2750,39 +1960,17 @@ class PillScanningViewModel @Inject constructor(
             onEvent(PillScanningEvent.AddVialPhotoInTxn(0, bitmap))
         }
         advanceFromVial()
-        isPaused = false
-        _cameraPaused.value = false
-        _uiState.update { it.copy(showIdleOverlay = false) }
         // The still is left up here on purpose. Whichever way advanceFromVial goes it
         // clears the bitmap itself — redoCaptureImage on the CONTAINER_PENDING entry,
         // handleConfirmDone on completion — so clearing it here only flashes the live
         // camera underneath.
-        resetIdleTimer()
+        engine.resumeLiveCounting()
     }
 
-    fun pausePillDetection() {
-        isPaused = true
-        _uiState.update { it.copy(detectedPills = emptyList()) }
-        _trayDetections.value = emptyList()
-        // processDetections early-returns while paused, so the release branch
-        // there can never run. Drop the lock here instead.
-        lastCompleteTrayMs = 0L
-        cameraHelper?.setAeAwbLock(false)
-    }
+    fun pausePillDetection() = engine.pauseDetection()
 
     /** Resume pill detection after a [pausePillDetection] call. */
-    fun resumePillDetection() {
-        isPaused = false
-    }
+    fun resumePillDetection() = engine.resumeDetection()
 
-    fun setCameraPaused(paused: Boolean) {
-        _cameraPaused.value = paused
-        if (paused) {
-            isPaused = true
-            _uiState.update { it.copy(detectedPills = emptyList()) }
-            _trayDetections.value = emptyList()
-        } else {
-            isPaused = false
-        }
-    }
+    fun setCameraPaused(paused: Boolean) = engine.setCameraPaused(paused)
 }
