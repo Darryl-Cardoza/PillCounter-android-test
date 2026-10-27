@@ -12,6 +12,7 @@ import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
+import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
@@ -27,6 +28,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -99,8 +101,8 @@ class DispenseFlowViewModelTest {
     }
 
     private fun createViewModel() = DispenseFlowViewModel(
-        appContext, drugRepository, drugMasterDao, preferenceHelper, pillCountTxnDao,
-        drugImageDownloader
+        appContext, DrugResolver(drugMasterDao, drugRepository, drugImageDownloader), drugMasterDao,
+        preferenceHelper, pillCountTxnDao,
     )
 
     private fun validParsed(
@@ -566,10 +568,11 @@ class DispenseFlowViewModelTest {
     @Test
     fun `onRxBarcodeRead exception sets error`() = runTest(testDispatcher) {
         coEvery { pillCountTxnDao.getActiveByRxNo(any()) } throws RuntimeException("boom")
+        every { appContext.getString(any()) } returns "generic error"
         val vm = createViewModel()
         vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
-        assertEquals("boom", vm.uiState.value.error)
+        assertEquals("generic error", vm.uiState.value.error)
         assertFalse(vm.uiState.value.isLoading)
     }
 
@@ -642,8 +645,7 @@ class DispenseFlowViewModelTest {
                 is_drug_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
             )
             coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 77L
-            // getDrugByNdc is called twice: once for the initial local miss, once after the
-            // server resolve-and-cache to pick the freshly upserted row back up.
+            // First call is the local miss; the drug id then comes from upsertPreservingId.
             coEvery { drugMasterDao.getDrugByNdc("NDC123") } returnsMany listOf(
                 null,
                 drug(drugId = 77L, ndc = "NDC123", drugName = "ServerDrug"),
@@ -718,6 +720,28 @@ class DispenseFlowViewModelTest {
 
             assertTrue(vm.uiState.value.showRxDetails)
             assertEquals(0, vm.uiState.value.rxDrugNotFoundToastTick)
+        }
+
+    @Test
+    fun `onRxBarcodeRead standalone server drug with no name still opens the sheet`() =
+        runTest(testDispatcher) {
+            every { preferenceHelper.isStandaloneMode() } returns true
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns null
+            coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
+            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
+                brandName = null, genericName = null, ndc = "NDC123",
+                is_drug_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
+            )
+            coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 77L
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.showRxDetails)
+            assertEquals(0, vm.uiState.value.rxDrugNotFoundToastTick)
+            assertEquals("Unknown Drug", vm.uiState.value.drugName)
         }
 
     // ───────────────────────────── onRxBarcodeRead: already-completed Rx guard ─────────────────────────────
@@ -1011,9 +1035,26 @@ class DispenseFlowViewModelTest {
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin(any()) } throws RuntimeException("ndcfail")
         coEvery { drugMasterDao.getDrugByNdc(any()) } throws RuntimeException("ndcfail")
+        every { appContext.getString(any()) } returns "generic error"
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
-        assertEquals("ndcfail", vm.uiState.value.error)
+        assertEquals("generic error", vm.uiState.value.error)
+    }
+
+    @Test
+    fun `onNdcBarcodeRead server failure shows error and logs once`() = runTest(testDispatcher) {
+        val vm = ndcVm()
+        advanceUntilIdle()
+        coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
+        coEvery { drugRepository.getDrugInfoByNdc(any()) } throws RuntimeException("offline")
+        every { appContext.getString(any()) } returns "generic error"
+        vm.onNdcBarcodeRead("gtin", null)
+        advanceUntilIdle()
+        assertEquals("generic error", vm.uiState.value.error)
+        assertFalse(vm.uiState.value.isLoading)
+        // DrugResolver logs the failure; the view model must not log it again.
+        verify(exactly = 0) { android.util.Log.e(any(), "NDC barcode processing failed", any()) }
     }
 
     @Test

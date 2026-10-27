@@ -13,16 +13,13 @@ import com.dispensesure.retail.core.room.dao.BottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.models.BottleInfoEntity
-import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
-import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
-import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
-import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
+import com.dispensesure.retail.core.scanning.data.DrugResolver
+import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
+import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
 import com.dispensesure.retail.core.room.models.dtos.RequestedDrugDto
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.utils.common.BarcodeDecoder
-import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -49,7 +46,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 /**
@@ -84,11 +80,10 @@ class InventoryScanViewModel @Inject constructor(
     private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
     private val operatorNameProvider: OperatorNameProvider,
-    private val barcodeDecoder: BarcodeDecoder,
-    private val drugRepository: IDrugRepository,
+    private val scanDecoder: ScanDecoder,
+    private val drugResolver: DrugResolver,
     private val hl7Repository: Hl7Repository,
     private val hl7EventHandler: Hl7EventHandler,
-    private val drugImageDownloader: DrugImageDownloader,
 ) : ViewModel() {
 
     private val logger = AppLogger("InventoryScanViewModel")
@@ -339,21 +334,15 @@ class InventoryScanViewModel @Inject constructor(
                             "length=${rawValue.length} | " +
                             "bypassCooldown=$bypassCooldown"
                 )
-                val isGs1 = barcodeDecoder.isGs1Barcode(rawValue)
-                val decoded = if (isGs1) barcodeDecoder.decode(rawValue) else null
-                val extractedGtin = if (isGs1) decoded?.gtin else barcodeDecoder.toGtin14(rawValue)
-                val gtin14 = extractedGtin?.let { barcodeDecoder.toGtin14(it) }
+                val scan = scanDecoder.decode(rawValue)
+                val gtin14 = scan.gtin14
                 logger.i(
-                    "INV_SCAN DECODED isGs1=$isGs1 | " +
-                            "extractedGtin=$extractedGtin | " +
+                    "INV_SCAN DECODED isGs1=${scan.isGs1} | " +
                             "gtin14=$gtin14 | " +
-                            "lot=${decoded?.lotNumber} | " +
-                            "expiry=${decoded?.expirationDate} | " +
-                            "serial=${decoded?.serialNumber} | " +
-                            "prodDate=${decoded?.productionDate} | " +
-                            "sellBy=${decoded?.sellByDate}"
+                            "lot=${scan.lot} | " +
+                            "expiry=${scan.expiry} | " +
+                            "serial=${scan.serial}"
                 )
-                logger.d("INV_SCAN decoded isGs1=$isGs1 extractedGtin=$extractedGtin gtin14=$gtin14")
 
                 // Determine the lookup key for the drug database.
                 // Primary path: GTIN-14 produced by the GS1 decoder.
@@ -376,54 +365,20 @@ class InventoryScanViewModel @Inject constructor(
                     }
                 }
 
-                val localDrug = drugMasterDao.getDrugByGtin(scanKey) ?: drugMasterDao.getDrugByNdc(scanKey)
-                logger.d("INV_SCAN local lookup scanKey=$scanKey → drug=${localDrug?.ndc} (${localDrug?.drugName}) hazardous=${localDrug?.isHazardous}")
-
-                // Fall back to the server when the drug isn't cached locally.
-                // Matches the dispense flow's behavior — unknown drugs are
-                // fetched on-demand and upserted into drug_master for future
-                // offline lookups.
-                val drug = localDrug ?: run {
-                    val drugInfo = try {
-                        drugRepository.getDrugInfoByNdc(
-                            GetNdcRequestModel(target_drug = "", scanned_drug = scanKey)
-                        )
-                    } catch (e: Exception) {
-                        logger.e("server drug lookup failed for scanKey=$scanKey", e, event = LogEvent.DRUG_LOOKUP_FAILED)
-                        null
-                    }
-                    logger.d("INV_SCAN server lookup scanKey=$scanKey → drugInfo=${drugInfo?.ndc} (${drugInfo?.genericName}) hazardous=${drugInfo?.isHazardous}")
-                    if (drugInfo == null) {
+                val drug = when (val lookup = drugResolver.resolve(
+                    code = scanKey,
+                    nameIfMissing = DrugResolver.UNKNOWN_DRUG_NAME,
+                    scannedGtin = gtin14,
+                )) {
+                    is DrugLookup.Found -> lookup.drug
+                    else -> {
+                        logger.w("INV_SCAN drug not resolved for scanKey=$scanKey → $lookup")
                         _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, scanKey)
                         _scannerPaused.value = false
                         return@launch
                     }
-                    val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: "Unknown Drug"
-                    val imagePath = drugImageDownloader.downloadAndSave(
-                        url = drugInfo.imageUrl,
-                        drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
-                    )
-                    drugMasterDao.upsertPreservingId(
-                        DrugMasterEntity(
-                            ndc = drugInfo.ndc,
-                            drugName = displayName,
-                            drugType = drugInfo.drugType,
-                            gtin = gtin14,
-                            packageQty = drugInfo.qty,
-                            isHazardous = drugInfo.isHazardous ?: false,
-                            strength = drugInfo.strength,
-                            dosageForm = drugInfo.dosageForm,
-                            drugImagePath = imagePath,
-                        )
-                    )
-                    // Re-read so we get the row with its assigned drugId.
-                    drugMasterDao.getDrugByNdc(drugInfo.ndc) ?: drugMasterDao.getDrugByGtin(scanKey)
                 }
-                if (drug == null) {
-                    _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, scanKey)
-                    _scannerPaused.value = false
-                    return@launch
-                }
+                logger.d("INV_SCAN drug scanKey=$scanKey → ${drug.ndc} (${drug.drugName}) hazardous=${drug.isHazardous}")
 
                 // PMS request validation: when this batch came from an INR^U04
                 // request it carries a fixed set of expected NDCs. Reject a scan
@@ -460,9 +415,9 @@ class InventoryScanViewModel @Inject constructor(
                     persistActive(currentActive)
                 }
 
-                val lotNo = decoded?.lotNumber
-                val serialNo = decoded?.serialNumber
-                val expiry = decoded?.expirationDate?.format(DateTimeFormatter.ofPattern(DateFormats.EXPIRY_STORED))
+                val lotNo = scan.lot
+                val serialNo = scan.serial
+                val expiry = scan.expiry
                 val packageQty = drug.packageQty ?: 0
                 logger.d("INV_SCAN parsed lotNo=$lotNo serialNo=$serialNo expiry=$expiry packageQty=$packageQty")
 

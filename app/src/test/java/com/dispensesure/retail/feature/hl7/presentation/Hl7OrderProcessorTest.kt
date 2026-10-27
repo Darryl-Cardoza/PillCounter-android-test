@@ -9,6 +9,7 @@ import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.core.scanning.data.DrugRepository
+import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
@@ -52,7 +53,7 @@ class Hl7OrderProcessorTest {
         every { context.getString(any()) } returns "x"
         every { context.getString(any(), *anyVararg()) } returns "x"
         every { preferenceHelper.getLocalId() } returns 1L
-        coEvery { drugMasterDao.getDrugByNdc(NDC) } returns DrugMasterEntity(ndc = NDC, drugName = DRUG_NAME)
+        coEvery { drugMasterDao.getDrugByNdc(NDC) } returns DrugMasterEntity(drugId = DRUG_ID, ndc = NDC, drugName = DRUG_NAME)
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns DRUG_ID
         coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns NEW_TXN_ID
         // Relaxed lookups would return a fake row; default to "nothing saved yet".
@@ -61,8 +62,8 @@ class Hl7OrderProcessorTest {
         coEvery { pillCountTxnDao.getMostRecentByRxNo(any()) } returns null
 
         processor = Hl7OrderProcessor(
-            context, pillCountTxnDao, drugMasterDao, preferenceHelper,
-            drugRepository, drugImageDownloader, notifier, hl7Repository,
+            context, pillCountTxnDao, preferenceHelper,
+            DrugResolver(drugMasterDao, drugRepository, drugImageDownloader), notifier, hl7Repository,
         )
     }
 

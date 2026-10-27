@@ -43,8 +43,6 @@ import com.dispensesure.retail.core.models.ScheduleCode
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.common.HelperFunctions.saveBitmapToFile
-import com.dispensesure.retail.core.utils.common.BarcodeDecoder
-import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.OverlayUtils
 import com.dispensesure.retail.core.utils.common.PhotoInfo
@@ -56,9 +54,7 @@ import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
-import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
-import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.data.NavigationEvent
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
@@ -70,6 +66,7 @@ import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.scanning.logic.Detection
 import com.dispensesure.retail.core.scanning.logic.GloveDetection
 import com.dispensesure.retail.core.scanning.logic.PillAnalyzer
+import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.logic.TrayColor
 import com.dispensesure.retail.core.scanning.logic.TrayDetection
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -118,9 +115,7 @@ class PillScanningViewModel @Inject constructor(
     private val drugMasterDao: DrugMasterDao,
     private val modelLoader: PillDetectionModelLoader,
     private val performanceLogger: PerformanceLogger,
-    private val barcodeDecoder: BarcodeDecoder,
-    private val drugRepository: IDrugRepository,
-    private val drugImageDownloader: DrugImageDownloader,
+    private val scanDecoder: ScanDecoder,
     private val hl7Repository: Hl7Repository,
     private val appDatabase: AppDatabase,
 ) : AndroidViewModel(app) {
@@ -2263,28 +2258,23 @@ class PillScanningViewModel @Inject constructor(
                 val activeNdc = _txnInfo.value?.ndc
                 if (activeNdc.isNullOrBlank()) return@launch
 
-                val isGs1 = barcodeDecoder.isGs1Barcode(rawValue)
-                val decoded = if (isGs1) barcodeDecoder.decode(rawValue) else null
-                val extractedGtin = if (isGs1) decoded?.gtin else barcodeDecoder.toGtin14(rawValue)
-                val gtin14 = extractedGtin?.let { barcodeDecoder.toGtin14(it) }
+                val scan = scanDecoder.decode(rawValue)
 
-                val scannedDrug = gtin14?.let { drugMasterDao.getDrugByGtin(it) ?: drugMasterDao.getDrugByNdc(it) }
+                val scannedDrug = scan.gtin14?.let { drugMasterDao.getDrugByGtin(it) ?: drugMasterDao.getDrugByNdc(it) }
                 if (scannedDrug == null || scannedDrug.ndc != activeNdc) {
                     // Not the same drug (or unreadable) — ignore, no popup, no lookup, no DB write.
                     return@launch
                 }
 
-                val lotNumber = decoded?.lotNumber
-                val expirationDate = decoded?.expirationDate?.format(
-                    java.time.format.DateTimeFormatter.ofPattern(DateFormats.EXPIRY_STORED)
-                )
-                val serialNumber = decoded?.serialNumber
+                val lotNumber = scan.lot
+                val expirationDate = scan.expiry
+                val serialNumber = scan.serial
 
                 val txn = pillCountTxnDao.getById(txnId) ?: return@launch
                 val bottles = BottleInfoJson.decode(txn.bottleInfoListJson).toMutableList()
                 val lastBottle = bottles.lastOrNull()
 
-                if (lastBottle != null && isGs1 &&
+                if (lastBottle != null && scan.isGs1 &&
                     lastBottle.lotNumber == lotNumber &&
                     lastBottle.expirationDate == expirationDate &&
                     lastBottle.serialNumber == serialNumber

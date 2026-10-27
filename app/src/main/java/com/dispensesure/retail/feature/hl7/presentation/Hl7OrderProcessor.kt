@@ -2,14 +2,12 @@ package com.dispensesure.retail.feature.hl7.presentation
 
 import android.content.Context
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
-import com.dispensesure.retail.core.scanning.data.DrugRepository
-import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
+import com.dispensesure.retail.core.scanning.data.DrugResolver
+import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -31,10 +29,8 @@ import javax.inject.Singleton
 class Hl7OrderProcessor @Inject constructor(
     @ApplicationContext private val context: Context,
     private val pillCountTxnDao: PillCountTxnDao,
-    private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
-    private val drugRepository: DrugRepository,
-    private val drugImageDownloader: DrugImageDownloader,
+    private val drugResolver: DrugResolver,
     private val notifier: Hl7Notifier,
     private val hl7Repository: Hl7Repository,
 ) {
@@ -101,7 +97,7 @@ class Hl7OrderProcessor @Inject constructor(
         }
         val existing = matched?.takeUnless { it.isFinished() }
         val finalDrug = resolveDrug(hl7Ndc, hl7DrugName) ?: return
-        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
+        val drugId = finalDrug.drugId
 
         val txnId: Long
         if (existing != null) {
@@ -198,7 +194,7 @@ class Hl7OrderProcessor @Inject constructor(
         }
 
         val finalDrug = resolveDrug(hl7Ndc, hl7DrugName) ?: return
-        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
+        val drugId = finalDrug.drugId
 
         val txnId: Long
         if (existing != null) {
@@ -261,41 +257,23 @@ class Hl7OrderProcessor @Inject constructor(
     }
 
     private suspend fun resolveDrug(ndc: String, fallbackName: String): DrugMasterEntity? {
-        val local = drugMasterDao.getDrugByNdc(ndc)
-        if (local != null) return local
-
-        val request = GetNdcRequestModel(target_drug = ndc, scanned_drug = ndc)
-        return try {
-            val drugInfo = drugRepository.getDrugInfoByNdc(request)
-            val resolvedName = drugInfo?.genericName?.takeIf { it.isNotBlank() }
-                ?: fallbackName.takeIf { it.isNotBlank() }
-            if (resolvedName.isNullOrBlank()) {
+        val name = fallbackName.takeIf { it.isNotBlank() }
+        return when (val lookup = drugResolver.resolve(ndc, expectedNdc = ndc, nameIfMissing = name, nameIfUnknown = name)) {
+            is DrugLookup.Found -> lookup.drug
+            is DrugLookup.Failed -> {
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                    message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, ndc),
+                )
+                null
+            }
+            DrugLookup.NoName, DrugLookup.NotFound -> {
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
                     message = context.getString(R.string.hl7_notification_drug_not_found_no_drug, ndc),
                 )
-                return null
+                null
             }
-            val imagePath = drugImageDownloader.downloadAndSave(
-                url = drugInfo?.imageUrl,
-                drugName = resolvedName,
-            )
-            DrugMasterEntity(
-                ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: ndc,
-                drugName = resolvedName,
-                drugType = drugInfo?.drugType,
-                isHazardous = drugInfo?.isHazardous ?: false,
-                strength = drugInfo?.strength,
-                dosageForm = drugInfo?.dosageForm,
-                drugImagePath = imagePath,
-            )
-        } catch (e: Exception) {
-            logger.e("Failed to fetch drug info from API for NDC=$ndc", e)
-            notifier.show(
-                title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, ndc),
-            )
-            null
         }
     }
 

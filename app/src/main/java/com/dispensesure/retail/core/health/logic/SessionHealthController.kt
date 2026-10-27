@@ -59,7 +59,7 @@ class SessionHealthController @Inject constructor(
     private val healthRepository: IHealthRepository,
     private val preferenceHelper: PreferenceHelper,
     // Wrapped in `Lazy` to break the Hilt cycle:
-    // Hl7Repository -> DrugImageDownloader -> OkHttpClient -> HealthGateInterceptor
+    // Hl7Repository -> DrugResolver -> DrugImageDownloader -> OkHttpClient -> HealthGateInterceptor
     // -> SessionHealthController. The repository is only resolved the first time the
     // OFFLINE -> HEALTHY sync trigger fires, by which point every graph node exists.
     private val hl7Repository: Lazy<Hl7Repository>

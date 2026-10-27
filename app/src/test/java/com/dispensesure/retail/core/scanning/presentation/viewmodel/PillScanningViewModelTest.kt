@@ -20,13 +20,12 @@ import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
-import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
-import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
+import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.SoundUtils
@@ -87,8 +86,6 @@ class PillScanningViewModelTest {
     private val modelLoader: PillDetectionModelLoader = mockk(relaxed = true)
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
-    private val drugRepository: IDrugRepository = mockk(relaxed = true)
-    private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
     private val batchDao: BatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
@@ -131,9 +128,7 @@ class PillScanningViewModelTest {
             drugMasterDao = drugMasterDao,
             modelLoader = modelLoader,
             performanceLogger = performanceLogger,
-            barcodeDecoder = barcodeDecoder,
-            drugRepository = drugRepository,
-            drugImageDownloader = drugImageDownloader,
+            scanDecoder = ScanDecoder(barcodeDecoder),
             hl7Repository = hl7Repository,
             appDatabase = appDatabase,
         )

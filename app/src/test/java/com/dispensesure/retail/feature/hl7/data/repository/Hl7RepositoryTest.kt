@@ -18,6 +18,7 @@ import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.core.scanning.data.DrugRepository
+import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.DrugInfo
 import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
 import com.dispensesure.retail.core.utils.common.LocationProvider
@@ -157,9 +158,8 @@ class Hl7RepositoryTest {
         operatorNameProvider = operatorNameProvider,
         batchDao = batchDao,
         hl7MessageSender = hl7MessageSender,
-        drugRepository = drugRepository,
+        drugResolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader),
         notifier = notifier,
-        drugImageDownloader = drugImageDownloader,
     )
 
     // ─────────────────────────────── message builders ───────────────────────────────
@@ -729,17 +729,19 @@ class Hl7RepositoryTest {
     }
 
     @Test
-    fun `handleInrInventoryRequest local drug empty name skipped`() = runTest(testDispatcher) {
+    fun `handleInrInventoryRequest local drug empty name is fetched from the server`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { drugMasterDao.getDrugByNdc("12345") } returns
             DrugMasterEntity(drugId = 5L, drugName = "", ndc = "12345")
+        coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns drugInfo()
+        coEvery { drugMasterDao.upsertPreservingId(any()) } returns 9L
+        coEvery { batchDao.insert(any()) } returns 100L
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
 
-        val msg = inventoryMessage()
-        repo.handleInrInventoryRequest(msg)
+        repo.handleInrInventoryRequest(inventoryMessage())
 
-        // resolvedItems empty -> notifier + no batch. Sync on notifier first.
-        verify(timeout = 3000) { notifier.show(any(), any()) }
-        coVerify(exactly = 0) { batchDao.insert(any()) }
+        coVerify(timeout = 3000) { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) }
+        coVerify(timeout = 3000) { batchDao.insert(any()) }
     }
 
     @Test

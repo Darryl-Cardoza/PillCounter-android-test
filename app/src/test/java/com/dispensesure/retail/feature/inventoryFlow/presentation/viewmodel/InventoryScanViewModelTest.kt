@@ -14,9 +14,11 @@ import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
 import com.dispensesure.retail.core.room.models.dtos.RequestedDrugDto
 import com.dispensesure.retail.core.room.models.enums.CountStatus
+import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.model.BarcodeData
 import com.dispensesure.retail.core.scanning.domain.model.DrugInfo
+import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -123,11 +125,10 @@ class InventoryScanViewModelTest {
             drugMasterDao,
             preferenceHelper,
             operatorNameProvider,
-            barcodeDecoder,
-            drugRepository,
+            ScanDecoder(barcodeDecoder),
+            DrugResolver(drugMasterDao, drugRepository, drugImageDownloader),
             hl7Repository,
             hl7EventHandler,
-            drugImageDownloader,
         )
     }
 
@@ -395,17 +396,16 @@ class InventoryScanViewModelTest {
     }
 
     @Test
-    fun `onBarcodeDetected server returns blank genericName uses Unknown Drug`() = runTest(testDispatcher) {
+    fun `onBarcodeDetected server returns blank genericName saves Unknown Drug`() = runTest(testDispatcher) {
         stubGs1Decode()
         coEvery { drugMasterDao.getDrugByGtin(any()) } returns null
-        coEvery { drugMasterDao.getDrugByNdc("00300930058018") } returns null
+        coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
             brandName = null, genericName = "", ndc = "SRV", drugType = "t", qty = null, isHazardous = null,
         )
-        coEvery { drugMasterDao.getDrugByNdc("SRV") } returns null
-        coEvery { drugMasterDao.getDrugByGtin("00300930058018") } returns null
 
         val vm = createViewModel(batchId = 7L)
+        val job = launch { vm.uiState.collect {} }
         advanceUntilIdle()
 
         vm.onBarcodeDetected("raw")
@@ -414,8 +414,8 @@ class InventoryScanViewModelTest {
         val slot = slot<DrugMasterEntity>()
         coVerify { drugMasterDao.upsertPreservingId(capture(slot)) }
         assertEquals("Unknown Drug", slot.captured.drugName)
-        // re-read returned null -> drug_not_found
-        assertEquals(R.string.batch_stock_count_drug_not_found, vm.errorMessage.value?.messageResId)
+        assertEquals("SRV", vm.uiState.value.activeNdc?.ndc)
+        job.cancel()
     }
 
     @Test

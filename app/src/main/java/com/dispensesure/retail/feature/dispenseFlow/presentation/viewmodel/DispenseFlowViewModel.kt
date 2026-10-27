@@ -15,11 +15,10 @@ import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
-import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
-import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
+import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
-import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
+import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
 import com.dispensesure.retail.core.utils.common.parseScanData
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -67,11 +66,10 @@ import javax.inject.Inject
 @HiltViewModel
 class DispenseFlowViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
-    private val drugRepository: IDrugRepository,
+    private val drugResolver: DrugResolver,
     private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
     private val pillCountTxnDao: PillCountTxnDao,
-    private val drugImageDownloader: DrugImageDownloader,
 ) : ViewModel() {
 
     private val logger = AppLogger("DispenseFlowVM")
@@ -417,7 +415,7 @@ class DispenseFlowViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 logger.e("RX barcode processing failed", e, event = LogEvent.RX_SCAN_FAILED)
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
+                _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
             }
         }
     }
@@ -433,9 +431,10 @@ class DispenseFlowViewModel @Inject constructor(
         bucket: String?,
         targetCount: Int,
     ) {
-        val drug = drugMasterDao.getDrugByNdc(parsedNdc)
-            ?: drugMasterDao.getDrugByGtin(parsedNdc)
-            ?: resolveNdcFromServer(parsedNdc)?.let { drugMasterDao.getDrugByNdc(it) }
+        val drug = (drugResolver.resolve(
+            parsedNdc,
+            nameIfMissing = DrugResolver.UNKNOWN_DRUG_NAME,
+        ) as? DrugLookup.Found)?.drug
         // No drug to verify the label against, so reject the scan instead of
         // staging a blank Rx.
         if (drug == null) {
@@ -558,45 +557,6 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /**
-     * Resolves a scanned GTIN-14 to its canonical NDC via the server, caching the drug in
-     * `drug_master` WITH the scanned GTIN. Used by the PMS allowlist check when a local lookup
-     * fails (PMS-requested drugs are cached without a GTIN). Caching here means the main lookup
-     * later in [onNdcBarcodeRead] resolves locally and takes the trust-local path — no second
-     * server round-trip. Returns null when the server can't resolve the barcode.
-     */
-    private suspend fun resolveNdcFromServer(gtin14: String): String? {
-        val drugInfo = try {
-            drugRepository.getDrugInfoByNdc(
-                GetNdcRequestModel(target_drug = "", scanned_drug = gtin14)
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            logger.e("allowlist NDC resolve failed for gtin=$gtin14", e, event = LogEvent.NDC_SCAN_FAILED)
-            null
-        } ?: return null
-
-        val imagePath = drugImageDownloader.downloadAndSave(
-            url = drugInfo.imageUrl,
-            drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
-        )
-        drugMasterDao.upsertPreservingId(
-            DrugMasterEntity(
-                ndc = drugInfo.ndc,
-                drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: "Unknown Drug",
-                drugType = drugInfo.drugType,
-                gtin = gtin14,
-                packageQty = drugInfo.qty,
-                isHazardous = drugInfo.isHazardous ?: false,
-                strength = drugInfo.strength,
-                dosageForm = drugInfo.dosageForm,
-                drugImagePath = imagePath,
-            )
-        )
-        return drugInfo.ndc
-    }
-
-    /**
      * Process a raw barcode read while the user is in PRE_NDC.
      *
      * Validation order, matching the legacy ScanBarcodeViewModel for parity:
@@ -633,9 +593,11 @@ class DispenseFlowViewModel @Inject constructor(
                     // the real NDC, not the raw GTIN. Without this, correct barcodes were
                     // wrongly rejected until the drug had first been scanned on the main
                     // stock-count screen (which is what seeded the GTIN).
-                    val localForCheck = drugMasterDao.getDrugByGtin(gtin14)
-                        ?: drugMasterDao.getDrugByNdc(gtin14)
-                    val scannedNdc = localForCheck?.ndc ?: resolveNdcFromServer(gtin14)
+                    val scannedNdc = (drugResolver.resolve(
+                        code = gtin14,
+                        nameIfMissing = DrugResolver.UNKNOWN_DRUG_NAME,
+                        scannedGtin = gtin14,
+                    ) as? DrugLookup.Found)?.drug?.ndc
                     if (scannedNdc == null || scannedNdc !in allowedNdcs) {
                         logger.w("NDC scan rejected by allowlist: scanned=$gtin14 resolvedNdc=$scannedNdc allowed=$allowedNdcs")
                         _uiState.update {
@@ -657,125 +619,99 @@ class DispenseFlowViewModel @Inject constructor(
                     ?.takeIf { it.isNotBlank() }
                     ?: _uiState.value.ndc.takeIf { it.isNotBlank() }
 
-                // Try local DB first by GTIN (scanned barcode), falling back to
-                // NDC for cases where the scanned value was already an NDC.
-                // Only trust a local hit when there's no expected NDC, or when
-                // the local row's NDC matches it exactly — otherwise fall
-                // through to the server so substitutes get flagged.
-                val localDrug = drugMasterDao.getDrugByGtin(gtin14)
-                    ?: drugMasterDao.getDrugByNdc(gtin14)
-                val trustLocal = localDrug != null &&
-                        (expectedNdc.isNullOrBlank() || expectedNdc == localDrug.ndc)
-
-                if (trustLocal) {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            ndcScannedValue = localDrug!!.ndc,
-                            ndcDrugName = localDrug.drugName ?: it.drugName,
-                            ndcPackageQty = localDrug.packageQty,
-                            showNdcDetails = false,
-                            isHazardous = localDrug.isHazardous,
-                        )
-                    }
-                    logger.i("[HAZARDOUS] NDC scan → local DB: ndc=${localDrug!!.ndc} drug=${localDrug.drugName} isHazardous=${localDrug.isHazardous}")
-                    advanceToCountingStage()
-                    return@launch
-                }
-
-                // Server lookup with the expected NDC as target so substitutes
-                // get flagged via is_drug_equivalent.
-                val drugInfo = drugRepository.getDrugInfoByNdc(
-                    GetNdcRequestModel(
-                        target_drug = expectedNdc.orEmpty(),
-                        scanned_drug = gtin14
-                    )
+                val lookup = drugResolver.resolve(
+                    code = gtin14,
+                    expectedNdc = expectedNdc,
+                    nameIfMissing = DrugResolver.UNKNOWN_DRUG_NAME,
+                    scannedGtin = gtin14.trim(),
                 )
-                if (drugInfo == null) {
-                    _uiState.update {
-                        it.copy(isLoading = false, showNdcNotFoundDialog = true)
-                    }
-                    return@launch
+                when (lookup) {
+                    is DrugLookup.Found -> applyContainerDrug(lookup, expectedNdc)
+                    DrugLookup.NoName, DrugLookup.NotFound ->
+                        _uiState.update { it.copy(isLoading = false, showNdcNotFoundDialog = true) }
+                    // DrugResolver already logged the failure, so don't rethrow into the catch below.
+                    is DrugLookup.Failed ->
+                        _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
                 }
-
-                val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() }
-                    ?: "Unknown Drug"
-                val drugImagePath = drugImageDownloader.downloadAndSave(
-                    url = drugInfo.imageUrl,
-                    drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
-                )
-                drugMasterDao.upsertPreservingId(
-                    DrugMasterEntity(
-                        ndc = drugInfo.ndc,
-                        drugName = displayName,
-                        drugType = drugInfo.drugType,
-                        gtin = gtin14.trim(),
-                        packageQty = drugInfo.qty,
-                        isHazardous = drugInfo.isHazardous ?: false,
-                        strength = drugInfo.strength,
-                        dosageForm = drugInfo.dosageForm,
-                        drugImagePath = drugImagePath,
-                    )
-                )
-
-                val isSubstitute = drugInfo.is_drug_equivalent == true
-                if (isSubstitute) {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            ndcScannedValue = drugInfo.ndc,
-                            ndcDrugName = displayName,
-                            ndcPackageQty = drugInfo.qty,
-                            ndcDrugType = drugInfo.drugType,
-                            ndcStrength = drugInfo.strength,
-                            drugImage = drugInfo.imageUrl ?: it.drugImage,
-                            ndcDosageForm = drugInfo.dosageForm,
-                            showNdcEquivalenceDialog = true,
-                            isHazardous = drugInfo.isHazardous ?: false,
-                        )
-                    }
-                    logger.i("[HAZARDOUS] NDC scan → substitute: scanned=$gtin14 serverNdc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false}")
-                    return@launch
-                }
-
-                // Hard mismatch: an expected NDC is set (from HL7 or from the
-                // RX label) and the server didn't flag the scan as a
-                // substitute. Surface a non-blocking toast and let the user
-                // rescan — the popup-style dialog was too heavy for this case.
-                if (!expectedNdc.isNullOrBlank() && drugInfo.ndc != expectedNdc) {
-                    logger.w("[HAZARDOUS] NDC scan → mismatch: scanned=$gtin14 serverNdc=${drugInfo.ndc} expectedNdc=$expectedNdc isHazardous=${drugInfo.isHazardous ?: false}")
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            ndcMismatchToastTick = it.ndcMismatchToastTick + 1,
-                        )
-                    }
-                    return@launch
-                }
-
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        ndcScannedValue = drugInfo.ndc,
-                        ndcDrugName = displayName,
-                        ndcPackageQty = drugInfo.qty,
-                        ndcStrength = drugInfo.strength,
-                        drugImage = drugInfo.imageUrl ?: it.drugImage,
-                        ndcDosageForm = drugInfo.dosageForm,
-                        showNdcDetails = false,
-                        isHazardous = drugInfo.isHazardous ?: false,
-                    )
-                }
-                logger.i("[HAZARDOUS] NDC scan → server match: ndc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false}")
-                advanceToCountingStage()
             } catch (e: CancellationException) {
                 _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
                 throw e
             } catch (e: Exception) {
                 logger.e("NDC barcode processing failed", e, event = LogEvent.NDC_SCAN_FAILED)
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
+                _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
             }
         })
+    }
+
+    /** Applies a resolved container drug: saved match, server match, substitute or mismatch. */
+    private suspend fun applyContainerDrug(lookup: DrugLookup.Found, expectedNdc: String?) {
+        val drug = lookup.drug
+        if (!lookup.fromServer) {
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    ndcScannedValue = drug.ndc,
+                    ndcDrugName = drug.drugName ?: it.drugName,
+                    ndcPackageQty = drug.packageQty,
+                    showNdcDetails = false,
+                    isHazardous = drug.isHazardous,
+                )
+            }
+            logger.i("[HAZARDOUS] NDC scan → local DB: ndc=${drug.ndc} drug=${drug.drugName} isHazardous=${drug.isHazardous}")
+            advanceToCountingStage()
+            return
+        }
+
+        val displayName = drug.drugName.orEmpty()
+        if (lookup.isEquivalent) {
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    ndcScannedValue = drug.ndc,
+                    ndcDrugName = displayName,
+                    ndcPackageQty = drug.packageQty,
+                    ndcDrugType = drug.drugType,
+                    ndcStrength = drug.strength,
+                    drugImage = lookup.imageUrl ?: it.drugImage,
+                    ndcDosageForm = drug.dosageForm,
+                    showNdcEquivalenceDialog = true,
+                    isHazardous = drug.isHazardous,
+                )
+            }
+            logger.i("[HAZARDOUS] NDC scan → substitute: serverNdc=${drug.ndc} drug=$displayName isHazardous=${drug.isHazardous}")
+            return
+        }
+
+        // Hard mismatch: an expected NDC is set (from HL7 or from the
+        // RX label) and the server didn't flag the scan as a
+        // substitute. Surface a non-blocking toast and let the user
+        // rescan — the popup-style dialog was too heavy for this case.
+        if (!expectedNdc.isNullOrBlank() && drug.ndc != expectedNdc) {
+            logger.w("[HAZARDOUS] NDC scan → mismatch: serverNdc=${drug.ndc} expectedNdc=$expectedNdc isHazardous=${drug.isHazardous}")
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    ndcMismatchToastTick = it.ndcMismatchToastTick + 1,
+                )
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                ndcScannedValue = drug.ndc,
+                ndcDrugName = displayName,
+                ndcPackageQty = drug.packageQty,
+                ndcStrength = drug.strength,
+                drugImage = lookup.imageUrl ?: it.drugImage,
+                ndcDosageForm = drug.dosageForm,
+                showNdcDetails = false,
+                isHazardous = drug.isHazardous,
+            )
+        }
+        logger.i("[HAZARDOUS] NDC scan → server match: ndc=${drug.ndc} drug=$displayName isHazardous=${drug.isHazardous}")
+        advanceToCountingStage()
     }
 
     /**
@@ -812,7 +748,7 @@ class DispenseFlowViewModel @Inject constructor(
                 } catch (e: Exception) {
                     // Surface the failure the way the scan-time path used to.
                     logger.e("Standalone dispense txn creation failed", e, event = LogEvent.DISPENSE_FAILED)
-                    _uiState.update { it.copy(error = e.message) }
+                    _uiState.update { it.copy(error = appContext.getString(R.string.error_generic)) }
                 }
             })
             return

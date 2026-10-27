@@ -60,12 +60,12 @@ import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraPreviewSection
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
+import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
-import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -1681,11 +1681,8 @@ internal fun handleBarcode(
                 onRxInNdcStage()
                 return false
             }
-            val decoder = BarcodeDecoder()
-            val isGs1 = decoder.isGs1Barcode(value)
-            val decoded = if (isGs1) decoder.decode(value) else null
-            val extractedGtin = if (isGs1) decoded?.gtin else decoder.toGtin14(value)
-            val finalGtin14 = extractedGtin?.let { decoder.toGtin14(it) } ?: ""
+            val scan = ScanDecoder(BarcodeDecoder()).decode(value)
+            val finalGtin14 = scan.gtin14 ?: ""
             val isInvalid = finalGtin14.isBlank() ||
                     finalGtin14.length != 14 ||
                     !finalGtin14.all { it.isDigit() }
@@ -1695,11 +1692,9 @@ internal fun handleBarcode(
                 // First-bottle info for this txn: a plain (non-GS1) barcode carries no
                 // lot/exp/serial, so the bottle entry is count-only in that case.
                 val firstBottle = BottleInfo(
-                    lotNumber = decoded?.lotNumber,
-                    expirationDate = decoded?.expirationDate?.format(
-                        java.time.format.DateTimeFormatter.ofPattern(DateFormats.EXPIRY_STORED)
-                    ),
-                    serialNumber = decoded?.serialNumber,
+                    lotNumber = scan.lot,
+                    expirationDate = scan.expiry,
+                    serialNumber = scan.serial,
                     barcodeImagePath = imagePath,
                 )
                 onNdc(finalGtin14, imagePath, firstBottle)

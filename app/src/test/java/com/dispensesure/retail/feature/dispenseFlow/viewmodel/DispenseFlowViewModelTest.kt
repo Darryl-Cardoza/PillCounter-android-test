@@ -11,6 +11,7 @@ import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dispenseFlow.domain.model.DispenseStage
 import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
+import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.util.MainDispatcherRule
 import io.mockk.mockk
@@ -57,11 +58,10 @@ class DispenseFlowViewModelTest {
     fun setup() {
         viewModel = DispenseFlowViewModel(
             appContext = appContext,
-            drugRepository = drugRepository,
+            drugResolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader),
             drugMasterDao = drugMasterDao,
             preferenceHelper = preferenceHelper,
             pillCountTxnDao = pillCountTxnDao,
-            drugImageDownloader = drugImageDownloader,
         )
     }
 
