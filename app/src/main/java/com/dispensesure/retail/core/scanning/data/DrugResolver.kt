@@ -28,6 +28,7 @@ class DrugResolver @Inject constructor(
      * @param expectedNdc drug the order asks for; a saved drug with another NDC goes to the server.
      * @param nameIfMissing name to save when the server knows the drug but sends no name.
      * @param nameIfUnknown name to save a minimal record under when the server doesn't know the drug.
+     * @param allowNoName with no name from the server or [nameIfMissing], save the drug without one.
      * @param scannedGtin GTIN saved on the drug so the next scan finds it locally.
      */
     suspend fun resolve(
@@ -35,6 +36,7 @@ class DrugResolver @Inject constructor(
         expectedNdc: String? = null,
         nameIfMissing: String? = null,
         nameIfUnknown: String? = null,
+        allowNoName: Boolean = false,
         scannedGtin: String? = null,
     ): DrugLookup {
         val saved = listOfNotNull(drugMasterDao.getDrugByGtin(code), drugMasterDao.getDrugByNdc(code))
@@ -47,7 +49,7 @@ class DrugResolver @Inject constructor(
                 GetNdcRequestModel(target_drug = expectedNdc.orEmpty(), scanned_drug = code)
             )
             if (info == null) saveUnknown(code, nameIfUnknown, scannedGtin)
-            else saveFromServer(info, code, nameIfMissing, scannedGtin)
+            else saveFromServer(info, code, nameIfMissing, allowNoName, scannedGtin)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -60,11 +62,12 @@ class DrugResolver @Inject constructor(
         info: DrugInfo,
         code: String,
         nameIfMissing: String?,
+        allowNoName: Boolean,
         scannedGtin: String?,
     ): DrugLookup {
         val name = info.genericName?.takeIf { it.isNotBlank() }
             ?: nameIfMissing?.takeIf { it.isNotBlank() }
-            ?: return DrugLookup.NoName
+        if (name == null && !allowNoName) return DrugLookup.NoName
         val ndc = info.ndc.ifBlank { code }
         // Image files are named after the drug, so use the NDC rather than a shared fallback name.
         val imagePath = drugImageDownloader.downloadAndSave(
@@ -100,8 +103,4 @@ class DrugResolver @Inject constructor(
 
     private suspend fun save(drug: DrugMasterEntity): DrugMasterEntity =
         drug.copy(drugId = drugMasterDao.upsertPreservingId(drug))
-
-    companion object {
-        const val UNKNOWN_DRUG_NAME = "Unknown Drug"
-    }
 }

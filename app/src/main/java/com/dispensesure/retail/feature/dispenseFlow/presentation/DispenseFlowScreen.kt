@@ -68,6 +68,7 @@ import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.core.utils.compose.GlobalLoadingOverlay
@@ -254,9 +255,8 @@ fun DispenseFlowScreen(
     // back to SCAN announces it again.
     var announcedScanStep by remember(dispenseState.stage) { mutableStateOf<StepState?>(null) }
 
-    // The container-scan step only has drug details for a dispense — they come from
-    // the RX. A stock count learns them from the container it is about to scan, so
-    // there is nothing to put in a details bar yet.
+    // The container-scan step's drug details come from the RX, so the bar only shows
+    // once they are loaded.
     val showScanDetailsBar = dispenseState.stage == DispenseStage.PRE_NDC &&
         (dispenseState.drugName.isNotBlank() || dispenseState.ndc.isNotBlank())
 
@@ -557,8 +557,8 @@ fun DispenseFlowScreen(
     // ── Back handling ───────────────────────────────────────────────────────
     // Device-back priority order:
     //  1. If the history view is open, dismiss it (return to camera + pill panel).
-    //  2. If the idle overlay is up, just resume — back must not leave the
-    //     count from what the user sees as a paused screen.
+    //  2. If the idle overlay is up, just resume — back on a paused screen must
+    //     not leave it.
     //  3. In QUEUE stage: back navigates to Dashboard (queue is the home for dispense).
     //  4. In non-QUEUE stage with fromQueue=true: cancel current scan, return to QUEUE.
     //  5. Otherwise: exit the dispense flow to the Dashboard.
@@ -916,7 +916,6 @@ fun DispenseFlowScreen(
             // required): RX + NDC are confirmed, counting is the only step
             // left, so the panel is the primary affordance. Hiding it would
             // leave the screen looking empty and the user with no Done button.
-            //
             // Suppress the pre-COUNTING pill panel while a resume/HL7 entry is
             // still resolving its real stage — we keep the live camera visible
             // under the loading scrim, but the wrong-stage overlay must not bleed
@@ -1272,7 +1271,7 @@ fun DispenseFlowScreen(
         if (dispenseState.showRxDetails) {
             if (!isLandscape) {
                 VerifyRxDetailsSheet(
-                    drugName = dispenseState.drugName,
+                    drugName = drugDisplayName(dispenseState.drugName),
                     quantity = dispenseState.qty.orEmpty(),
                     bucket = dispenseState.selectedBucketId,
                     ndcNumber = dispenseState.ndc,
@@ -1315,7 +1314,7 @@ fun DispenseFlowScreen(
                         }
                 ) {
                     VerifyRxDetailsInlinePanel(
-                        drugName = dispenseState.drugName,
+                        drugName = drugDisplayName(dispenseState.drugName),
                         quantity = dispenseState.qty.orEmpty(),
                         bucket = dispenseState.selectedBucketId,
                         ndcNumber = dispenseState.ndc,
@@ -1324,7 +1323,7 @@ fun DispenseFlowScreen(
                         onCancel = { dispenseVm.onRxCancelled() },
                         onProceed = { dispenseVm.onRxConfirmed() },
                         modifier = Modifier.fillMaxSize(),
-                        drugImage = dispenseState.drugImage
+                        drugImage = dispenseState.drugImage,
                     )
                 }
             }
@@ -1337,7 +1336,7 @@ fun DispenseFlowScreen(
         if (dispenseState.showNdcDetails) {
             if (!isLandscape) {
                 VerifyNdcDetailsSheet(
-                    drugName = dispenseState.ndcDrugName,
+                    drugName = drugDisplayName(dispenseState.ndcDrugName),
                     bucket = dispenseState.selectedBucketId,
                     ndcNumber = dispenseState.ndcScannedValue,
                     onCancel = { dispenseVm.onNdcCancelled() },
@@ -1346,7 +1345,7 @@ fun DispenseFlowScreen(
                     isHazardous = dispenseState.isHazardous,
                     strength = dispenseState.ndcStrength.orEmpty(),
                     dosageForm = dispenseState.ndcDosageForm.orEmpty(),
-                    drugImage = dispenseState.drugImage
+                    drugImage = dispenseState.drugImage,
                 )
             } else {
                 Box(
@@ -1357,7 +1356,7 @@ fun DispenseFlowScreen(
                         .background(androidx.compose.ui.graphics.Color.Transparent)
                 ) {
                     VerifyNdcDetailsInlinePanel(
-                        drugName = dispenseState.ndcDrugName,
+                        drugName = drugDisplayName(dispenseState.ndcDrugName),
                         bucket = dispenseState.selectedBucketId,
                         ndcNumber = dispenseState.ndcScannedValue,
                         onCancel = { dispenseVm.onNdcCancelled() },
@@ -1366,7 +1365,7 @@ fun DispenseFlowScreen(
                         isHazardous = dispenseState.isHazardous,
                         strength = dispenseState.ndcStrength.orEmpty(),
                         dosageForm = dispenseState.ndcDosageForm.orEmpty(),
-                        drugImage = dispenseState.drugImage
+                        drugImage = dispenseState.drugImage,
                     )
                 }
             }

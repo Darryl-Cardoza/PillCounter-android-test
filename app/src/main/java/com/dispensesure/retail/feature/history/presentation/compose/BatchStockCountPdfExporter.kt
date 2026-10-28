@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.DateFormats
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -273,7 +274,12 @@ class BatchStockCountPdfExporter(private val context: Context) {
         cv.drawRoundRect(RectF(left, top + 10f, left + 4f, top + h - 10f), 2f, 2f, fp(C_BLUE))
 
         // Drug name + NDC + total count
-        cv.drawText(group.drugName, ix, top + 24f, bp(C_TEXT_DARK, 13f))
+        cv.drawText(
+            context.resources.drugDisplayName(group.drugName),
+            ix,
+            top + 24f,
+            bp(C_TEXT_DARK, 13f),
+        )
         cv.drawText("${context.getString(R.string.pdf_ndc_label)}: ${group.ndc}", ix, top + 41f, np(C_TEXT_MED, 9.5f))
         bp(C_GREEN, 24f, Paint.Align.RIGHT).let { cv.drawText(group.totalCount.toString(), irx, top + 34f, it) }
 

@@ -15,6 +15,9 @@ import com.dispensesure.retail.core.scanning.engine.PhotoLabel
 import com.dispensesure.retail.core.scanning.engine.PillCountingEngine
 import com.dispensesure.retail.core.scanning.engine.SavedPhoto
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourSection
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.stockCount.data.StockCountRepository
 import com.dispensesure.retail.navigation.Screen
@@ -26,6 +29,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import io.mockk.verifyOrder
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -75,7 +79,7 @@ class LooseCountViewModelTest {
         every { engine.events } returns engineEvents
         every { engine.lastTenDetections } returns MutableStateFlow(ArrayDeque())
         every { scanDecoder.decode(any()) } returns containerScan
-        coEvery { drugResolver.resolve(any(), any(), any(), any(), any()) } returns
+        coEvery { drugResolver.resolve(any(), any(), any(), any(), any(), any()) } returns
             DrugLookup.Found(drug(), fromServer = false)
         every { stockCountRepository.observeCanReset(any()) } returns flowOf(true)
         coEvery {
@@ -125,7 +129,7 @@ class LooseCountViewModelTest {
         scannedDrug: DrugMasterEntity = drug(),
         batchId: Long = 7L,
     ): LooseCountViewModel {
-        coEvery { drugResolver.resolve(any(), any(), any(), any(), any()) } returns
+        coEvery { drugResolver.resolve(any(), any(), any(), any(), any(), any()) } returns
             DrugLookup.Found(scannedDrug, fromServer = false)
         val viewModel = createViewModel(batchId = batchId)
         viewModel.onAction(LooseCountAction.ContainerScanned("RAW"))
@@ -167,8 +171,9 @@ class LooseCountViewModelTest {
             drugResolver.resolve(
                 code = CONTAINER_GTIN,
                 expectedNdc = null,
-                nameIfMissing = DrugResolver.UNKNOWN_DRUG_NAME,
+                nameIfMissing = null,
                 nameIfUnknown = null,
+                allowNoName = true,
                 scannedGtin = CONTAINER_GTIN,
             )
         }
@@ -210,7 +215,7 @@ class LooseCountViewModelTest {
 
         assertEquals(listOf(LooseCountEffect.ContainerRejected(R.string.scan_correct_label)), effects)
         assertEquals(LooseCountStage.SCAN_CONTAINER, viewModel.uiState.value.stage)
-        coVerify(exactly = 0) { drugResolver.resolve(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { drugResolver.resolve(any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -223,7 +228,7 @@ class LooseCountViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(LooseCountEffect.ContainerRejected(toastText = null)), effects)
-        coVerify(exactly = 0) { drugResolver.resolve(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { drugResolver.resolve(any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -243,7 +248,16 @@ class LooseCountViewModelTest {
 
     @Test
     fun `an unknown drug on a PMS batch is turned away with the scanned GTIN`() = runTest {
-        coEvery { drugResolver.resolve(any(), any(), any(), any(), any()) } returns DrugLookup.NotFound
+        coEvery {
+            drugResolver.resolve(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        } returns DrugLookup.NotFound
         val viewModel = createViewModel(allowedNdcs = DRUG_NDC)
         val effects = collectEffects(viewModel)
 
@@ -269,7 +283,16 @@ class LooseCountViewModelTest {
 
     @Test
     fun `an unknown drug is turned away with the NDC-not-found toast`() = runTest {
-        coEvery { drugResolver.resolve(any(), any(), any(), any(), any()) } returns DrugLookup.NotFound
+        coEvery {
+            drugResolver.resolve(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        } returns DrugLookup.NotFound
         val viewModel = createViewModel()
         val effects = collectEffects(viewModel)
 
@@ -281,7 +304,7 @@ class LooseCountViewModelTest {
 
     @Test
     fun `a failed lookup is turned away with the scan-failed toast`() = runTest {
-        coEvery { drugResolver.resolve(any(), any(), any(), any(), any()) } returns
+        coEvery { drugResolver.resolve(any(), any(), any(), any(), any(), any()) } returns
             DrugLookup.Failed(RuntimeException("offline"))
         val viewModel = createViewModel()
         val effects = collectEffects(viewModel)
@@ -292,6 +315,23 @@ class LooseCountViewModelTest {
         assertEquals(listOf(LooseCountEffect.ContainerRejected(R.string.batch_stock_count_scan_failed)), effects)
         assertFalse(viewModel.uiState.value.isResolvingContainer)
     }
+
+    @Test
+    fun `a failed lookup on a PMS batch shows the scan-failed toast, not the allowlist one`() =
+        runTest {
+            coEvery { drugResolver.resolve(any(), any(), any(), any(), any(), any()) } returns
+                DrugLookup.Failed(RuntimeException("offline"))
+            val viewModel = createViewModel(allowedNdcs = DRUG_NDC)
+            val effects = collectEffects(viewModel)
+
+            viewModel.onAction(LooseCountAction.ContainerScanned("RAW"))
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(LooseCountEffect.ContainerRejected(R.string.batch_stock_count_scan_failed)),
+                effects,
+            )
+        }
 
     // ─────────────────────────── ADD ───────────────────────────
 
@@ -458,6 +498,64 @@ class LooseCountViewModelTest {
         advanceUntilIdle()
 
         coVerify { stockCountRepository.commitLooseCount(0L, "B2", any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `during the tour a new batch is saved in the tutorial bucket`() = runTest {
+        val viewModel = countingViewModel(batchId = 0L)
+        addPills(viewModel, pillCount = 5, photoPath = "/photos/1.jpg")
+        viewModel.onAction(LooseCountAction.DoneTapped)
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false)
+
+        try {
+            viewModel.onAction(LooseCountAction.EndCountConfirmed)
+            advanceUntilIdle()
+        } finally {
+            FtueController.end() // process-wide singleton: don't leak the tour into other tests
+        }
+
+        coVerify {
+            stockCountRepository.commitLooseCount(
+                0L,
+                TutorialData.BUCKET,
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        }
+    }
+
+    @Test
+    fun `an ADD still saving its photo is in the saved total`() = runTest {
+        val viewModel = countingViewModel()
+        addPills(viewModel, pillCount = 5, photoPath = "/photos/1.jpg")
+        val photoSaved = CompletableDeferred<SavedPhoto>()
+        every { engine.captureCount(3) } returns
+            CaptureResult.Captured(3, mockk<Bitmap>(relaxed = true), emptyList(), emptyList())
+        coEvery { engine.saveCountPhoto(any(), any(), any()) } coAnswers { photoSaved.await() }
+        viewModel.onAction(LooseCountAction.AddTapped(3))
+        viewModel.onAction(LooseCountAction.DoneTapped)
+
+        viewModel.onAction(LooseCountAction.EndCountConfirmed)
+        advanceUntilIdle()
+        photoSaved.complete(SavedPhoto("/photos/2.jpg", null))
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            stockCountRepository.commitLooseCount(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                loosePills = 8,
+                any(),
+            )
+        }
     }
 
     @Test

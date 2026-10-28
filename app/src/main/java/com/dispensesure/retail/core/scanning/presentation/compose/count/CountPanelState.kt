@@ -44,7 +44,7 @@ data class CountPanelState(
             stepType == StepState.CONTAINER_PENDING ||
             isOpenCount
 
-    // REGULAR labels the counting step "Scan Open Pills".
+    // An open count labels the counting step "Scan Open Pills".
     val stepTitleOverrides: Map<StepState, Int>
         get() = if (isOpenCount) {
             mapOf(StepState.TARGET_VERIFICATION to R.string.scan_open_pills)

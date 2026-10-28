@@ -55,17 +55,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
-import kotlin.math.roundToInt
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.tourTarget
-import com.dispensesure.retail.core.utils.compose.WorkflowStepper
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.common.drugDisplayName
+import com.dispensesure.retail.core.utils.compose.WorkflowStepper
 import com.dispensesure.retail.core.utils.preference.CountCirclePositionPrefs
 import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * Shared building blocks for the full-bleed count-mode overlay.
@@ -134,13 +135,13 @@ internal fun BoxScope.CountModeTopDetailsBar(
                 )
             }
             Text(
-                text = drugName,
+                text = drugDisplayName(drugName),
                 color = Color.White,
                 fontSize = responsiveSp(8.sp, boostOnPhone = true),
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(end = 32.dp)
+                modifier = Modifier.padding(end = 32.dp),
             )
         }
 
@@ -184,9 +185,9 @@ internal fun DrugImageTile(imageFile: File, drugName: String, modifier: Modifier
                 .error(R.drawable.prescription_icon)
                 .build()
         ),
-        contentDescription = drugName,
+        contentDescription = drugDisplayName(drugName),
         contentScale = ContentScale.Crop,
-        modifier = modifier.clip(RoundedCornerShape(8.dp))
+        modifier = modifier.clip(RoundedCornerShape(8.dp)),
     )
 }
 

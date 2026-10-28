@@ -11,7 +11,7 @@ import androidx.room.PrimaryKey
  *
  * Part of the normalized stock model: `stock_batch` → [StockTxnEntity] → [StockBottleInfoEntity].
  * Replaces the per-`(drug, lot, expiry)` rows that previously lived in
- * `pill_count_txn` with `CountType.REGULAR`.
+ * `pill_count_txn` as stock counts.
  *
  * @property bottleId   Auto-generated primary key.
  * @property stockTxnId FK to [StockTxnEntity.txnId]. Bottles cascade-delete with their header.

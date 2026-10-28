@@ -362,7 +362,7 @@ class InventoryScanViewModel @Inject constructor(
 
                 val drug = when (val lookup = drugResolver.resolve(
                     code = scanKey,
-                    nameIfMissing = DrugResolver.UNKNOWN_DRUG_NAME,
+                    allowNoName = true,
                     scannedGtin = gtin14,
                 )) {
                     is DrugLookup.Found -> lookup.drug

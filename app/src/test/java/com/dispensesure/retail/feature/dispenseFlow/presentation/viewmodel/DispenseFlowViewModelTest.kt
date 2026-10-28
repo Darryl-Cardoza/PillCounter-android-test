@@ -1,10 +1,10 @@
 package com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel
 
 import android.content.Context
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.models.DrugMasterEntity
+import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
@@ -686,7 +686,7 @@ class DispenseFlowViewModelTest {
 
             assertTrue(vm.uiState.value.showRxDetails)
             assertEquals(0, vm.uiState.value.rxDrugNotFoundToastTick)
-            assertEquals("Unknown Drug", vm.uiState.value.drugName)
+            assertEquals("", vm.uiState.value.drugName)
         }
 
     // ───────────────────────────── onRxBarcodeRead: already-completed Rx guard ─────────────────────────────
@@ -1142,7 +1142,7 @@ class DispenseFlowViewModelTest {
         val vm = createViewModel()
         vm.initializeFromResumedTxn() // sets txnId 7, stage PRE_NDC
         advanceUntilIdle()
-        // mark substitute via confirmSubstitute path: txn !=0, REGULAR? it's FIXED so needsSheet false -> advances.
+        // mark substitute via confirmSubstitute path: txn !=0 so needsSheet false -> advances.
         // Instead set substitute via reflection-free: simulate equivalence then confirm.
         // Use onNdcBarcodeRead substitute to set isSubstituteConfirmed? That sets dialog only.
         // confirmSubstitute sets isSubstituteConfirmed=true; txnId!=0 -> needsSheet false -> advanceToCountingStage runs.
@@ -1175,6 +1175,35 @@ class DispenseFlowViewModelTest {
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
         coVerify { dispenseTxnDao.update(any()) }
     }
+
+    @Test
+    fun `a nameless substitute is saved with no name, not the ordered drug's`() =
+        runTest(testDispatcher) {
+            every { preferenceHelper.getTxnId() } returns 7L
+            coEvery { dispenseTxnDao.getById(7L) } returns txn(txnId = 7L, isNdcVerified = false)
+            coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "EXPECTED")
+            coEvery { drugMasterDao.getDrugByGtin(any()) } returns null
+            coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
+            coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 12L
+            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
+                brandName = null, genericName = null, ndc = "SUBNDC",
+                is_drug_equivalent = true, drugType = "X", qty = 7, isHazardous = false,
+            )
+            val vm = createViewModel()
+            vm.initializeFromResumedTxn()
+            advanceUntilIdle()
+            vm.onNdcBarcodeRead("gtin", null)
+            advanceUntilIdle()
+            vm.confirmSubstitute()
+            advanceUntilIdle()
+
+            assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
+            assertEquals("", vm.uiState.value.ndcDrugName)
+            coVerify { drugMasterDao.upsertPreservingId(match<DrugMasterEntity> { it.ndc == "SUBNDC" }) }
+            coVerify(exactly = 0) {
+                drugMasterDao.upsertPreservingId(match<DrugMasterEntity> { it.ndc == "SUBNDC" && it.drugName != null })
+            }
+        }
 
     @Test
     fun `onNdcConfirmed existing txn null returns`() = runTest(testDispatcher) {

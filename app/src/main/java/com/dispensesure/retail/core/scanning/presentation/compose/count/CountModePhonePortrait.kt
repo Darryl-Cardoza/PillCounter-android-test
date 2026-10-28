@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.compose.dosageFormIcon
 import java.io.File
 
@@ -142,12 +143,12 @@ internal fun BoxScope.CountModePhonePortraitDetailsBar(
                     )
                 }
                 Text(
-                    text = drugName,
+                    text = drugDisplayName(drugName),
                     color = Color.White,
                     fontSize = responsiveSp(9.sp, boostOnPhone = true),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
 

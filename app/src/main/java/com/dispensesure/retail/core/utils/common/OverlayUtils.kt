@@ -318,7 +318,8 @@ object OverlayUtils {
         val out = mutableListOf<PlacedText>()
         val nameX = style.pad + style.thumbW + style.gapX
         val nameW = (width - nameX - style.pad).coerceAtLeast(1f)
-        val nameField = InfoField(res.getString(R.string.drug_name), info.drugName.orDash())
+        val nameField =
+            InfoField(res.getString(R.string.drug_name), res.drugDisplayName(info.drugName))
         val nameH = layoutName(nameField, nameX, nameW, style.pad, style, out)
         val rowY = style.pad + max(style.thumbH, nameH) + style.gapY
         val rowW = (width - style.pad * 2).coerceAtLeast(1f)

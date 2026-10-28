@@ -162,8 +162,10 @@ fun LooseCountScreen(
     }
 
     // Back closes View All, then the idle scrim, then leaves; leaving drops the count.
+    // While a save runs back does nothing: leaving would delete photos the save is keeping.
     BackHandler {
         when {
+            uiState.isSaving -> Unit
             showHistory -> showHistory = false
             engineState.showIdleOverlay -> viewModel.onAction(LooseCountAction.ResumeFromIdleTapped)
             else -> leaveScreen()
@@ -285,9 +287,7 @@ fun LooseCountScreen(
                     onCameraHelperReady = { cameraHelper ->
                         viewModel.onAction(LooseCountAction.CameraHelperReady(cameraHelper))
                     },
-                    onPreviewSizeKnown = { _, _ ->
-                        viewModel.onAction(LooseCountAction.PreviewSizeKnown)
-                    },
+                    onCameraReady = { viewModel.onAction(LooseCountAction.PreviewSizeKnown) },
                     modifier = Modifier.fillMaxSize(),
                 )
                 CountOverlay(
@@ -412,7 +412,7 @@ fun LooseCountScreen(
                     } else {
                         Modifier.align(Alignment.CenterStart)
                     },
-                    onClick = leaveScreen,
+                    onClick = { if (!uiState.isSaving) leaveScreen() },
                 )
             }
         }

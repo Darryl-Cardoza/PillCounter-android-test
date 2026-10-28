@@ -360,8 +360,8 @@ interface StockBatchDao {
  * Single source of truth for the "mint a new batch" write. Used by every path that
  * lazily creates a batch on the first successful scan (Inventory quick action's
  * [com.dispensesure.retail.feature.inventoryFlow.presentation.viewmodel.InventoryScanViewModel.ensureBatchCreated]
- * and the deferred DispenseFlow stock-count commit inside
- * [com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel.flushStagedDetails]).
+ * and the loose-count save in
+ * [com.dispensesure.retail.feature.stockCount.data.StockCountRepository.commitLooseCount]).
  *
  * What it does:
  * - Builds a [StockBatchEntity] with `batchId = now`, `startDateTime = now`,

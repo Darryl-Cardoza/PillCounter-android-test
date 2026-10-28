@@ -23,6 +23,7 @@ import com.dispensesure.retail.core.utils.common.FullScreenImageDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toDateString
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toTimeString
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
 import com.dispensesure.retail.feature.history.presentation.compose.DrugInfoSection
 import com.dispensesure.retail.feature.history.presentation.viewmodel.HistoryDetailsViewModel
@@ -51,7 +52,7 @@ fun HistoryDetailScreen(
             if (previewImagePath == null) {
             HeadlineBar(
                 navController = navController,
-                title = uiState.txnInfo?.drugName ?: "",
+                title = uiState.txnInfo?.let { txn -> drugDisplayName(txn.drugName) }.orEmpty(),
                 searchQuery = "",
                 showSearch = false,
                 isMultiSelectMode = false,
@@ -71,7 +72,7 @@ fun HistoryDetailScreen(
             val bottleList = DispenseBottleJson.decode(uiState.txnInfo?.bottlesJson)
             DrugInfoSection(
                 ndc = uiState.txnInfo?.ndc ?: "",
-                drugName = uiState.txnInfo?.drugName ?: "",
+                drugName = uiState.txnInfo?.let { txn -> drugDisplayName(txn.drugName) }.orEmpty(),
                 // Lot/expiry are no longer stored on dispense transactions (moved to the
                 // normalized stock tables); dispense never populated them, so these stay blank.
                 expiry = "",
@@ -85,10 +86,11 @@ fun HistoryDetailScreen(
                 transactionDetails = uiState.txnInfo?.counts ?: emptyList(),
                 drugType = uiState.txnInfo?.drugType,
                 isSubstitute = uiState.txnInfo?.isSubstitute ?: false,
-                requestedDrugName = uiState.txnInfo?.requestedDrugName ?: "",
+                requestedDrugName = uiState.txnInfo?.let { txn -> drugDisplayName(txn.requestedDrugName) }
+                    .orEmpty(),
                 requestedNdc = uiState.txnInfo?.requestedNdc ?: "",
                 bottleList = bottleList,
-                onImagePreview = { previewImagePath = it }
+                onImagePreview = { previewImagePath = it },
             )
 
             if (showDeleteConfirmDialog) {

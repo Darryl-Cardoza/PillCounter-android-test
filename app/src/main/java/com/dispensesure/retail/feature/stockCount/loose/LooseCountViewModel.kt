@@ -18,11 +18,14 @@ import com.dispensesure.retail.core.scanning.engine.PhotoLabel
 import com.dispensesure.retail.core.scanning.engine.PillCountingEngine
 import com.dispensesure.retail.core.scanning.engine.toastText
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.stockCount.data.StockCountRepository
 import com.dispensesure.retail.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import java.util.ArrayDeque
 import javax.inject.Inject
@@ -82,6 +86,9 @@ class LooseCountViewModel @Inject constructor(
 
     // Ids for the in-memory entries. Never reused, so a View All delete always hits its row.
     private var nextEntryId = 1L
+
+    // ADD photo saves still running. Proceed → Yes waits for them so every ADD is in the total.
+    private val pendingAddSaves = mutableListOf<Job>()
 
     init {
         engine.resetGloves()
@@ -143,7 +150,7 @@ class LooseCountViewModel @Inject constructor(
         viewModelScope.launch {
             val drugLookup = drugResolver.resolve(
                 code = gtin14,
-                nameIfMissing = DrugResolver.UNKNOWN_DRUG_NAME,
+                allowNoName = true,
                 scannedGtin = gtin14,
             )
             engine.resumeDetection()
@@ -155,10 +162,10 @@ class LooseCountViewModel @Inject constructor(
     private fun applyContainerLookup(drugLookup: DrugLookup, gtin14: String, decodedScan: DecodedScan) {
         val scannedDrug = (drugLookup as? DrugLookup.Found)?.drug
         when {
+            drugLookup is DrugLookup.Failed -> rejectContainer(R.string.batch_stock_count_scan_failed)
             // A PMS batch counts only what its request asked for; an unknown drug can't be one.
             allowedNdcs.isNotEmpty() && (scannedDrug == null || scannedDrug.ndc !in allowedNdcs) ->
                 rejectContainer(R.string.batch_stock_count_ndc_not_in_request, scannedDrug?.ndc ?: gtin14)
-            drugLookup is DrugLookup.Failed -> rejectContainer(R.string.batch_stock_count_scan_failed)
             scannedDrug == null -> rejectContainer(R.string.the_scanned_ndc_does_not_match)
             else -> startCounting(scannedDrug, decodedScan)
         }
@@ -195,7 +202,8 @@ class LooseCountViewModel @Inject constructor(
             is CaptureResult.Captured -> captureResult
         }
         val photoLabel = countPhotoLabel(countedDrug)
-        viewModelScope.launch {
+        pendingAddSaves.removeAll { addSave -> addSave.isCompleted }
+        pendingAddSaves += viewModelScope.launch {
             // No raw crop: only the dispense count sends one to the PMS.
             val savedPhoto = engine.saveCountPhoto(capturedAdd, photoLabel, keepRawCrop = false)
             val countedEntry = LooseCountEntry(
@@ -242,19 +250,21 @@ class LooseCountViewModel @Inject constructor(
     }
 
     private fun saveCount() {
-        val state = _uiState.value
-        val countedDrug = state.drug ?: return
-        if (state.isSaving) return
+        val countedDrug = _uiState.value.drug ?: return
+        if (_uiState.value.isSaving) return
         _uiState.update { it.copy(showEndCountDialog = false, isSaving = true) }
-        val savedEntries = state.entries
-        val photoPaths = savedEntries.mapNotNull { entry -> entry.imagePath }
         // Controlled drugs (CII–CVI) keep their photos on the saved line; others are deleted.
         val isControlled = isControlledDrugType(countedDrug.drugType)
         viewModelScope.launch {
+            pendingAddSaves.toList().joinAll()
+            val state = _uiState.value
+            val savedEntries = state.entries
+            val photoPaths = savedEntries.mapNotNull { entry -> entry.imagePath }
             try {
                 val savedBatchId = stockCountRepository.commitLooseCount(
                     batchId = batchId,
-                    bucketId = bucketId,
+                    // During the tour a new batch goes in the tutorial bucket, as ensureBatchCreated does.
+                    bucketId = if (FtueController.state.isActive) TutorialData.BUCKET else bucketId,
                     drugId = countedDrug.drugId,
                     lotNumber = state.lotNumber,
                     expirationDate = state.expirationDate,
@@ -300,7 +310,11 @@ class LooseCountViewModel @Inject constructor(
 
     // Gloves and tray results are saved for dispense only; a stock count just shows tray warnings.
     private fun onEngineEvent(engineEvent: EngineEvent) {
-        if (engineEvent is EngineEvent.Warning) _effects.trySend(LooseCountEffect.ShowToast(engineEvent.text))
+        if (engineEvent is EngineEvent.Warning) _effects.trySend(
+            LooseCountEffect.ShowToast(
+                engineEvent.messageRes,
+            ),
+        )
     }
 
     override fun onCleared() {

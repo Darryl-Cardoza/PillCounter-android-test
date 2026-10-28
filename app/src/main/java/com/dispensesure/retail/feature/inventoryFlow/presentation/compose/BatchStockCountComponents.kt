@@ -48,6 +48,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.ActiveNdc
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.RecentBatchRow
@@ -190,7 +191,7 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = row.drugName,
+                text = drugDisplayName(row.drugName),
                 color = AppTheme.extendedColors.textColor,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -303,7 +304,7 @@ internal fun ScannedDrugCard(
         Row(modifier = Modifier.fillMaxWidth()) {
             DetailField(
                 label = stringResource(R.string.batch_stock_count_label_drug_name),
-                value = active.drugName,
+                value = drugDisplayName(active.drugName),
                 modifier = Modifier.weight(2f),
             )
             DetailField(
@@ -582,7 +583,7 @@ internal fun ScannedDrugDetailsPortrait(
 
         DetailField(
             label = stringResource(R.string.batch_stock_count_label_drug_name),
-            value = active.drugName,
+            value = drugDisplayName(active.drugName),
             modifier = Modifier.fillMaxWidth(),
         )
         HorizontalDivider(
@@ -709,7 +710,7 @@ internal fun ScannedDrugDetailsPhone(
         Row(modifier = Modifier.fillMaxWidth()) {
             DetailField(
                 label = stringResource(R.string.batch_stock_count_label_drug_name),
-                value = active.drugName,
+                value = drugDisplayName(active.drugName),
                 modifier = Modifier.weight(2f),
             )
             DetailField(

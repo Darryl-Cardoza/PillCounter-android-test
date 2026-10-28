@@ -13,7 +13,6 @@ import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.DISPENSED_QUANTITY_STEP
 import com.dispensesure.retail.core.models.ScheduleCode
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
@@ -540,7 +539,7 @@ class PillScanningViewModel @Inject constructor(
                 val photoLabel = PhotoLabel(
                     drugName = dispensedDrug?.drugName,
                     drugImagePath = dispensedDrug?.drugImagePath,
-                    isStockCount = dispenseTxn == null,
+                    isStockCount = false,
                     requestedNdc = orderedDrug?.ndc,
                     dispensedNdc = dispensedDrug?.ndc,
                     lotNumber = activeBottle?.lotNumber,

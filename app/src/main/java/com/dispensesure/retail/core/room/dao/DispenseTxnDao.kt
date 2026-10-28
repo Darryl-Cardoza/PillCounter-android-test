@@ -8,13 +8,13 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
-import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
-import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import kotlinx.coroutines.flow.Flow
 
@@ -147,7 +147,7 @@ interface DispenseTxnDao {
            txn.rxNo,
            txn.refillNo,
            txn.priority,
-           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugId IS NOT NULL
                 THEN subDrug.drugName ELSE drug.drugName END AS drugName,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
                 THEN subDrug.ndc ELSE drug.ndc END AS ndc,
@@ -183,7 +183,7 @@ interface DispenseTxnDao {
                  ELSE 2
              END ASC, /* values correspond to TxnPriority enum names */
              txn.createdAt ASC
-    """
+    """,
     )
 
     fun observePartialDispenses(
@@ -415,7 +415,7 @@ interface DispenseTxnDao {
         """
     SELECT
         pct.txnId,
-        CASE WHEN pct.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.drugId IS NOT NULL
              THEN subDrug.drugName ELSE dm.drugName END AS drugName,
         IFNULL(CASE WHEN pct.isSubstitute = 1 AND subDrug.drugId IS NOT NULL
              THEN subDrug.drugId ELSE dm.drugId END, 0) AS drugId,
@@ -449,7 +449,7 @@ interface DispenseTxnDao {
         ON pct.txnId = pcd.txnId
     WHERE pct.txnId = :transactionId AND pct.isDeleted = 0
     GROUP BY pct.txnId
-    """
+    """,
     )
     suspend fun getDispenseTxnDetail(transactionId: Long): DispenseTxnDetail?
 
@@ -536,7 +536,7 @@ interface DispenseTxnDao {
         txn.txnId,
         txn.status,
         COALESCE(SUM(details.pillCount), 0) AS pillCount,
-        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugId IS NOT NULL
              THEN subDrug.drugName ELSE drug.drugName END AS drugName,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
              THEN subDrug.ndc ELSE drug.ndc END AS ndc,
@@ -571,7 +571,7 @@ interface DispenseTxnDao {
       AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
-    """
+    """,
     )
     fun getTransactionsForDateRange(
         startDate: Long,
@@ -772,7 +772,7 @@ interface DispenseTxnDao {
            txn.bucketId,
            txn.rxNo,
            txn.refillNo,
-           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugId IS NOT NULL
                 THEN subDrug.drugName ELSE drug.drugName END AS drugName,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
                 THEN subDrug.ndc ELSE drug.ndc END AS ndc,
@@ -801,7 +801,7 @@ interface DispenseTxnDao {
       AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
-    """
+    """,
     )
     fun observeUnsyncedDispenses(
         completeStatus: CountStatus = CountStatus.COMPLETED,

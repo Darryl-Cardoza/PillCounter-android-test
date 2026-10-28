@@ -117,14 +117,14 @@ class BatchViewModel @Inject constructor(
                 val sealedBottleQty = txns.sumOf { it.bottleQty ?: 0 }
                 BatchDrugGroup(
                     drugId = first.drugId,
-                    drugName = first.drugName ?: "Unknown Drug",
+                    drugName = first.drugName.orEmpty(),
                     ndc = first.ndc ?: "",
                     sealedTotal = sealedLots.sumOf { it.count },
                     openedTotal = openedLots.sumOf { it.count },
                     totalCount = sealedLots.sumOf { it.count } + openedLots.sumOf { it.count },
                     sealedBottleQty = sealedBottleQty,
                     sealedLots = sealedLots,
-                    openedLots = openedLots
+                    openedLots = openedLots,
                 )
             }
 }

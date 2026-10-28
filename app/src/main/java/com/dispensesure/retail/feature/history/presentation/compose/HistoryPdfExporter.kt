@@ -2,8 +2,6 @@ package com.dispensesure.retail.feature.history.presentation.compose
 
 import android.content.Context
 import android.graphics.Canvas
-import com.dispensesure.retail.core.utils.logger.AppLogger
-import com.dispensesure.retail.core.utils.logger.LogEvent
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -11,6 +9,9 @@ import android.graphics.pdf.PdfDocument
 import android.text.TextUtils
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.DateFormats
+import com.dispensesure.retail.core.utils.common.drugDisplayName
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import java.io.File
 import java.io.FileOutputStream
@@ -166,10 +167,10 @@ class HistoryPdfExporter(private val context: Context) {
                     }
 
                     val rowData = arrayOf(
-                        item.drugName ?: "",
+                        context.resources.drugDisplayName(item.drugName),
                         item.ndc ?: "N/A",
                         item.pillCount?.toString() ?: "0",
-                        item.status.toString()
+                        item.status.toString(),
                     )
 
                     drawTableRow(canvas, margin.toFloat(), yPosition, colWidths, rowData)

@@ -4,20 +4,20 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.tourguide.FtueController
-import com.dispensesure.retail.core.tourguide.TutorialData
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
+import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.models.DrugMasterEntity
+import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.utils.common.parseScanData
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -59,8 +59,8 @@ import javax.inject.Inject
  * ScanBarCodeScreen flow had.
  *
  * PMS batch validation (for inventory batches with `requestIdFromPMS`) is NOT
- * handled here — that path goes through STOCK_COUNT / batch flows which still
- * use the legacy ScanBarCodeScreen.
+ * handled here — that lives in the inventory flow and the loose count
+ * (feature/stockCount).
  */
 @HiltViewModel
 class DispenseFlowViewModel @Inject constructor(
@@ -394,7 +394,7 @@ class DispenseFlowViewModel @Inject constructor(
     ) {
         val drug = (drugResolver.resolve(
             parsedNdc,
-            nameIfMissing = DrugResolver.UNKNOWN_DRUG_NAME,
+            allowNoName = true,
         ) as? DrugLookup.Found)?.drug
         // No drug to verify the label against, so reject the scan instead of
         // staging a blank Rx.
@@ -539,38 +539,55 @@ class DispenseFlowViewModel @Inject constructor(
 
         _uiState.update { it.copy(isLoading = true, pendingFirstBottle = firstBottle) }
 
-        FtueController.track(viewModelScope.launch {
-            try {
-                // Expected NDC comes from HL7 in the PMS flow, and from the RX
-                // label the user just scanned in the manual flow. Either way,
-                // the container scan has to match it (or be a server-flagged
-                // substitute) before we'll show the success sheet.
-                val expectedNdc = _uiState.value.hl7ExpectedNdc
-                    ?.takeIf { it.isNotBlank() }
-                    ?: _uiState.value.ndc.takeIf { it.isNotBlank() }
+        FtueController.track(
+            viewModelScope.launch {
+                try {
+                    // Expected NDC comes from HL7 in the PMS flow, and from the RX
+                    // label the user just scanned in the manual flow. Either way,
+                    // the container scan has to match it (or be a server-flagged
+                    // substitute) before we'll show the success sheet.
+                    val expectedNdc = _uiState.value.hl7ExpectedNdc
+                        ?.takeIf { it.isNotBlank() }
+                        ?: _uiState.value.ndc.takeIf { it.isNotBlank() }
 
-                val lookup = drugResolver.resolve(
-                    code = gtin14,
-                    expectedNdc = expectedNdc,
-                    nameIfMissing = DrugResolver.UNKNOWN_DRUG_NAME,
-                    scannedGtin = gtin14.trim(),
-                )
-                when (lookup) {
-                    is DrugLookup.Found -> applyContainerDrug(lookup, expectedNdc)
-                    DrugLookup.NoName, DrugLookup.NotFound ->
-                        _uiState.update { it.copy(isLoading = false, showNdcNotFoundDialog = true) }
-                    // DrugResolver already logged the failure, so don't rethrow into the catch below.
-                    is DrugLookup.Failed ->
-                        _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
+                    val lookup = drugResolver.resolve(
+                        code = gtin14,
+                        expectedNdc = expectedNdc,
+                        allowNoName = true,
+                        scannedGtin = gtin14.trim(),
+                    )
+                    when (lookup) {
+                        is DrugLookup.Found -> applyContainerDrug(lookup, expectedNdc)
+                        DrugLookup.NoName, DrugLookup.NotFound ->
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    showNdcNotFoundDialog = true
+                                )
+                            }
+                        // DrugResolver already logged the failure, so don't rethrow into the catch below.
+                        is DrugLookup.Failed ->
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    error = appContext.getString(R.string.error_generic)
+                                )
+                            }
+                    }
+                } catch (e: CancellationException) {
+                    _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
+                    throw e
+                } catch (e: Exception) {
+                    logger.e("NDC barcode processing failed", e, event = LogEvent.NDC_SCAN_FAILED)
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = appContext.getString(R.string.error_generic)
+                        )
+                    }
                 }
-            } catch (e: CancellationException) {
-                _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
-                throw e
-            } catch (e: Exception) {
-                logger.e("NDC barcode processing failed", e, event = LogEvent.NDC_SCAN_FAILED)
-                _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
-            }
-        })
+            },
+        )
     }
 
     /** Applies a resolved container drug: saved match, server match, substitute or mismatch. */
@@ -581,7 +598,7 @@ class DispenseFlowViewModel @Inject constructor(
                 it.copy(
                     isLoading = false,
                     ndcScannedValue = drug.ndc,
-                    ndcDrugName = drug.drugName ?: it.drugName,
+                    ndcDrugName = drug.drugName.orEmpty(),
                     ndcPackageQty = drug.packageQty,
                     showNdcDetails = false,
                     isHazardous = drug.isHazardous,
@@ -751,14 +768,14 @@ class DispenseFlowViewModel @Inject constructor(
             drugMasterDao.upsertPreservingId(
                 DrugMasterEntity(
                     ndc = state.ndcScannedValue,
-                    drugName = state.ndcDrugName.ifBlank { state.drugName },
+                    drugName = state.ndcDrugName.ifBlank { null },
                     drugType = state.ndcDrugType,
                     packageQty = state.ndcPackageQty,
                     isHazardous = state.isHazardous,
                     strength = state.ndcStrength,
                     dosageForm = state.ndcDosageForm,
                     drugImagePath = existingImagePath,
-                )
+                ),
             )
         } else null
         // Stamp the first bottle scanned against this txn — only when the txn has no
@@ -856,7 +873,7 @@ class DispenseFlowViewModel @Inject constructor(
                         showContinueRxDialog = false,
                         stage = targetStage,
                         txnId = txnId,
-                        drugName = drug?.drugName ?: it.drugName,
+                        drugName = if (drug != null) drug.drugName.orEmpty() else it.drugName,
                         ndc = drug?.ndc ?: it.ndc,
                         hl7ExpectedNdc = drug?.ndc,
                         rxNo = txn.rxNo,
@@ -910,7 +927,7 @@ class DispenseFlowViewModel @Inject constructor(
      * Updates the existing txn with `isNdcVerified = true`, captures
      * substitute drug info if applicable (the original drugId stays as the
      * expected drug; substitutedDrugId points at the actual scanned drug),
-     * and advances to COUNTING. Stock count skips this sheet entirely.
+     * and advances to COUNTING.
      */
     fun onNdcConfirmed() {
         val state = _uiState.value
@@ -929,14 +946,14 @@ class DispenseFlowViewModel @Inject constructor(
                     drugMasterDao.upsertPreservingId(
                         DrugMasterEntity(
                             ndc = state.ndcScannedValue,
-                            drugName = state.ndcDrugName.ifBlank { state.drugName },
+                            drugName = state.ndcDrugName.ifBlank { null },
                             drugType = state.ndcDrugType,
                             packageQty = state.ndcPackageQty,
                             isHazardous = state.isHazardous,
                             strength = state.ndcStrength,
                             drugImagePath = state.drugImage,
                             dosageForm = state.ndcDosageForm,
-                        )
+                        ),
                     )
                 } else null
 
@@ -1127,7 +1144,7 @@ class DispenseFlowViewModel @Inject constructor(
                     it.copy(
                         stage = targetStage,
                         txnId = txnId,
-                        drugName = drug?.drugName ?: it.drugName,
+                        drugName = if (drug != null) drug.drugName.orEmpty() else it.drugName,
                         ndc = drug?.ndc ?: it.ndc,
                         hl7ExpectedNdc = drug?.ndc,
                         rxNo = txn.rxNo,

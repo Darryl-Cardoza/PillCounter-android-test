@@ -397,7 +397,8 @@ class InventoryScanViewModelTest {
     }
 
     @Test
-    fun `onBarcodeDetected server returns blank genericName saves Unknown Drug`() = runTest(testDispatcher) {
+    fun `onBarcodeDetected server returns blank genericName saves the drug with no name`() =
+        runTest(testDispatcher) {
         stubGs1Decode()
         coEvery { drugMasterDao.getDrugByGtin(any()) } returns null
         coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
@@ -414,7 +415,7 @@ class InventoryScanViewModelTest {
 
         val slot = slot<DrugMasterEntity>()
         coVerify { drugMasterDao.upsertPreservingId(capture(slot)) }
-        assertEquals("Unknown Drug", slot.captured.drugName)
+            assertNull(slot.captured.drugName)
         assertEquals("SRV", vm.uiState.value.activeNdc?.ndc)
         job.cancel()
     }

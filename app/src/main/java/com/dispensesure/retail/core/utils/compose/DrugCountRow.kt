@@ -42,6 +42,7 @@ import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.ui.theme.AppTheme
 import java.io.File
 
@@ -155,13 +156,13 @@ fun DrugCountRow(
                 // drug name | Rx + refill + bucket + schedule | date
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = data.drugName,
+                        text = drugDisplayName(data.drugName),
                         fontSize = responsiveSp(8.sp),
                         lineHeight = lineHeightResponsiveSp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
                     )
                     val idLine = data.identifierLine()
                     if (idLine.isNotEmpty()) {
@@ -236,11 +237,11 @@ fun DrugThumbnail(
                             .error(R.drawable.prescription_icon)
                             .build()
                     ),
-                    contentDescription = data.drugName,
+                    contentDescription = drugDisplayName(data.drugName),
                     contentScale = ContentScale.FillBounds,
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(8.dp)),
                 )
             }
 

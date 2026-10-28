@@ -13,7 +13,7 @@ sealed interface DrugLookup {
         val imageUrl: String? = null,
     ) : DrugLookup
 
-    /** The server knows the drug but sent no name, and no fallback name was given. */
+    /** The server knows the drug but sent no name, no fallback name was given, and a nameless drug wasn't allowed. */
     data object NoName : DrugLookup
 
     /** The server doesn't know the drug, and no name was given to save it under. */

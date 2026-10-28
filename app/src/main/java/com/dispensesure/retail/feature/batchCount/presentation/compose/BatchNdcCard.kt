@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSpForBatchScreen
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.feature.batchCount.domain.model.BatchDrugGroup
 import com.dispensesure.retail.feature.batchCount.domain.model.BatchLotEntry
@@ -56,10 +57,10 @@ fun BatchNdcCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = group.drugName,
+                    text = drugDisplayName(group.drugName),
                     color = AppTheme.extendedColors.textColor,
                     fontSize = responsiveSpForBatchScreen(14.sp),
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
