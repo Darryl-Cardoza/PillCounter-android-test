@@ -44,10 +44,10 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
-import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
+import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraFeed
 import com.dispensesure.retail.core.scanning.presentation.compose.ContainerScanStrip
 import com.dispensesure.retail.core.scanning.presentation.compose.CountOverlay
@@ -77,7 +77,8 @@ import com.dispensesure.retail.core.utils.compose.VerifyNdcDetailsSheet
 import com.dispensesure.retail.core.utils.compose.VerifyRxDetailsInlinePanel
 import com.dispensesure.retail.core.utils.compose.VerifyRxDetailsSheet
 import com.dispensesure.retail.core.utils.permission.rememberPermissionStateDetailed
-import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountEffect
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseStage
 import com.dispensesure.retail.feature.dispense.presentation.compose.DispenseQueuePanel
 import com.dispensesure.retail.feature.dispense.presentation.compose.TargetPillsCountDialog
@@ -88,7 +89,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlin.math.roundToInt
-import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountEffect
 
 /**
  * Merged dispense flow screen.
@@ -184,7 +184,7 @@ fun DispenseFlowScreen(
                 DispenseCountEffect.Finished -> {
                     // Do NOT reset workflow steps here — that changes pillStepType
                     // while still on COUNTING stage and triggers unwanted TTS speech.
-                    // Steps are reset via LaunchedEffect(stage) when stage becomes QUEUE.
+                    // Steps are reset via StageChanged(QUEUE) in onStageChanged when stage becomes QUEUE.
                     // Always check for pending dispense items after completing a transaction;
                     // show the queue if any exist, otherwise navigate to Dashboard.
                     dispenseVm.resetToQueueOrNavigateDashboard()

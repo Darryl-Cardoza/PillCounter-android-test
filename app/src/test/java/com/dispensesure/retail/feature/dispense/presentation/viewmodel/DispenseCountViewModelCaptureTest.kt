@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.dispense.presentation.viewmodel
 import android.graphics.Bitmap
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourSection
@@ -337,6 +338,37 @@ class DispenseCountViewModelCaptureTest : DispenseCountViewModelTestBase() {
 
         assertFalse(viewModel.uiState.value.showSkipStepDialog)
         assertEquals(listOf(DispenseCountEffect.ShowToast(R.string.no_transaction_found)), effects)
+    }
+
+    @Test
+    fun `a second vial Done does not skip the back count`() = runTest {
+        onVialOf(listOf(StepState.VIAL, StepState.CONTAINER_PENDING))
+        seedContainerInitiateTotal(50)
+        coEvery { dispenseCountRepository.totalPillCount(any()) } returns 30
+
+        captureStill()
+        // Both taps queue an advance before either runs.
+        viewModel.onAction(DispenseCountAction.VialSaveTapped)
+        viewModel.onAction(DispenseCountAction.VialSaveTapped)
+        advanceUntilIdle()
+
+        assertEquals(StepState.CONTAINER_PENDING, viewModel.uiState.value.currentStep)
+        coVerify(exactly = 0) { dispenseCountRepository.complete(any()) }
+    }
+
+    @Test
+    fun `a second vial Done does not complete the dispense twice`() = runTest {
+        onVialOf(listOf(StepState.TARGET_VERIFICATION, StepState.VIAL))
+        every { preferenceHelper.getShowNotesDialogSetting() } returns false
+        coEvery { dispenseCountRepository.totalPillCount(any()) } returns 30
+        coEvery { dispenseCountRepository.complete(any()) } returns CountStatus.COMPLETED
+
+        captureStill()
+        viewModel.onAction(DispenseCountAction.VialSaveTapped)
+        viewModel.onAction(DispenseCountAction.VialSaveTapped)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { dispenseCountRepository.complete(any()) }
     }
 
     @Test

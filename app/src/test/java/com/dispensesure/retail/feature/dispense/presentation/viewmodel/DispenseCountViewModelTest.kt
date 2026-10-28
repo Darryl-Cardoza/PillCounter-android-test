@@ -339,6 +339,40 @@ class DispenseCountViewModelTest : DispenseCountViewModelTestBase() {
         coVerify(exactly = 0) { dispenseCountRepository.addBottle(any(), any()) }
     }
 
+    /** Counting with a new bottle in view after pills were counted, so a scan asks to add it. */
+    private fun TestScope.countingWithNewBottleInView() {
+        countingWithScanOf(lot = "L2")
+        coEvery { dispenseCountRepository.loadBottles(42L) } returns listOf(firstBottle)
+        coEvery { dispenseCountRepository.totalPillCount(42L) } returns 5
+    }
+
+    @Test
+    fun `a scan while the add dialog is open is ignored`() = runTest {
+        countingWithNewBottleInView()
+        viewModel.onAction(DispenseCountAction.BottleScanned("raw", null))
+        advanceUntilIdle()
+
+        // The camera keeps decoding the same barcode while the dialog waits.
+        viewModel.onAction(DispenseCountAction.BottleScanned("raw", null))
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { dispenseCountRepository.loadBottles(42L) }
+    }
+
+    @Test
+    fun `a scan after Cancel is handled again`() = runTest {
+        countingWithNewBottleInView()
+        viewModel.onAction(DispenseCountAction.BottleScanned("raw", null))
+        advanceUntilIdle()
+
+        viewModel.onAction(DispenseCountAction.AddBottleDismissed)
+        viewModel.onAction(DispenseCountAction.BottleScanned("raw", null))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.showAddBottleDialog)
+        coVerify(exactly = 2) { dispenseCountRepository.loadBottles(42L) }
+    }
+
     @Test
     fun `ReplaceBottleDismissed closes the replace dialog`() = runTest {
         setState { it.copy(showReplaceBottleDialog = true) }

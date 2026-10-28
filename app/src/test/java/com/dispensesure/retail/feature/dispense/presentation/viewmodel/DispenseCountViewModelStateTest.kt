@@ -1,5 +1,7 @@
 package com.dispensesure.retail.feature.dispense.presentation.viewmodel
 
+import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
 import io.mockk.coVerify
 import io.mockk.every
@@ -54,6 +56,43 @@ class DispenseCountViewModelStateTest : DispenseCountViewModelTestBase() {
         assertEquals(42, viewModel.uiState.value.targetCount)
         assertFalse(viewModel.uiState.value.showTargetCountDialog)
         coVerify { dispenseCountRepository.saveTargetCount(42L, 42) }
+    }
+
+    @Test
+    fun `a typed-in target lets Done leave the pour-out`() = runTest {
+        startCounting(dispenseTxn(targetCount = null))
+        viewModel.onAction(DispenseCountAction.TargetCountEntered(30))
+        setState {
+            it.copy(
+                steps = listOf(
+                    StepState.SCAN,
+                    StepState.CONTAINER_INITIATE,
+                    StepState.TARGET_VERIFICATION,
+                    StepState.VIAL,
+                ),
+                currentStep = StepState.CONTAINER_INITIATE,
+                stepCounts = listOf(
+                    TxnDetail(
+                        txnDetailId = 1L,
+                        count = 30,
+                        createdAt = 0L,
+                        image = null,
+                        type = StepState.CONTAINER_INITIATE,
+                    ),
+                ),
+            )
+        }
+
+        viewModel.onAction(DispenseCountAction.DoneTapped)
+
+        assertEquals(StepState.TARGET_VERIFICATION, viewModel.uiState.value.currentStep)
+    }
+
+    @Test
+    fun `starting to count loads the txn once`() = runTest {
+        startCounting(dispenseTxn())
+
+        coVerify(exactly = 1) { dispenseCountRepository.loadTxn(42L) }
     }
 
     // SCAN_VM_007

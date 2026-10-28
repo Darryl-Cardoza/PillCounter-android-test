@@ -587,13 +587,6 @@ class PillCountingEngine @AssistedInject constructor(
         frame
     }
 
-    /** Drops the pills on screen and forgets the last Add, so the same tray can be added again. */
-    fun rescan() {
-        clearDetectedPills()
-        lastAddedScanSignature = null
-        logger.i("Rescan triggered.")
-    }
-
     /** Forgets the last Add's pill layout, so the same pills can be added again after a failed save. */
     fun forgetLastAdd() {
         lastAddedScanSignature = null

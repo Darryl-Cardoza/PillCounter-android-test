@@ -99,6 +99,23 @@ class DispenseCountViewModelActionTest : DispenseCountViewModelTestBase() {
     }
 
     @Test
+    fun `a failed tray save does not crash`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 42L
+        coEvery {
+            dispenseCountRepository.saveHazardousTrayDetected(
+                any(),
+                any(),
+            )
+        } throws RuntimeException("db down")
+        runCurrent()
+
+        viewModel.onAction(DispenseCountAction.TrayClassified(TrayColor.RED, isHazardous = true))
+        advanceUntilIdle()
+
+        coVerify { dispenseCountRepository.saveHazardousTrayDetected(42L, true) }
+    }
+
+    @Test
     fun `a tray warning from the engine is shown as a toast`() = runTest {
         every { preferenceHelper.getHazardousTrayColor() } returns "RED"
         val effects = collectEffects()
@@ -245,5 +262,53 @@ class DispenseCountViewModelActionTest : DispenseCountViewModelTestBase() {
         advanceUntilIdle()
 
         assertTrue(effects.isEmpty())
+    }
+
+    @Test
+    fun `a dispense that found nothing to complete can complete again`() = runTest {
+        coEvery { dispenseCountRepository.complete(any()) } returnsMany listOf(
+            null,
+            CountStatus.COMPLETED,
+        )
+        val effects = collectEffects()
+
+        viewModel.onAction(DispenseCountAction.NoteSkipped)
+        advanceUntilIdle()
+        viewModel.onAction(DispenseCountAction.NoteSkipped)
+        advanceUntilIdle()
+
+        assertEquals(listOf<DispenseCountEffect>(DispenseCountEffect.Finished), effects)
+    }
+
+    @Test
+    fun `a dispense that failed to complete can complete again`() = runTest {
+        coEvery { dispenseCountRepository.complete(any()) } throws RuntimeException("db down") andThen CountStatus.COMPLETED
+        val effects = collectEffects()
+
+        viewModel.onAction(DispenseCountAction.NoteSkipped)
+        advanceUntilIdle()
+        viewModel.onAction(DispenseCountAction.NoteSkipped)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(
+                DispenseCountEffect.ShowToast(R.string.error_generic),
+                DispenseCountEffect.Finished,
+            ),
+            effects,
+        )
+    }
+
+    @Test
+    fun `the next count completes after the last one did`() = runTest {
+        coEvery { dispenseCountRepository.complete(any()) } returns CountStatus.COMPLETED
+        viewModel.onAction(DispenseCountAction.NoteSkipped)
+        advanceUntilIdle()
+
+        startCounting(dispenseTxn(txnId = 43L))
+        viewModel.onAction(DispenseCountAction.NoteSkipped)
+        advanceUntilIdle()
+
+        coVerify { dispenseCountRepository.complete(43L) }
     }
 }

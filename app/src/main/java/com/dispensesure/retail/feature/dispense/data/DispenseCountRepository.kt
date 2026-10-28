@@ -268,22 +268,28 @@ class DispenseCountRepository @Inject constructor(
 
     /** Adds [bottle] as the new active bottle. */
     suspend fun addBottle(txnId: Long, bottle: DispenseBottle) {
-        val bottles = loadBottles(txnId)?.toMutableList() ?: return
-        bottles.add(bottle)
-        dispenseTxnDao.updateBottles(txnId, DispenseBottleJson.encode(bottles))
-        logger.i("BOTTLE_SCAN added new bottle for txnId=$txnId, total bottles=${bottles.size}")
+        // One transaction so an Add can't link a count to the list mid-rewrite and lose it.
+        appDatabase.withTransaction {
+            val bottles = loadBottles(txnId)?.toMutableList() ?: return@withTransaction
+            bottles.add(bottle)
+            dispenseTxnDao.updateBottles(txnId, DispenseBottleJson.encode(bottles))
+            logger.i("BOTTLE_SCAN added new bottle for txnId=$txnId, total bottles=${bottles.size}")
+        }
     }
 
     /** Puts [bottle] in place of the active bottle, or adds it when there is none. */
     suspend fun replaceLastBottle(txnId: Long, bottle: DispenseBottle) {
-        val bottles = loadBottles(txnId)?.toMutableList() ?: return
-        if (bottles.isEmpty()) {
-            bottles.add(bottle)
-        } else {
-            bottles[bottles.lastIndex] = bottle
+        // One transaction, as in addBottle.
+        appDatabase.withTransaction {
+            val bottles = loadBottles(txnId)?.toMutableList() ?: return@withTransaction
+            if (bottles.isEmpty()) {
+                bottles.add(bottle)
+            } else {
+                bottles[bottles.lastIndex] = bottle
+            }
+            dispenseTxnDao.updateBottles(txnId, DispenseBottleJson.encode(bottles))
+            logger.i("BOTTLE_SCAN replaced last bottle for txnId=$txnId")
         }
-        dispenseTxnDao.updateBottles(txnId, DispenseBottleJson.encode(bottles))
-        logger.i("BOTTLE_SCAN replaced last bottle for txnId=$txnId")
     }
 
     // ─────────────────────────── Reset and completion ───────────────────────────

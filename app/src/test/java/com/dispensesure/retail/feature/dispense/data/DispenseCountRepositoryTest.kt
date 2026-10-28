@@ -301,6 +301,47 @@ class DispenseCountRepositoryTest {
         assertEquals(listOf("L1"), bottlesOf(txnId).map { it.lotNumber })
     }
 
+    /** Runs [writeBottles] on a mocked txn DAO and returns whether its bottle write ran inside a transaction. */
+    private suspend fun bottleWriteIsInTransaction(writeBottles: suspend (DispenseCountRepository) -> Unit): Boolean {
+        val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
+        coEvery { dispenseTxnDao.getById(44L) } returns DispenseTxnEntity(
+            txnId = 44L,
+            status = CountStatus.PARTIAL,
+        )
+        var isInTransaction = false
+        coEvery { dispenseTxnDao.updateBottles(44L, any(), any()) } answers {
+            isInTransaction = db.inTransaction()
+        }
+
+        writeBottles(createRepository(dispenseTxnDao, db.dispenseCountDao()))
+
+        return isInTransaction
+    }
+
+    @Test
+    fun `addBottle rewrites the bottle list inside a transaction`() = runTest {
+        assertTrue(
+            bottleWriteIsInTransaction { repository ->
+                repository.addBottle(
+                    44L,
+                    DispenseBottle(lotNumber = "L1"),
+                )
+            },
+        )
+    }
+
+    @Test
+    fun `replaceLastBottle rewrites the bottle list inside a transaction`() = runTest {
+        assertTrue(
+            bottleWriteIsInTransaction { repository ->
+                repository.replaceLastBottle(
+                    44L,
+                    DispenseBottle(lotNumber = "L1"),
+                )
+            },
+        )
+    }
+
     @Test
     fun `loadBottles is null for a missing txn`() = runTest {
         assertNull(repository.loadBottles(999L))

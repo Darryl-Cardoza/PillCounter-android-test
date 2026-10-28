@@ -105,6 +105,10 @@ class DispenseCountViewModel @Inject constructor(
     /** Tour: set once Done goes straight to confirm (notes setting off), so the VIAL wait ends. */
     private var confirmDoneStarted = false
 
+    // Set once completion starts, so a double tap can't complete or send the txn twice.
+    // Cleared when counting starts and when completion fails.
+    private var isCompletionStarted = false
+
     private var stepCountsJob: Job? = null
     private var resetAvailabilityJob: Job? = null
 
@@ -191,8 +195,8 @@ class DispenseCountViewModel @Inject constructor(
     }
 
     private fun startCounting(isHazardousDrug: Boolean) {
-        loadWorkflow()
-        loadTxnDetails()
+        isCompletionStarted = false
+        loadCountingTxn()
         observeResetAvailability()
         // Enable tray color detection for all transactions (hazardous and non-hazardous).
         logger.i("Calling setHazardousTransaction(isHazardous=$isHazardousDrug)")
@@ -221,11 +225,20 @@ class DispenseCountViewModel @Inject constructor(
 
     private fun saveHazardousTrayDetected(detected: Boolean) {
         viewModelScope.launch {
-            val txnId = preferenceHelper.getTxnId()
-            if (txnId != 0L) {
-                dispenseCountRepository.saveHazardousTrayDetected(txnId, detected)
-                logger.i("hazardousTrayDetected=$detected saved for txnId=$txnId")
-                logger.d("DB updated: hazardousTrayDetected=$detected txnId=$txnId")
+            try {
+                val txnId = preferenceHelper.getTxnId()
+                if (txnId != 0L) {
+                    dispenseCountRepository.saveHazardousTrayDetected(txnId, detected)
+                    logger.i("hazardousTrayDetected=$detected saved for txnId=$txnId")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e(
+                    "Failed to save hazardousTrayDetected flag",
+                    e,
+                    event = LogEvent.TRAY_CLASSIFY_FAILED,
+                )
             }
         }
     }
@@ -255,12 +268,33 @@ class DispenseCountViewModel @Inject constructor(
 
     // ─────────────────────────── Workflow ───────────────────────────
 
-    /** Builds the steps and picks the one counting starts on. */
-    private fun loadWorkflow() {
+    /**
+     * Loads the txn once: its drug details and target (asks for a target when the order
+     * has none), then builds the steps and picks the one counting starts on.
+     */
+    private fun loadCountingTxn() {
         viewModelScope.launch {
             try {
                 val txnInfo = dispenseCountRepository.loadTxn(preferenceHelper.getTxnId())
                 keepLoadedTxn(txnInfo)
+
+                val shouldShowDialog =
+                    (txnInfo?.targetCount == null || txnInfo.targetCount == 0) && !_uiState.value.showTargetCountDialog
+
+                _uiState.update {
+                    it.copy(
+                        drugName = txnInfo?.drugName.orEmpty(),
+                        ndc = txnInfo?.ndc.orEmpty(),
+                        strength = txnInfo?.strength.orEmpty(),
+                        dosageForm = txnInfo?.dosageForm.orEmpty(),
+                        bucketId = txnInfo?.bucketId?.takeIf { b -> b.isNotBlank() },
+                        targetCount = txnInfo?.targetCount ?: 0,
+                        showTargetCountDialog = shouldShowDialog,
+                        drugImage = txnInfo?.drugImage.orEmpty(),
+                    )
+                }
+                logger.d("Txn info loaded. Drug=${txnInfo?.drugName}, Target=${txnInfo?.targetCount}")
+
                 val drugInfo = dispenseCountRepository.loadDrug(txnInfo?.drugId)
                 val steps = workflowSteps(txnInfo, drugInfo)
                 val savedWorkflowStep = txnInfo?.workflowStep
@@ -281,7 +315,11 @@ class DispenseCountViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to load drug info / resolve workflow step", e, event = LogEvent.PILL_COUNT_FAILED)
+                logger.e(
+                    "Failed to load txn info / resolve workflow step",
+                    e,
+                    event = LogEvent.PILL_COUNT_FAILED,
+                )
             }
         }
     }
@@ -296,38 +334,7 @@ class DispenseCountViewModel @Inject constructor(
             backCountOn = preferenceHelper.isRequireBackCountEnabled(),
         )
 
-    /** Loads the drug details and the target; asks for a target when the order has none. */
-    private fun loadTxnDetails() {
-        viewModelScope.launch {
-            try {
-                val txnInfo = dispenseCountRepository.loadTxn(preferenceHelper.getTxnId())
-                keepLoadedTxn(txnInfo)
-
-                val shouldShowDialog =
-                    (txnInfo?.targetCount == null || txnInfo.targetCount == 0) && !_uiState.value.showTargetCountDialog
-
-                _uiState.update {
-                    it.copy(
-                        drugName = txnInfo?.drugName.orEmpty(),
-                        ndc = txnInfo?.ndc.orEmpty(),
-                        strength = txnInfo?.strength.orEmpty(),
-                        dosageForm = txnInfo?.dosageForm.orEmpty(),
-                        bucketId = txnInfo?.bucketId?.takeIf { b -> b.isNotBlank() },
-                        targetCount = txnInfo?.targetCount ?: 0,
-                        showTargetCountDialog = shouldShowDialog,
-                        drugImage = txnInfo?.drugImage.orEmpty()
-                    )
-                }
-                logger.d("Txn info loaded. Drug=${txnInfo?.drugName}, Target=${txnInfo?.targetCount}")
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("Failed to load txn info", e, event = LogEvent.PILL_COUNT_FAILED)
-            }
-        }
-    }
-
-    // Both loads keep the txn they read, as both set the old txn flow.
+    // Keeps the txn the step rules read; a reset passes null.
     private fun keepLoadedTxn(txnInfo: DispenseTxnDetail?) {
         loadedTxn = txnInfo
         _uiState.update { it.copy(isTxnLoaded = txnInfo != null) }
@@ -375,7 +382,7 @@ class DispenseCountViewModel @Inject constructor(
     /**
      * Lands the workflow on the SCAN step: publishes the steps and marks SCAN as the
      * current one, so the stepper can be shown there like any other step.
-     * [loadWorkflow] reassigns both when counting starts. The saved workflowStep column
+     * [loadCountingTxn] reassigns both when counting starts. The saved workflowStep column
      * is deliberately not touched — a resume must not come back to SCAN.
      */
     private fun enterScanStep() {
@@ -453,7 +460,7 @@ class DispenseCountViewModel @Inject constructor(
         val state = _uiState.value
         val step = state.currentStep
         val predictedTotal = state.totalCount + detectedCount
-        val skipRestriction = step in listOf(StepState.CONTAINER_INITIATE)
+        val skipRestriction = step == StepState.CONTAINER_INITIATE
 
         if (!skipRestriction) {
             if (predictedTotal > state.targetCount) {
@@ -615,22 +622,36 @@ class DispenseCountViewModel @Inject constructor(
     }
 
     private fun completeDispense() {
+        if (isCompletionStarted) return
+        isCompletionStarted = true
         confirmDoneStarted = true
-        FtueController.track(viewModelScope.launch {
-            try {
-                val status = dispenseCountRepository.complete(preferenceHelper.getTxnId()) ?: return@launch
-                _uiState.update { it.copy(capturedStill = null) }
-                // The screen goes back to the queue or the Dashboard; the next count starts without gloves.
-                engine.resetGloves()
-                _effects.send(DispenseCountEffect.Finished)
-                logger.i("Transaction completed. Status=$status")
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("Failed to confirm/complete transaction", e, event = LogEvent.PILL_COUNT_FAILED)
-                showGenericError()
-            }
-        })
+        FtueController.track(
+            viewModelScope.launch {
+                try {
+                    val status = dispenseCountRepository.complete(preferenceHelper.getTxnId())
+                    if (status == null) {
+                        // Nothing was completed, so a later Done may try again.
+                        isCompletionStarted = false
+                        return@launch
+                    }
+                    _uiState.update { it.copy(capturedStill = null) }
+                    // The screen goes back to the queue or the Dashboard; the next count starts without gloves.
+                    engine.resetGloves()
+                    _effects.send(DispenseCountEffect.Finished)
+                    logger.i("Transaction completed. Status=$status")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e(
+                        "Failed to confirm/complete transaction",
+                        e,
+                        event = LogEvent.PILL_COUNT_FAILED,
+                    )
+                    isCompletionStarted = false
+                    showGenericError()
+                }
+            },
+        )
     }
 
     private fun deleteCount(countId: Long) {
@@ -647,6 +668,8 @@ class DispenseCountViewModel @Inject constructor(
 
     private fun onTargetCountEntered(targetCount: Int) {
         _uiState.update { it.copy(targetCount = targetCount, showTargetCountDialog = false) }
+        // Pour-out Done, the back-count target and the skip check read the order target from here.
+        loadedTxn = loadedTxn?.copy(targetCount = targetCount)
         viewModelScope.launch {
             try {
                 dispenseCountRepository.saveTargetCount(preferenceHelper.getTxnId(), targetCount)
@@ -686,6 +709,7 @@ class DispenseCountViewModel @Inject constructor(
         isProcessingBottleScan = true
 
         viewModelScope.launch {
+            var isDialogShown = false
             try {
                 val txnId = preferenceHelper.getTxnId()
                 val activeNdc = loadedTxn?.ndc
@@ -712,17 +736,20 @@ class DispenseCountViewModel @Inject constructor(
                     RescanOutcome.AlreadyScanned -> showToast(R.string.bottle_already_scanned)
                     RescanOutcome.AskAddNew -> {
                         pendingBottleScan = scannedBottle
+                        isDialogShown = true
                         _uiState.update { it.copy(showAddBottleDialog = true) }
                     }
                     RescanOutcome.AskReplace -> {
                         pendingBottleScan = scannedBottle
+                        isDialogShown = true
                         _uiState.update { it.copy(showReplaceBottleDialog = true) }
                     }
                 }
             } catch (e: Exception) {
                 logger.e("BOTTLE_SCAN onBottleScanned failed", e, event = LogEvent.NDC_SCAN_FAILED)
             } finally {
-                isProcessingBottleScan = false
+                // An open dialog keeps the flag until it is answered.
+                if (!isDialogShown) isProcessingBottleScan = false
             }
         }
     }
@@ -730,7 +757,10 @@ class DispenseCountViewModel @Inject constructor(
     private fun onAddBottleConfirmed() {
         val pending = pendingBottleScan
         _uiState.update { it.copy(showAddBottleDialog = false) }
-        if (pending == null) return
+        if (pending == null) {
+            isProcessingBottleScan = false
+            return
+        }
         viewModelScope.launch {
             try {
                 dispenseCountRepository.addBottle(preferenceHelper.getTxnId(), pending)
@@ -739,6 +769,9 @@ class DispenseCountViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 logger.e("BOTTLE_SCAN failed to add new bottle", e, event = LogEvent.NDC_SCAN_FAILED)
+            } finally {
+                // Scans resume once the bottle is on file, so the same bottle isn't asked about again.
+                isProcessingBottleScan = false
             }
         }
     }
@@ -746,7 +779,10 @@ class DispenseCountViewModel @Inject constructor(
     private fun onReplaceBottleConfirmed() {
         val pending = pendingBottleScan
         _uiState.update { it.copy(showReplaceBottleDialog = false) }
-        if (pending == null) return
+        if (pending == null) {
+            isProcessingBottleScan = false
+            return
+        }
         viewModelScope.launch {
             try {
                 dispenseCountRepository.replaceLastBottle(preferenceHelper.getTxnId(), pending)
@@ -755,12 +791,15 @@ class DispenseCountViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 logger.e("BOTTLE_SCAN failed to replace last bottle", e, event = LogEvent.NDC_SCAN_FAILED)
+            } finally {
+                isProcessingBottleScan = false
             }
         }
     }
 
     private fun dismissBottleDialog(isAddDialog: Boolean) {
         pendingBottleScan = null
+        isProcessingBottleScan = false
         _uiState.update {
             if (isAddDialog) it.copy(showAddBottleDialog = false) else it.copy(showReplaceBottleDialog = false)
         }
@@ -865,8 +904,10 @@ class DispenseCountViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val poured = dispenseCountRepository.stepPillTotal(
-                    preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE
+                    preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE,
                 )
+                // A second Done that got here after the first one moved on has nothing left to do.
+                if (_uiState.value.currentStep != StepState.VIAL) return@launch
                 if (DispenseWorkflow.offerSkipBackCount(_uiState.value.steps, poured, loadedTxn?.targetCount ?: 0)) {
                     if (FtueController.state.isActive) {
                         // Tutorial: this dialog is real business UI the tour doesn't
