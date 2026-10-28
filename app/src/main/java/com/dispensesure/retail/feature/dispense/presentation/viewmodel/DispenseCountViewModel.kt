@@ -21,12 +21,9 @@ import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountNavigation
-import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
+import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
-import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
-import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountUiState
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import com.dispensesure.retail.core.scanning.engine.CaptureResult
 import com.dispensesure.retail.core.scanning.engine.EngineEvent
@@ -49,6 +46,9 @@ import com.dispensesure.retail.core.utils.common.deleteFilesQuietly
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountNavigation
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountUiState
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -104,8 +104,8 @@ class DispenseCountViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DispenseCountUiState())
     val uiState: StateFlow<DispenseCountUiState> = _uiState.asStateFlow()
 
-    private val _navigationEvent = Channel<DispenseCountNavigation>()
-    val navigationEvent = _navigationEvent.receiveAsFlow()
+    private val _navigation = Channel<DispenseCountNavigation>()
+    val navigation = _navigation.receiveAsFlow()
 
     val cameraPaused: StateFlow<Boolean> = engine.state
         .map { engineState -> engineState.isCameraPaused }
@@ -760,53 +760,59 @@ class DispenseCountViewModel @Inject constructor(
 
     private fun handleConfirmDone() {
         confirmDoneStarted = true
-        FtueController.track(viewModelScope.launch {
-            try {
-                val txnId = preferenceHelper.getTxnId()
-                val total = dispenseCountDao.getTotalPillCountForTxn(txnId)
-                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
-                if (total == 0) {
-                    return@launch
+        FtueController.track(
+            viewModelScope.launch {
+                try {
+                    val txnId = preferenceHelper.getTxnId()
+                    val total = dispenseCountDao.getTotalPillCountForTxn(txnId)
+                    val txn = dispenseTxnDao.getById(txnId) ?: return@launch
+                    if (total == 0) {
+                        return@launch
+                    }
+                    // Only the prescribed-count step decides partial vs complete. The pour-out and
+                    // recount steps count other pills and used to push this past the target.
+                    val dispensedCount = dispenseCountDao
+                        .getPillCountForStep(txnId, DISPENSED_QUANTITY_STEP.name)
+                    val status =
+                        if (txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
+
+                    // Stamp who ran this count now, not at send time: an unsynced txn resent later
+                    // must still report this operator, not whoever is at the device then.
+                    // MUST be written before the status flips to COMPLETED — that write wakes
+                    // observePendingHl7Txn, whose resend sweep reads this row and would build a
+                    // message with a blank operator if it got there first.
+                    val operator = operatorNameProvider()
+                    dispenseTxnDao.updateOperatorName(txnId, operator.firstName, operator.lastName)
+
+                    if (txn.isComingFromHL7 == true) {
+                        dispenseTxnDao.markCompletedAndUnsynced(txnId = txnId, status = status)
+                    } else {
+                        dispenseTxnDao.updateTxnStatus(txnId, status)
+                    }
+
+                    // Send the dispense to the PMS now, not on the next reconnect. Completion used to
+                    // only persist the status; the HL7 message went out when the MLLP connection next
+                    // re-established, so a pharmacist finishing a count on a stable connection saw
+                    // nothing arrive at the Companion. Failures are fine — the row stays unsynced and
+                    // the resend-on-connect sweep retries it.
+                    hl7Repository.sendDispenseNow(txnId)
+
+                    _capturedBitmap.value = null
+                    _navigation.send(DispenseCountNavigation.NavigateToDashboard)
+                    logger.i("Transaction completed. Status=$status")
+
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e(
+                        "Failed to confirm/complete transaction",
+                        e,
+                        event = LogEvent.PILL_COUNT_FAILED
+                    )
+                    showGenericError()
                 }
-                // Only the prescribed-count step decides partial vs complete. The pour-out and
-                // recount steps count other pills and used to push this past the target.
-                val dispensedCount = dispenseCountDao
-                    .getPillCountForStep(txnId, DISPENSED_QUANTITY_STEP.name)
-                val status =
-                    if (txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
-
-                // Stamp who ran this count now, not at send time: an unsynced txn resent later
-                // must still report this operator, not whoever is at the device then.
-                // MUST be written before the status flips to COMPLETED — that write wakes
-                // observePendingHl7Txn, whose resend sweep reads this row and would build a
-                // message with a blank operator if it got there first.
-                val operator = operatorNameProvider()
-                dispenseTxnDao.updateOperatorName(txnId, operator.firstName, operator.lastName)
-
-                if (txn.isComingFromHL7 == true) {
-                    dispenseTxnDao.markCompletedAndUnsynced(txnId = txnId, status = status)
-                } else {
-                    dispenseTxnDao.updateTxnStatus(txnId, status)
-                }
-
-                // Send the dispense to the PMS now, not on the next reconnect. Completion used to
-                // only persist the status; the HL7 message went out when the MLLP connection next
-                // re-established, so a pharmacist finishing a count on a stable connection saw
-                // nothing arrive at the Companion. Failures are fine — the row stays unsynced and
-                // the resend-on-connect sweep retries it.
-                hl7Repository.sendDispenseNow(txnId)
-
-                _capturedBitmap.value = null
-                _navigationEvent.send(DispenseCountNavigation.NavigateToDashboard)
-                logger.i("Transaction completed. Status=$status")
-
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("Failed to confirm/complete transaction", e, event = LogEvent.PILL_COUNT_FAILED)
-                showGenericError()
-            }
-        })
+            },
+        )
     }
 
     private fun handleDeleteTransaction(action: DispenseCountAction.TransactionDetailDeleted) {

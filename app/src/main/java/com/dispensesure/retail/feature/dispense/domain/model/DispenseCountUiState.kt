@@ -1,9 +1,9 @@
-﻿package com.dispensesure.retail.feature.dispense.domain.model
+package com.dispensesure.retail.feature.dispense.domain.model
 
-import com.dispensesure.retail.core.scanning.logic.GloveDetection
-import com.dispensesure.retail.core.scanning.logic.TrayColor
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
+import com.dispensesure.retail.core.scanning.logic.GloveDetection
+import com.dispensesure.retail.core.scanning.logic.TrayColor
 
 /**
  * Represents the UI state for the pill counting process.

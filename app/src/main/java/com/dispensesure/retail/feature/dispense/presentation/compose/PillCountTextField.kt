@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.feature.dispense.presentation.compose
+package com.dispensesure.retail.feature.dispense.presentation.compose
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background

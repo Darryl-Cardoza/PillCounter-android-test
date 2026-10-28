@@ -73,7 +73,7 @@ object LogEventClassifier {
             "DatabaseKeyProvider" ->
                 if ("rotate" in message) LogEvent.KEK_ROTATE_FAILED else LogEvent.DB_KEY_ROTATE_FAILED
 
-            "DispenseFlowViewModel" -> when {
+            "DispenseFlowVM" -> when {
                 "ndc" in message -> LogEvent.NDC_SCAN_FAILED
                 "vial" in message -> LogEvent.VIAL_SCAN_FAILED
                 "rx" in message -> LogEvent.RX_SCAN_FAILED

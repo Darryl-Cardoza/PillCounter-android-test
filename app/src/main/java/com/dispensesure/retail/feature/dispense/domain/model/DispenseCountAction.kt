@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.feature.dispense.domain.model
+package com.dispensesure.retail.feature.dispense.domain.model
 
 import android.graphics.Bitmap
 import com.dispensesure.retail.core.models.StepState

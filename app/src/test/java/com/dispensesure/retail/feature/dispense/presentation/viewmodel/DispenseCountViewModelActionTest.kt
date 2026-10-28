@@ -13,7 +13,6 @@ import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
@@ -21,7 +20,6 @@ import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
 import com.dispensesure.retail.core.scanning.engine.feedGloveFrameForTest
 import com.dispensesure.retail.core.scanning.engine.feedTrayFrameForTest
 import com.dispensesure.retail.core.scanning.engine.putFrameForTest
-import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.logic.TrayColor
@@ -30,6 +28,7 @@ import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.util.MainDispatcherRule
 import io.mockk.coEvery
@@ -439,7 +438,12 @@ class DispenseCountViewModelActionTest {
         advanceUntilIdle()
 
         // target=10, history sums to 0 → error, no step change
-        viewModel.onEvent(PillScanningEvent.FinalDone(StepState.TARGET_VERIFICATION, totalCount = 0))
+        viewModel.onAction(
+            DispenseCountAction.FinalDone(
+                StepState.TARGET_VERIFICATION,
+                totalCount = 0,
+            ),
+        )
 
         assertNotNull(viewModel.uiState.value.showErrorMessage)
     }

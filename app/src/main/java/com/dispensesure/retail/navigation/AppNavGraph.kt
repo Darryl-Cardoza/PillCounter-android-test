@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.navigation
+package com.dispensesure.retail.navigation
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -11,7 +11,6 @@ import com.dispensesure.retail.feature.dispense.presentation.DispenseFlowScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceIntroScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceRegistrationScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceUsersListScreen
-import com.dispensesure.retail.feature.stockCount.sealed.presentation.StockCountScreen
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.history.presentation.BatchHistoryDetailScreen
 import com.dispensesure.retail.feature.history.presentation.HistoryDetailScreen
@@ -20,6 +19,7 @@ import com.dispensesure.retail.feature.menu.presentation.MenuScreen
 import com.dispensesure.retail.feature.profile.presentation.ProfileScreen
 import com.dispensesure.retail.feature.settings.presentation.SettingsScreen
 import com.dispensesure.retail.feature.stockCount.loose.LooseCountScreen
+import com.dispensesure.retail.feature.stockCount.sealed.presentation.StockCountScreen
 import com.dispensesure.retail.feature.unsyncedTransaction.presentation.compose.UnsyncedTransactionScreen
 
 // Define constants for nested graph routes for better organization
@@ -69,13 +69,6 @@ fun AppNavGraph(
 //                backStackEntry.arguments?.getLong(Screen.ScanBarcode.ARG_BATCH_ID) ?: 0
 //
 //            ScanBarCodeScreen(navController, scanType, txnScanType, batchId = batchId)
-//        }
-
-//        composable(
-//            route = Screen.PillCount.route, arguments = Screen.PillCount.navArguments
-//        ) { backStackEntry ->
-//            val countType = backStackEntry.arguments?.getString(Screen.PillCount.ARG_TYPE) ?: ""
-//            InventoryFlowScreen(navController, countType)
 //        }
 
         // Merged dispense flow (RX + NDC + pill counting on one screen).

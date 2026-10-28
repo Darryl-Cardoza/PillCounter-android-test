@@ -47,6 +47,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
+import com.dispensesure.retail.core.utils.compose.repeatWhileHeld
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.ActiveNdc
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.RecentBatchRow
 import com.dispensesure.retail.ui.theme.AppTheme

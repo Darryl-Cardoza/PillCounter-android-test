@@ -16,21 +16,19 @@ picture see [`/docs/architecture.md`](../../../../../../../docs/architecture.md)
 
 ## Feature index
 
-| Feature | Purpose | Entry route (`Screen`) | ViewModel(s) | Backend API |
-| --- | --- | --- | --- | --- |
-| `login` | Email/credential login | `Login` (`"login"`) | `LoginViewModel` | `ILoginApi` |
-| `verifyPin` | OTP / PIN verification after login | `OtpVerify` | `VerifyPinViewModel` | `IVerifyPinAPI` |
-| `dashboard` | Home: counts, KPIs, terminal/user config | `Dashboard` | `DashboardViewModel` | `IUserDetailAPI`, `ITerminalApi` |
-| `menu` | Navigation hub + quick stats | `Menu` | `MenuViewModel` | — (reads DB) |
-| `dispenseFlow` | RX/NDC scan → pill count → persist → HL7 (orchestration only) | `DispenseFlow` | `DispenseFlowViewModel` | `IDrugAPI` (via `core/scanning`) |
-| `inventoryFlow` | Batch stock-count scan screen + stock-count variants | `InventoryScan` | `InventoryScanViewModel` (+ shared `PillScanningViewModel`) | — |
-| `batchCount` | Batch / stock-count grouping by NDC (`BatchNdcCard`, consumed by `BatchHistoryDetail`) | — (no route of its own) | `BatchViewModel` | — (reads DB) |
-| `countResume` | Resume partial/fixed/regular counts | `ResumeFixedCounts`, `ResumeRegularCounts`, `PartialCountsScreen` | `CountsViewModel`, `PartialCountsViewModel` | — |
-| `history` | Transaction & batch history, PDF export | `History`, `HistoryDetail`, `BatchHistoryDetail` | `HistoryViewModel`, `HistoryDetailsViewModel` | — (reads DB) |
-| `unsyncedTransaction` | List transactions awaiting sync | `UnsyncedTransactionScreen` | `UnsyncedTransactionViewModel` | — |
-| `profile` | View/update profile, delete account | `Profile` | `ProfileViewModel` | `IProfileApi` |
-| `settings` | App settings (history retention, CS double-count) | `Settings` | (uses `MainActivityViewModel` / settings repo) | settings API in `core/settings` |
-| `hl7` | HL7 orchestration (send/receive, notifications) | — (service-driven) | — | MLLP via `core/hl7` + HL7 AAR (`org.rite.hl7`) |
+| Feature               | Purpose                                                                                                            | Entry route (`Screen`)                           | ViewModel(s)                                                              | Backend API                                    |
+|-----------------------|--------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|---------------------------------------------------------------------------|------------------------------------------------|
+| `login`               | Email/credential login                                                                                             | `Login` (`"login"`)                              | `LoginViewModel`                                                          | `ILoginApi`                                    |
+| `verifyPin`           | OTP / PIN verification after login                                                                                 | `OtpVerify`                                      | `VerifyPinViewModel`                                                      | `IVerifyPinAPI`                                |
+| `dashboard`           | Home: counts, KPIs, terminal/user config                                                                           | `Dashboard`                                      | `DashboardViewModel`                                                      | `IUserDetailAPI`, `ITerminalApi`               |
+| `menu`                | Navigation hub + quick stats                                                                                       | `Menu`                                           | `MenuViewModel`                                                           | — (reads DB)                                   |
+| `dispense`            | RX/NDC scan → pill count → persist → HL7                                                                           | `DispenseFlow`                                   | `DispenseFlowViewModel`, `DispenseCountViewModel`                         | `IDrugAPI` (via `core/scanning`)               |
+| `stockCount`          | Stock count: sealed bottles (`sealed`), loose pills (`loose`), batch detail (`batch`), multi-table writes (`data`) | `StockCount`, `LooseCount`                       | `StockCountViewModel`, `LooseCountViewModel`, `StockBatchDetailViewModel` | — (reads/writes DB)                            |
+| `history`             | Transaction & batch history, PDF export                                                                            | `History`, `HistoryDetail`, `BatchHistoryDetail` | `HistoryViewModel`, `HistoryDetailsViewModel`                             | — (reads DB)                                   |
+| `unsyncedTransaction` | List transactions awaiting sync                                                                                    | `UnsyncedTransactionScreen`                      | `UnsyncedTransactionViewModel`                                            | —                                              |
+| `profile`             | View/update profile, delete account                                                                                | `Profile`                                        | `ProfileViewModel`                                                        | `IProfileApi`                                  |
+| `settings`            | App settings (history retention, CS double-count)                                                                  | `Settings`                                       | (uses `MainActivityViewModel` / settings repo)                            | settings API in `core/settings`                |
+| `hl7`                 | HL7 orchestration (send/receive, notifications)                                                                    | — (service-driven)                               | —                                                                         | MLLP via `core/hl7` + HL7 AAR (`org.rite.hl7`) |
 
 ---
 
@@ -38,35 +36,36 @@ picture see [`/docs/architecture.md`](../../../../../../../docs/architecture.md)
 
 ### `core/scanning` (shared scanning engine)
 
-Not a feature — the cross-cutting scanning/counting core that both `dispenseFlow`
-and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/).
+Not a feature — the cross-cutting scanning/counting core that both `dispense`
+and `stockCount` sit on. Lives in [`../core/scanning/`](../../core/scanning/).
 
 - **Holds.** On-device ML pill detection (`logic/`: `PillAnalyzer`,
   `PillDetectionModelLoader`, `GloveDetector`, `TrayColorDetector`, `NMS`,
-  `Postprocessor`, `CameraHelper`), the `FrameBarcodeAnalyzer`, the shared
-  `PillScanningViewModel`, the drug data/repo/DI layer (`IDrugRepository`/
-  `IDrugAPI`, `DrugModule`), scanning models/events (`DrugInfo`, `DetectedPill`,
-  `PillScanningUiState`, `TxnDetail`, `NavigationEvent`, `PillScanningEvent`), the shared
-  composables (`CameraFeed`, `CountOverlay`, `AddNoteDialog`,
-  `AddCountBubble`), and the count-mode UI in `presentation/compose/count/`.
+  `Postprocessor`, `CameraHelper`), the `FrameBarcodeAnalyzer`, the shared counting engine
+  (`engine/`: `PillCountingEngine`), the drug data/repo/DI layer (`IDrugRepository`/`IDrugAPI`,
+  `DrugResolver`, `DrugModule`), scanning models (`DrugInfo`, `DetectedPill`, `TxnDetail`), the
+  shared composables (`CameraFeed`,
+  `CountOverlay`, `AddNoteDialog`, `AddCountBubble`, `BtScannerInputBar`), and the count-mode UI in
+  `presentation/compose/count/`.
 - **Rule.** `core/scanning` depends on **nothing** in `feature/*` (acyclic). Both
   flows depend on it; never the reverse.
 - **Dependencies.** CameraX, ML Kit barcode, TensorFlow Lite (+GPU), OpenCV.
 
-### `dispenseFlow`
+### `dispense`
 
-- **Purpose.** Orchestration of the merged dispense/stock-count flow: RX scan →
-  NDC scan → on-device pill count → persist → optional HL7. The scanning/count engine and count-mode
-  UI are in `core/scanning`; this feature owns the screen and its ViewModel.
+- **Purpose.** The dispense flow: RX scan → NDC scan → on-device pill count → persist → optional
+  HL7. The scanning/count engine and count-mode UI are in
+  `core/scanning`; this feature owns the screen and its ViewModels.
 - **User flow.** Scan RX → scan/confirm NDC → CameraX preview → TFLite counts
   pills (glove + tray detection) → user ADDs counts → DONE persists a
   `DispenseTxn` (+ counts) to the encrypted DB → optional HL7 RXD/INV emitted.
-- **Entry points.** `Screen.DispenseFlow.createRoute(scanType, fromHl7, fromResume,
-  batchId, bucketId)`. `from_hl7` hydrates from a PMS-created transaction
-  (drug/NDC/target prefilled, RX scan skipped). Also entered from resume screens,
-  and from `inventoryFlow`'s SCAN PILLS hand-off (with a `batchId`).
-- **Key classes.** `DispenseFlowScreen`, `DispenseFlowViewModel`,
-  `DispenseFlowUiState`, `TargetPillsCountDialog`. The count-mode UI
+- **Entry points.** `Screen.DispenseFlow.createRoute(fromHl7, fromResume, fromQueue)`.
+  `from_hl7` hydrates from a PMS-created transaction (drug/NDC/target prefilled, RX scan skipped).
+  Also entered from the dashboard queue and to resume a partial count.
+- **Key classes.** `DispenseFlowScreen`, `DispenseFlowViewModel` (RX/NDC steps),
+  `DispenseCountViewModel` (pill count, `onAction(DispenseCountAction)`, one-off
+  `DispenseCountNavigation`), `DispenseFlowUiState`, `DispenseCountUiState`,
+  `TargetPillsCountDialog`. The count-mode UI
   (`InformationPanelSection`, `CountModePhone*`/`CountModeTablet*`, `CameraActionBar`,
   `HistoryMode*`, …) is in `core/scanning/presentation/compose/count/`. Shared engine via
   `core/scanning`.
@@ -75,18 +74,21 @@ and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/)
   [`/cleanup_report.md`](../../../../../../../cleanup_report.md) §4. Heavy
   on-device ML; resource cleanup of the camera analyzer on screen dispose matters.
 
-### `inventoryFlow`
+### `stockCount`
 
 - **Purpose.** Batch Stock Count: scan NDCs and tally bottles/pills per batch.
-  `InventoryFlowScreen` is a thin per-form-factor dispatcher over `shell/`
-  (camera + bottom-sheet host) wrapping the `variant/` panels.
-- **Entry / hand-off.** Entered via `Screen.InventoryScan` from the dashboard. Tapping SCAN PILLS
-  saves the active bottle's count and navigates to
-  `LooseCountScreen` (`feature/stockCount/loose`) for the loose-pill count — inventory
-  does **not** run its own counting UI.
-- **Key classes.** `InventoryFlowScreen`, `InventoryScanViewModel`, the four
-  `BatchStockCount{Phone,Tablet}{Portrait,Landscape}` variants, the
-  `InventoryScan*` shells, and `domain/model/BatchStockCountUiState`.
+- **`sealed/`.** The sealed-bottle screen, entered via `Screen.StockCount` from the dashboard.
+  `StockCountScreen` is a thin per-form-factor dispatcher over `shell/`
+  (`StockCountHost` + the `StockCount*Shell`s: camera + bottom-sheet host) wrapping the `variant/`
+  panels (`StockCount{Phone,Tablet}{Portrait,Landscape}`). Key classes: `StockCountViewModel`,
+  `domain/model/StockCountUiState`.
+- **`loose/`.** Tapping SCAN PILLS saves the active bottle's count and navigates to
+  `Screen.LooseCount`: `LooseCountScreen` + `LooseCountViewModel`, counting on
+  `PillCountingEngine`. The sealed screen does **not** run its own counting UI.
+- **`batch/`.** `StockBatchDetailViewModel` and `BatchNdcCard` (grouping by NDC), used by History's
+  `BatchHistoryDetail`; no route of its own.
+- **`data/`.** `StockCountRepository`: stock-count writes that span several tables
+  (`commitLooseCount`) and the photo files a count leaves behind.
 
 ### `login` + `verifyPin`
 

@@ -9,13 +9,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeout
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -26,6 +24,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
@@ -35,13 +34,14 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.permission.rememberPermissionState
-import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
-import com.dispensesure.retail.feature.stockCount.sealed.domain.model.StockCountUiState
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditDrugDetails
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.RecentBatchRow
+import com.dispensesure.retail.feature.stockCount.sealed.domain.model.StockCountUiState
 import com.dispensesure.retail.feature.stockCount.sealed.presentation.viewmodel.StockCountViewModel
 import com.dispensesure.retail.navigation.Screen
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 
 /**
  * Everything a form-factor shell needs to draw itself. The host bakes the
@@ -149,7 +149,7 @@ fun StockCountHost(
     }
 
     // After END COUNT confirms, leave the screen (pop, or fall back to Dashboard).
-    LaunchedEffect(batchEnded) { if (batchEnded) inventoryBack(navController) }
+    LaunchedEffect(batchEnded) { if (batchEnded) stockCountBack(navController) }
 
     // Returning from the SCAN PILLS loose-count flow persists open pills onto the
     // active NDC's txn but can't update this screen's in-memory card. Refresh the
@@ -187,7 +187,7 @@ fun StockCountHost(
     }
 
     // System back gesture: same safe behavior as the on-screen back arrow.
-    BackHandler { inventoryBack(navController) }
+    BackHandler { stockCountBack(navController) }
 
     // Named so the tour's dummy-Next handler below can invoke the exact same real
     // action a tap would, instead of duplicating it.
@@ -316,12 +316,12 @@ fun StockCountHost(
 }
 
 /**
- * Safe back for the inventory shells. `popBackStack()` silently does nothing and
+ * Safe back for the stock-count shells. `popBackStack()` silently does nothing and
  * returns false when this screen is the back-stack root (e.g. reached via a
  * navigation that cleared the stack). Fall back to the Dashboard so BACK always
  * leaves the screen.
  */
-internal fun inventoryBack(navController: NavController) {
+internal fun stockCountBack(navController: NavController) {
     val popped = navController.popBackStack()
     if (!popped) {
         navController.navigateBackToDashboard()

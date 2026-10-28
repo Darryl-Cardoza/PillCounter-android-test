@@ -46,6 +46,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
+import com.dispensesure.retail.core.utils.compose.repeatWhileHeld
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditDrugDetails
 import com.dispensesure.retail.ui.theme.AppTheme
@@ -181,8 +182,13 @@ internal fun EditDetailsContent(
                 sealed.forEachIndexed { index, row ->
                     EditBatchRowItem(
                         row = row,
-                        onIncrement = { sealed[index] = row.copy(qty = row.qty + 1) },
-                        onDecrement = { sealed[index] = row.copy(qty = (row.qty - 1).coerceAtLeast(0)) },
+                        onIncrement = {
+                            sealed[index] = sealed[index].copy(qty = sealed[index].qty + 1)
+                        },
+                        onDecrement = {
+                            sealed[index] =
+                                sealed[index].copy(qty = (sealed[index].qty - 1).coerceAtLeast(0))
+                        },
                         onDelete = { sealed.remove(row) },
                     )
                 }
@@ -204,8 +210,11 @@ internal fun EditDetailsContent(
                 open.forEachIndexed { index, row ->
                     EditBatchRowItem(
                         row = row,
-                        onIncrement = { open[index] = row.copy(qty = row.qty + 1) },
-                        onDecrement = { open[index] = row.copy(qty = (row.qty - 1).coerceAtLeast(0)) },
+                        onIncrement = { open[index] = open[index].copy(qty = open[index].qty + 1) },
+                        onDecrement = {
+                            open[index] =
+                                open[index].copy(qty = (open[index].qty - 1).coerceAtLeast(0))
+                        },
                         onDelete = { open.remove(row) },
                     )
                 }

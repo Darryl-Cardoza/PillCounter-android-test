@@ -44,10 +44,10 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
-import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
+import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraFeed
 import com.dispensesure.retail.core.scanning.presentation.compose.ContainerScanStrip
 import com.dispensesure.retail.core.scanning.presentation.compose.CountOverlay
@@ -77,7 +77,8 @@ import com.dispensesure.retail.core.utils.compose.VerifyNdcDetailsSheet
 import com.dispensesure.retail.core.utils.compose.VerifyRxDetailsInlinePanel
 import com.dispensesure.retail.core.utils.compose.VerifyRxDetailsSheet
 import com.dispensesure.retail.core.utils.permission.rememberPermissionStateDetailed
-import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountNavigation
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseStage
 import com.dispensesure.retail.feature.dispense.presentation.compose.DispenseQueuePanel
 import com.dispensesure.retail.feature.dispense.presentation.compose.TargetPillsCountDialog
@@ -89,7 +90,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlin.math.roundToInt
-import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountNavigation
 
 /**
  * Merged dispense flow screen.
@@ -181,7 +181,7 @@ fun DispenseFlowScreen(
     // screen on confirm.
     LaunchedEffect(Unit) {
         dispenseCountViewModel.resetGloveDetection()
-        dispenseCountViewModel.navigationEvent.collectLatest { event ->
+        dispenseCountViewModel.navigation.collectLatest { event ->
             when (event) {
                 is DispenseCountNavigation.NavigateToDashboard -> {
                     dispenseCountViewModel.resetGloveDetection()
@@ -218,7 +218,7 @@ fun DispenseFlowScreen(
 
     // History toggle. When true, the camera + pill panel are hidden and the
     // history list takes over the screen — same toggle the legacy
-    // InventoryFlowScreen used. Tapping the Total Count on the pill panel sets
+    // sealed stock-count screen used. Tapping the Total Count on the pill panel sets
     // this to true.
     var showHistory by rememberSaveable { mutableStateOf(false) }
     // Open-fullscreen image path for the history view. Hoisted to screen level
@@ -806,7 +806,7 @@ fun DispenseFlowScreen(
             }
     ) {
         // Camera + pill panel are hidden while the history view is up — matches
-        // the legacy InventoryFlowScreen behavior so CameraX doesn't rebind on
+        // the sealed stock-count screen's behavior so CameraX doesn't rebind on
         // rotation-driven lifecycle restarts behind the history list.
         if (!showHistory) {
             if (hasCameraPermission) {

@@ -36,8 +36,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.feature.stockCount.sealed.presentation.variant.StockCountPhoneLandscape
 import com.dispensesure.retail.feature.stockCount.sealed.presentation.variant.StockCountPhonePortrait
 import com.dispensesure.retail.feature.stockCount.sealed.presentation.variant.StockCountTabletLandscape
@@ -73,9 +73,11 @@ fun StockCountTabletLandscapeShell(
             .fillMaxSize()
             .background(AppTheme.extendedColors.primaryBackground),
     ) {
-        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+        Box(modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight()) {
             CameraPreview(frameTag = "tablet-ls", modifier = Modifier.fillMaxSize())
-            BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })
+            BackButton(navController, showBox = false, onClick = { stockCountBack(navController) })
 
             BtScannerInputBar(
                 input = btScannerInput,
@@ -146,7 +148,7 @@ fun StockCountPhoneLandscapeShell(
 
     Box(modifier = Modifier.fillMaxSize()) {
         CameraPreview(frameTag = "phone-ls", modifier = Modifier.fillMaxSize())
-        BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })
+        BackButton(navController, showBox = false, onClick = { stockCountBack(navController) })
 
         BtScannerInputBar(
             input = btScannerInput,
@@ -222,9 +224,11 @@ fun StockCountTabletPortraitShell(
             .fillMaxSize()
             .background(AppTheme.extendedColors.primaryBackground),
     ) {
-        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        Box(modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f)) {
             CameraPreview(frameTag = "tablet-pt", modifier = Modifier.fillMaxSize())
-            BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })
+            BackButton(navController, showBox = false, onClick = { stockCountBack(navController) })
 
             BtScannerInputBar(
                 input = btScannerInput,
@@ -358,6 +362,6 @@ fun StockCountPhonePortraitShell(
         )
 
         // BackButton drawn last so it sits above the scaffold and receives taps.
-        BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })
+        BackButton(navController, showBox = false, onClick = { stockCountBack(navController) })
     }
 }

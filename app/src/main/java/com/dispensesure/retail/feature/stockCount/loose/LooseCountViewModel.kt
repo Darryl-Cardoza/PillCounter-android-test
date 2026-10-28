@@ -121,7 +121,7 @@ class LooseCountViewModel @Inject constructor(
             LooseCountAction.ScreenTouched -> engine.noteActivity()
             LooseCountAction.CountSteadied -> engine.playCountSoundIfEnabled()
             is LooseCountAction.CameraHelperReady -> engine.attachCamera(action.cameraHelper)
-            LooseCountAction.PreviewSizeKnown -> engine.start()
+            LooseCountAction.CameraReady -> engine.start()
             is LooseCountAction.FrameArrived -> engine.onFrame(action.image)
             is LooseCountAction.FilteredPillsDrawn -> engine.onFilteredPills(action.filteredPills)
         }

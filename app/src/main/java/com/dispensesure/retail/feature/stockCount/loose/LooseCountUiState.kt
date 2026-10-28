@@ -62,7 +62,7 @@ sealed interface LooseCountAction {
     data object ScreenTouched : LooseCountAction
     data object CountSteadied : LooseCountAction
     data class CameraHelperReady(val cameraHelper: CameraHelper) : LooseCountAction
-    data object PreviewSizeKnown : LooseCountAction
+    data object CameraReady : LooseCountAction
     data class FrameArrived(val image: ImageProxy) : LooseCountAction
     data class FilteredPillsDrawn(val filteredPills: List<DetectedPill>) : LooseCountAction
 }

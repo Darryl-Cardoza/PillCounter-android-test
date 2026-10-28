@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.feature.dispense.domain.model
+package com.dispensesure.retail.feature.dispense.domain.model
 
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter

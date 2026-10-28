@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.feature.dispense.presentation.compose
+package com.dispensesure.retail.feature.dispense.presentation.compose
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
