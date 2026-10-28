@@ -290,6 +290,13 @@ class PreferenceHelperTest {
     }
 
     @Test
+    fun `isGrayscaleImage is false by default and true once colour images are turned off`() {
+        assertFalse(helper.isGrayscaleImage())
+        helper.saveIsColorImageEnabled(false)
+        assertTrue(helper.isGrayscaleImage())
+    }
+
+    @Test
     fun `getContext returns the injected context`() {
         assertEquals(context, helper.getContext())
     }

@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.core.scanning.presentation.compose.count
+package com.dispensesure.retail.core.scanning.presentation.compose.count
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background

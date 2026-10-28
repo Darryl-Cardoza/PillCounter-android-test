@@ -3,32 +3,32 @@ package com.dispensesure.retail.core.scanning.presentation.viewmodel
 import android.app.Application
 import android.graphics.Bitmap
 import androidx.core.content.ContextCompat
+import androidx.room.withTransaction
+import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.room.AppDatabase
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.UserDao
-import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.room.models.StockBatchEntity
-import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.DrugMasterEntity
+import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
-import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
-import com.dispensesure.retail.core.scanning.engine.frameForTest
-import com.dispensesure.retail.core.scanning.engine.lastAddSignatureForTest
-import com.dispensesure.retail.core.scanning.engine.putFrameForTest
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
+import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
+import com.dispensesure.retail.core.scanning.engine.frameForTest
+import com.dispensesure.retail.core.scanning.engine.lastAddSignatureForTest
+import com.dispensesure.retail.core.scanning.engine.putFrameForTest
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
@@ -39,8 +39,8 @@ import com.dispensesure.retail.core.utils.common.PhotoInfo
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.util.MainDispatcherRule
-import androidx.room.withTransaction
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
@@ -48,9 +48,9 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
-import io.mockk.verify
 import io.mockk.slot
 import io.mockk.unmockkAll
+import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -592,7 +592,6 @@ class PillScanningViewModelTest {
         viewModel.pausePillDetection()
 
         assertTrue(viewModel.uiState.value.detectedPills.isEmpty())
-        assertTrue(viewModel.trayDetections.value.isEmpty())
     }
 
     // ─────────────────────────── handleAddTransaction: frame at the tap ───────────────────────────

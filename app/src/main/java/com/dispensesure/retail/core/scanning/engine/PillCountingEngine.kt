@@ -614,7 +614,7 @@ class PillCountingEngine @AssistedInject constructor(
     }
 
     /** True when the backend's colour-image setting is off, so saved photos go grayscale. */
-    fun isGrayscale(): Boolean = !preferenceHelper.getIsColorImageEnabled()
+    fun isGrayscale(): Boolean = preferenceHelper.isGrayscaleImage()
 
     fun playCountSoundIfEnabled() {
         if (preferenceHelper.isSoundEnabled()) {

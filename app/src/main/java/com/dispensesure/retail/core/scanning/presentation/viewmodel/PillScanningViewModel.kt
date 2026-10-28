@@ -4,49 +4,37 @@ import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import androidx.camera.core.ImageProxy
 import androidx.annotation.StringRes
+import androidx.camera.core.ImageProxy
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.DISPENSED_QUANTITY_STEP
+import com.dispensesure.retail.core.models.ScheduleCode
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.room.dao.StockBatchDao
-import com.dispensesure.retail.core.tourguide.FtueController
-import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
-import com.dispensesure.retail.core.tourguide.TutorialData
-import com.dispensesure.retail.core.room.dao.insertNewInProgressBatch
-import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DrugMasterDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.room.models.StockBottleInfoEntity
-import com.dispensesure.retail.core.room.models.DrugMasterEntity
+import com.dispensesure.retail.core.room.dao.insertNewInProgressBatch
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
+import com.dispensesure.retail.core.room.models.DrugMasterEntity
+import com.dispensesure.retail.core.room.models.StockBottleInfoEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
-import com.dispensesure.retail.core.models.ScheduleCode
-import com.dispensesure.retail.core.models.isControlledDrugType
-import com.dispensesure.retail.core.security.ImageCrypto
-import com.dispensesure.retail.core.utils.common.HelperFunctions.saveBitmapToFile
-import com.dispensesure.retail.core.utils.common.OverlayUtils
-import com.dispensesure.retail.core.utils.common.SoundUtils
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
-import com.dispensesure.retail.core.utils.logger.AppLogger
-import com.dispensesure.retail.core.utils.logger.LogEvent
-import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.NavigationEvent
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
+import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
-import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import com.dispensesure.retail.core.scanning.engine.CaptureResult
@@ -57,7 +45,18 @@ import com.dispensesure.retail.core.scanning.engine.PillCountingEngine
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.logic.TrayColor
-import com.dispensesure.retail.core.scanning.logic.TrayDetection
+import com.dispensesure.retail.core.security.ImageCrypto
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
+import com.dispensesure.retail.core.tourguide.TutorialData
+import com.dispensesure.retail.core.utils.common.HelperFunctions.saveBitmapToFile
+import com.dispensesure.retail.core.utils.common.OverlayUtils
+import com.dispensesure.retail.core.utils.common.SoundUtils
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -242,11 +241,6 @@ class PillScanningViewModel @Inject constructor(
         .map { engineState -> engineState.glovesDetected }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    // ── NEW: expose tray detections so the UI can draw the tray boundary ──────
-    val trayDetections: StateFlow<List<TrayDetection>> = engine.state
-        .map { engineState -> engineState.trayDetections }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
     private var observeTxnDetailsJob: Job? = null
     private var stockCountBaseTotal: Int = -1
 
@@ -287,8 +281,6 @@ class PillScanningViewModel @Inject constructor(
                         detectedPills = engineState.detectedPills,
                         filteredPills = engineState.filteredPills,
                         gloveDetections = engineState.gloveDetections,
-                        imageFrameWidth = engineState.frameWidth,
-                        imageFrameHeight = engineState.frameHeight,
                         showIdleOverlay = engineState.showIdleOverlay,
                         isAddCooldown = engineState.isAddCooldown,
                         pendingTrayColorForClassification = engineState.pendingTrayColor,

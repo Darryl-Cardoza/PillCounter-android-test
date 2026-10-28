@@ -39,8 +39,6 @@ class PillScanningUiStateTest {
         showTargetCountDialog = true,
         showIdleOverlay = true,
         showNotesDialog = true,
-        imageFrameWidth = 640,
-        imageFrameHeight = 480,
         isAddCooldown = true,
         addCount = 3,
         showDialogForControl = true,
@@ -75,8 +73,6 @@ class PillScanningUiStateTest {
         assertFalse(s.showTargetCountDialog)
         assertFalse(s.showIdleOverlay)
         assertFalse(s.showNotesDialog)
-        assertEquals(0, s.imageFrameWidth)
-        assertEquals(0, s.imageFrameHeight)
         assertFalse(s.isAddCooldown)
         assertEquals(0, s.addCount)
         assertFalse(s.showDialogForControl)
@@ -111,8 +107,6 @@ class PillScanningUiStateTest {
         assertTrue(s.showTargetCountDialog)
         assertTrue(s.showIdleOverlay)
         assertTrue(s.showNotesDialog)
-        assertEquals(640, s.imageFrameWidth)
-        assertEquals(480, s.imageFrameHeight)
         assertTrue(s.isAddCooldown)
         assertEquals(3, s.addCount)
         assertTrue(s.showDialogForControl)
@@ -175,20 +169,18 @@ class PillScanningUiStateTest {
         assertTrue(s.component19())                     // showTargetCountDialog
         assertTrue(s.component20())                     // showIdleOverlay
         assertTrue(s.component21())                     // showNotesDialog
-        assertEquals(640, s.component22())              // imageFrameWidth
-        assertEquals(480, s.component23())              // imageFrameHeight
-        assertTrue(s.component24())                     // isAddCooldown
-        assertEquals(3, s.component25())                // addCount
-        assertTrue(s.component26())                     // showDialogForControl
-        assertEquals("err", s.component27())            // showErrorMessage
-        assertTrue(s.component28())                     // isHl7Txn
-        assertTrue(s.component29())                     // showCountMismatchDialog
-        assertTrue(s.component30())                     // showEndStockCountDialog
-        assertEquals(50, s.component31())               // stockCountSessionTotal
-        assertEquals(TrayColor.WHITE, s.component32())  // pendingTrayColorForClassification
-        assertTrue(s.component33())                     // showAddBottleDialog
-        assertTrue(s.component34())                     // showReplaceBottleDialog
-        assertTrue(s.component35())                     // canReset
-        assertTrue(s.component36())                     // showSkipStepDialog
+        assertTrue(s.component22())                     // isAddCooldown
+        assertEquals(3, s.component23())                // addCount
+        assertTrue(s.component24())                     // showDialogForControl
+        assertEquals("err", s.component25())            // showErrorMessage
+        assertTrue(s.component26())                     // isHl7Txn
+        assertTrue(s.component27())                     // showCountMismatchDialog
+        assertTrue(s.component28())                     // showEndStockCountDialog
+        assertEquals(50, s.component29())               // stockCountSessionTotal
+        assertEquals(TrayColor.WHITE, s.component30())  // pendingTrayColorForClassification
+        assertTrue(s.component31())                     // showAddBottleDialog
+        assertTrue(s.component32())                     // showReplaceBottleDialog
+        assertTrue(s.component33())                     // canReset
+        assertTrue(s.component34())                     // showSkipStepDialog
     }
 }

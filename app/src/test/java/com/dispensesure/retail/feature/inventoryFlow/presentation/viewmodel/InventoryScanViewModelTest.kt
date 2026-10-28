@@ -3,16 +3,17 @@ package com.dispensesure.retail.feature.inventoryFlow.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
+import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
+import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.StockBottleInfoEntity
-import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
-import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
 import com.dispensesure.retail.core.room.models.dtos.RequestedDrugDto
+import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
@@ -20,7 +21,6 @@ import com.dispensesure.retail.core.scanning.domain.model.BarcodeData
 import com.dispensesure.retail.core.scanning.domain.model.DrugInfo
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
-import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
@@ -1176,15 +1176,15 @@ class InventoryScanViewModelTest {
     // ─────────────────────────── grayscale for the barcode analyzer ───────────────────────────
 
     @Test
-    fun `isGrayscaleImage is true when the colour image setting is off`() = runTest {
-        every { preferenceHelper.getIsColorImageEnabled() } returns false
+    fun `isGrayscaleImage is true when PreferenceHelper says grayscale`() = runTest {
+        every { preferenceHelper.isGrayscaleImage() } returns true
 
         assertTrue(createViewModel().isGrayscaleImage())
     }
 
     @Test
-    fun `isGrayscaleImage is false when the colour image setting is on`() = runTest {
-        every { preferenceHelper.getIsColorImageEnabled() } returns true
+    fun `isGrayscaleImage is false when PreferenceHelper says colour`() = runTest {
+        every { preferenceHelper.isGrayscaleImage() } returns false
 
         assertFalse(createViewModel().isGrayscaleImage())
     }

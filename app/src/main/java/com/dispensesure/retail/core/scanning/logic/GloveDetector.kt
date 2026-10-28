@@ -49,7 +49,7 @@ import kotlin.math.min
  * `classId == 0 && confidence >= 0.75` for "user is wearing gloves",
  * so the existing 0.75 hysteresis threshold continues to apply.
  * The class-1 (`no_gloves`) detections are surfaced for the on-screen
- * overlay (CameraPreviewSection draws them red) but do not trip the gate.
+ * overlay (CountOverlay draws them red) but do not trip the gate.
  *
  * NOT thread-safe — scratch buffers are reused across frames. Call
  * `detect` from a single coroutine (PillAnalyzer does this).
@@ -76,7 +76,7 @@ object GloveDetector {
     const val DEFAULT_CONF_THRESHOLD = 0.80f
     const val DEFAULT_NMS_IOU = 0.45f
 
-    // Public class-label constants (consumed by CameraPreviewSection to colour
+    // Public class-label constants (consumed by CountOverlay to colour
     // the on-screen overlay). Kept as the single source of truth for CLASS_NAMES.
     const val CLASS_GLOVES = "gloves"
     const val CLASS_NO_GLOVES = "no_gloves"

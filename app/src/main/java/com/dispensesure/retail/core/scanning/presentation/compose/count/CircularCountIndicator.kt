@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.core.scanning.presentation.compose.count
+package com.dispensesure.retail.core.scanning.presentation.compose.count
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode

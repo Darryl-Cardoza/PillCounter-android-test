@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.core.scanning.presentation.compose.count
+package com.dispensesure.retail.core.scanning.presentation.compose.count
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -43,6 +43,7 @@ import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import com.dispensesure.retail.core.utils.common.FullScreenImageDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -52,7 +53,6 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.compose.cardSelectionShadow
 import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
-import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import com.dispensesure.retail.ui.theme.AppTheme
 import com.dispensesure.retail.ui.theme.AppTheme.dimens
 import java.io.File

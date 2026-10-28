@@ -1,8 +1,8 @@
-﻿package com.dispensesure.retail.feature.dispenseFlow.presentation
+package com.dispensesure.retail.feature.dispenseFlow.presentation
 
 import android.Manifest
-import android.util.Log
 import android.content.res.Configuration
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -57,11 +57,20 @@ import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraFeed
 import com.dispensesure.retail.core.scanning.presentation.compose.CountOverlay
+import com.dispensesure.retail.core.scanning.presentation.compose.count.CircularCountIndicator
+import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModeBottomStrip
+import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModePhonePortraitDetailsBar
+import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModeTopDetailsBar
+import com.dispensesure.retail.core.scanning.presentation.compose.count.CountPanelState
+import com.dispensesure.retail.core.scanning.presentation.compose.count.HistoryModeLandscape
+import com.dispensesure.retail.core.scanning.presentation.compose.count.HistoryModePortrait
+import com.dispensesure.retail.core.scanning.presentation.compose.count.InformationPanelSection
+import com.dispensesure.retail.core.scanning.presentation.compose.count.countModeStepSize
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
-import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
@@ -83,15 +92,6 @@ import com.dispensesure.retail.core.utils.permission.rememberPermissionStateDeta
 import com.dispensesure.retail.feature.dispenseFlow.domain.model.DispenseStage
 import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.BtScannerInputBar
 import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.DispenseQueuePanel
-import com.dispensesure.retail.core.scanning.presentation.compose.count.CircularCountIndicator
-import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModeBottomStrip
-import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModePhonePortraitDetailsBar
-import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModeTopDetailsBar
-import com.dispensesure.retail.core.scanning.presentation.compose.count.CountPanelState
-import com.dispensesure.retail.core.scanning.presentation.compose.count.HistoryModeLandscape
-import com.dispensesure.retail.core.scanning.presentation.compose.count.HistoryModePortrait
-import com.dispensesure.retail.core.scanning.presentation.compose.count.InformationPanelSection
-import com.dispensesure.retail.core.scanning.presentation.compose.count.countModeStepSize
 import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.TargetPillsCountDialog
 import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
 import com.dispensesure.retail.navigation.Screen
@@ -320,7 +320,6 @@ fun DispenseFlowScreen(
     val glovesDetected by pillVm.glovesDetected.collectAsState()
     val recentDetectionCounts by pillVm.lastTenDetections.collectAsState()
     val isCapturing by pillVm.isCapturing.collectAsState()
-    val engineState by pillVm.engineState.collectAsState()
     val showFlash by pillVm.showFlash.collectAsState()
     val txnInfo by pillVm.txnInfo.collectAsState()
 
@@ -1054,7 +1053,7 @@ fun DispenseFlowScreen(
                         .tourTarget(ftueState, "camera_preview"),
                 )
                 CountOverlay(
-                    engineState = engineState,
+                    engineStates = pillVm.engineState,
                     runningTotal = pillState.txnDetailHistory.sumOf { txnDetail -> txnDetail.count },
                     targetCount = pillState.targetCount,
                     stepType = pillStepType,

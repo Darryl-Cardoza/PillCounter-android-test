@@ -46,9 +46,9 @@ and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/)
   `Postprocessor`, `CameraHelper`), the `FrameBarcodeAnalyzer`, the shared
   `PillScanningViewModel`, the drug data/repo/DI layer (`IDrugRepository`/
   `IDrugAPI`, `DrugModule`), scanning models/events (`DrugInfo`, `DetectedPill`,
-  `PillScanningUiState`, `TxnDetail`, `NavigationEvent`, `PillScanningEvent`),
-  and the three genuinely shared composables (`CameraPreviewSection`,
-  `AddNoteDialog`, `AddCountBubble`).
+  `PillScanningUiState`, `TxnDetail`, `NavigationEvent`, `PillScanningEvent`), the shared
+  composables (`CameraFeed`, `CountOverlay`, `AddNoteDialog`,
+  `AddCountBubble`), and the count-mode UI in `presentation/compose/count/`.
 - **Rule.** `core/scanning` depends on **nothing** in `feature/*` (acyclic). Both
   flows depend on it; never the reverse.
 - **Dependencies.** CameraX, ML Kit barcode, TensorFlow Lite (+GPU), OpenCV.
@@ -56,9 +56,8 @@ and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/)
 ### `dispenseFlow`
 
 - **Purpose.** Orchestration of the merged dispense/stock-count flow: RX scan →
-  NDC scan → on-device pill count → persist → optional HL7. The scanning/count
-  engine itself is in `core/scanning`; this feature owns the screen, its
-  ViewModel, and the count-mode UI.
+  NDC scan → on-device pill count → persist → optional HL7. The scanning/count engine and count-mode
+  UI are in `core/scanning`; this feature owns the screen and its ViewModel.
 - **User flow.** Scan RX → scan/confirm NDC → CameraX preview → TFLite counts
   pills (glove + tray detection) → user ADDs counts → DONE persists a
   `DispenseTxn` (+ counts) to the encrypted DB → optional HL7 RXD/INV emitted.
@@ -67,9 +66,10 @@ and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/)
   (drug/NDC/target prefilled, RX scan skipped). Also entered from resume screens,
   and from `inventoryFlow`'s SCAN PILLS hand-off (with a `batchId`).
 - **Key classes.** `DispenseFlowScreen`, `DispenseFlowViewModel`,
-  `DispenseFlowUiState`; count-mode UI in `presentation/compose/`
+  `DispenseFlowUiState`, `TargetPillsCountDialog`. The count-mode UI
   (`InformationPanelSection`, `CountModePhone*`/`CountModeTablet*`, `CameraActionBar`,
-  `HistoryMode*`, `TargetPillsCountDialog`, …). Shared engine via `core/scanning`.
+  `HistoryMode*`, …) is in `core/scanning/presentation/compose/count/`. Shared engine via
+  `core/scanning`.
 - **Known risks.** `Screen.PillCount`/`Screen.ScanBarcode` referenced in resume
   screens are **not wired** in the nav graph (latent crash) — see
   [`/cleanup_report.md`](../../../../../../../cleanup_report.md) §4. Heavy

@@ -1,4 +1,4 @@
-﻿@file:Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
+@file:Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
 
 package com.dispensesure.retail.core.scanning.presentation.compose
 
@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,6 +40,7 @@ import com.dispensesure.retail.core.scanning.engine.EngineState
 import com.dispensesure.retail.core.scanning.logic.TrayClass
 import com.dispensesure.retail.core.utils.common.OverlayUtils
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Draws the count over [CameraFeed]: tray box, pill dots (green = keep, red = push
@@ -47,7 +49,8 @@ import kotlinx.coroutines.flow.Flow
 @Composable
 fun CountOverlay(
     // Tray rects are in original-image pixels; pill x / y are normalised to the frame.
-    engineState: EngineState,
+    // Collected here so each camera frame redraws only the overlay, not the whole screen.
+    engineStates: StateFlow<EngineState>,
     // Pills already added this step; the green / red split works from what is left.
     runningTotal: Int,
     targetCount: Int,
@@ -65,6 +68,7 @@ fun CountOverlay(
     var popKey by remember { mutableIntStateOf(0) }
     var popText by remember { mutableStateOf("+0") }
 
+    val engineState by engineStates.collectAsState()
     val pills = engineState.detectedPills
     val trayDetections = engineState.trayDetections
     val imageFrameWidth = engineState.frameWidth
@@ -96,10 +100,6 @@ fun CountOverlay(
                 key(popKey) { AddCountBubble(text = popText) }
             }
 
-            // Hoisted overlay scratch objects. The Canvas overlay below redraws on every
-            // frame of detection updates, and allocating Paint/Rect inside the draw loop
-            // is the kind of per-frame churn that wrecks frame budget on weak devices.
-            // Paints are immutable per-class so we can share them across frames.
             // ── OVERLAY CANVAS ────────────────────────────────────────────
             Canvas(modifier = Modifier.matchParentSize()) {
 
@@ -284,13 +284,6 @@ fun CountOverlay(
                 }
 
             }
-
-            // ── WORKFLOW STEPPER ──────────────────────────────────────────
-            // Both orientations now render the stepper inside the bottom count
-            // bar of the full-bleed count overlay (see CountModeLandscape /
-            // CountModeOverlay), so there is no separate floating stepper here.
-            // During the pre-scan stages the workflow steps list is empty, so a
-            // floating stepper would have nothing to show anyway.
 
         } else {
             // ── CAPTURED BITMAP VIEW ──────────────────────────────────────
