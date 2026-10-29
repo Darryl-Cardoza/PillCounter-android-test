@@ -24,7 +24,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toDateString
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toTimeString
 import com.dispensesure.retail.core.utils.common.drugDisplayName
-import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
+import com.dispensesure.retail.core.utils.compose.HeadlineBar
 import com.dispensesure.retail.feature.history.presentation.compose.DrugInfoSection
 import com.dispensesure.retail.feature.history.presentation.viewmodel.HistoryDetailsViewModel
 import com.dispensesure.retail.ui.theme.AppTheme

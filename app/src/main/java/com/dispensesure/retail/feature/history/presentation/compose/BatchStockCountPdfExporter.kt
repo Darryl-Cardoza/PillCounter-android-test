@@ -13,7 +13,7 @@ import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
-import com.dispensesure.retail.feature.batchCount.domain.model.BatchDrugGroup
+import com.dispensesure.retail.feature.stockCount.batch.domain.model.BatchDrugGroup
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat

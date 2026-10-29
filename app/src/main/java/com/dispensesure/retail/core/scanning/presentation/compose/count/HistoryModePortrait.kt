@@ -53,7 +53,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.compose.cardSelectionShadow
-import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
+import com.dispensesure.retail.core.utils.compose.HeadlineBar
 import com.dispensesure.retail.ui.theme.AppTheme
 import com.dispensesure.retail.ui.theme.AppTheme.dimens
 import java.io.File

@@ -102,22 +102,129 @@ class LogEventClassifierTest {
     }
 
     @Test
-    fun `DispenseFlowViewModel branches on ndc, vial, rx keywords`() {
+    fun `DispenseFlowVM branches on ndc, vial, rx keywords`() {
         assertEquals(
             LogEvent.NDC_SCAN_FAILED,
-            LogEventClassifier.classify(entry(className = "DispenseFlowViewModel", message = "NDC scan failed"))
+            LogEventClassifier.classify(
+                entry(
+                    className = "DispenseFlowVM",
+                    message = "NDC scan failed",
+                ),
+            ),
         )
         assertEquals(
             LogEvent.VIAL_SCAN_FAILED,
-            LogEventClassifier.classify(entry(className = "DispenseFlowViewModel", message = "Vial scan failed"))
+            LogEventClassifier.classify(
+                entry(
+                    className = "DispenseFlowVM",
+                    message = "Vial scan failed",
+                ),
+            ),
         )
         assertEquals(
             LogEvent.RX_SCAN_FAILED,
-            LogEventClassifier.classify(entry(className = "DispenseFlowViewModel", message = "RX scan failed"))
+            LogEventClassifier.classify(
+                entry(
+                    className = "DispenseFlowVM",
+                    message = "RX scan failed",
+                ),
+            ),
         )
         assertEquals(
             LogEvent.DISPENSE_FAILED,
-            LogEventClassifier.classify(entry(className = "DispenseFlowViewModel", message = "Something else failed"))
+            LogEventClassifier.classify(
+                entry(
+                    className = "DispenseFlowVM",
+                    message = "Something else failed",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `StockCountVM, LooseCountVM and StockCountRepository map to inventory events`() {
+        assertEquals(
+            LogEvent.INVENTORY_SCAN_FAILED,
+            LogEventClassifier.classify(entry(className = "StockCountVM", message = "scan failed")),
+        )
+        assertEquals(
+            LogEvent.INVENTORY_COUNT_FAILED,
+            LogEventClassifier.classify(entry(className = "StockCountVM", message = "save failed")),
+        )
+        assertEquals(
+            LogEvent.INVENTORY_COUNT_FAILED,
+            LogEventClassifier.classify(entry(className = "LooseCountVM", message = "save failed")),
+        )
+        assertEquals(
+            LogEvent.INVENTORY_COUNT_FAILED,
+            LogEventClassifier.classify(
+                entry(
+                    className = "StockCountRepository",
+                    message = "commit failed",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `DispenseCountVM and PillCountingEngine map to pill count events`() {
+        assertEquals(
+            LogEvent.MODEL_LOAD_FAILED,
+            LogEventClassifier.classify(
+                entry(
+                    className = "DispenseCountVM",
+                    message = "model load failed",
+                ),
+            ),
+        )
+        assertEquals(
+            LogEvent.PILL_COUNT_FAILED,
+            LogEventClassifier.classify(
+                entry(
+                    className = "DispenseCountVM",
+                    message = "count failed",
+                ),
+            ),
+        )
+        assertEquals(
+            LogEvent.GLOVE_DETECT_FAILED,
+            LogEventClassifier.classify(
+                entry(
+                    className = "PillCountingEngine",
+                    message = "glove check failed",
+                ),
+            ),
+        )
+        assertEquals(
+            LogEvent.PILL_COUNT_FAILED,
+            LogEventClassifier.classify(
+                entry(
+                    className = "PillCountingEngine",
+                    message = "frame failed",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `StockBatchDetailViewModel branches on delete`() {
+        assertEquals(
+            LogEvent.BATCH_DELETE_FAILED,
+            LogEventClassifier.classify(
+                entry(
+                    className = "StockBatchDetailViewModel",
+                    message = "delete failed",
+                ),
+            ),
+        )
+        assertEquals(
+            LogEvent.BATCH_CREATE_FAILED,
+            LogEventClassifier.classify(
+                entry(
+                    className = "StockBatchDetailViewModel",
+                    message = "load failed",
+                ),
+            ),
         )
     }
 

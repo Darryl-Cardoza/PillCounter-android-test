@@ -34,7 +34,7 @@ import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.compose.DrugCountRow
 import com.dispensesure.retail.core.utils.compose.DrugCountRowData
-import com.dispensesure.retail.feature.countResume.domain.model.CountItem
+import com.dispensesure.retail.feature.unsyncedTransaction.domain.model.CountItem
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.history.presentation.compose.BatchHistoryRow
 import com.dispensesure.retail.ui.theme.AppTheme

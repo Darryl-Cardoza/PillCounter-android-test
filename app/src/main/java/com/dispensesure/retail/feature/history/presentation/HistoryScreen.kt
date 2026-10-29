@@ -20,7 +20,7 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.compose.SplitResponsive
-import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
+import com.dispensesure.retail.core.utils.compose.HeadlineBar
 import com.dispensesure.retail.feature.history.domain.model.HistoryDeleteFilter
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.history.domain.model.ToggleOption

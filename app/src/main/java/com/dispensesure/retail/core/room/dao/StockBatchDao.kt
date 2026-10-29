@@ -359,7 +359,7 @@ interface StockBatchDao {
  * Description:
  * Single source of truth for the "mint a new batch" write. Used by every path that
  * lazily creates a batch on the first successful scan (Inventory quick action's
- * [com.dispensesure.retail.feature.inventoryFlow.presentation.viewmodel.InventoryScanViewModel.ensureBatchCreated]
+ * [com.dispensesure.retail.feature.stockCount.sealed.presentation.viewmodel.StockCountViewModel.ensureBatchCreated]
  * and the loose-count save in
  * [com.dispensesure.retail.feature.stockCount.data.StockCountRepository.commitLooseCount]).
  *

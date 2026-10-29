@@ -454,7 +454,7 @@ object HL7MessageBuilder {
      * one fixed shape. Sealed bottles are summed; a line with loose pills counts as
      * one open bottle (no open-bottle column exists in the stock model). The
      * inventory screen derives its bottle count the same way — if an open-bottle
-     * column ever lands, this and `InventoryScanViewModel.toRecentRows` change together.
+     * column ever lands, this and `StockCountViewModel.toRecentRows` change together.
      *
      * ORC-2 carries this batch's bucketId, and — when this batch answers a
      * PMS-originated INR^U06 request (`batch.requestIdFromPMS` non-blank) — that

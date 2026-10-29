@@ -629,6 +629,8 @@
     <string name="batch_stock_count_open_pills">Open Pills</string>
     <string name="batch_stock_count_edit">Edit</string>
     <string name="batch_stock_count_delete_row">Delete</string>
+    <string name="batch_stock_count_increase">Increase</string>
+    <string name="batch_stock_count_decrease">Decrease</string>
 
     <string name="violation_screen_overlay">Screen overlay detected — another app may be intercepting touch input</string>
     <string name="permission_location_rationale">

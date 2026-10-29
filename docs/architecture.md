@@ -21,8 +21,8 @@ network auto-discovery (NSD). Data is persisted in an **encrypted Room
 │ MainActivity (single Activity, @AndroidEntryPoint)                 │
 │  └─ Compose NavHost (navigation/AppNavGraph.kt)                    │
 │      ├─ auth graph: Login → OtpVerify                              │
-│      └─ app graph:  Dashboard, Menu, DispenseFlow, PillScanning,   │
-│                     History, Profile, Settings, Resume…            │
+│      └─ app graph:  Dashboard, Menu, DispenseFlow, StockCount,     │
+│                     History, Profile, Settings, LooseCount…        │
 └──────────────────────────────────────────────────────────────────┘
             │ Hilt @HiltViewModel                     │ field-injected
             ▼                                          ▼
@@ -117,10 +117,11 @@ presentation-heavy). Shared infrastructure lives under `core/`.
   `MainActivity` based on auth state (auth graph vs. dashboard).
 - Primary flows:
   - `Login → OtpVerify → Dashboard`
-  - `Dashboard → {Menu, InventoryScan, History, PartialCounts}`
+  - `Dashboard → {Menu, DispenseFlow, StockCount, HistoryDetail, BatchHistoryDetail, Profile}`
+  - `Menu → History`
   - `DispenseFlow` is the merged single-screen RX-scan → NDC-scan → pill-count
     transaction flow (also entered from HL7/PMS-created transactions via the
-    `from_hl7` flag, and from resume screens).
+    `from_hl7` flag, and when resuming a count from the Dashboard).
 - **Known latent issue (see cleanup_report.md):** `Screen.PillCount` and
   `Screen.ScanBarcode` are referenced in code but their `composable()` entries
   are commented out in `AppNavGraph`, so navigating there has no destination.
@@ -134,9 +135,9 @@ presentation-heavy). Shared infrastructure lives under `core/`.
 - Each screen has a ViewModel exposing a `StateFlow<…UiState>` (immutable data
   class) collected with `collectAsStateWithLifecycle()`. One-shot effects
   (navigation, toasts) are modeled as `…Event` types delivered via channels/flows
-  (`countResume`, `dispenseFlow` have explicit `NavigationEvent`/`*Event` types).
+  (`dispense` has an explicit `DispenseCountNavigation` type).
 - UI is split into responsive **variants** (`variant/Dashboard*`,
-  `pillCountScan/variant/BatchStockCount*`) for phone/tablet × portrait/landscape.
+  `stockCount/sealed/presentation/variant/StockCount*`) for phone/tablet × portrait/landscape.
 
 ---
 

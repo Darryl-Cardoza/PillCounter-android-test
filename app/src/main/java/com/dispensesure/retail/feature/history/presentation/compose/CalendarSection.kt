@@ -27,7 +27,7 @@ import java.time.LocalDate
 import java.util.Locale
 import androidx.compose.runtime.collectAsState
 import com.kizitonwose.calendar.core.DayPosition
-import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
+import com.dispensesure.retail.core.utils.compose.HeadlineBar
 
 /**
  * Calendar section of the History screen.

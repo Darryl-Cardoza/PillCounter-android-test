@@ -73,20 +73,20 @@ object LogEventClassifier {
             "DatabaseKeyProvider" ->
                 if ("rotate" in message) LogEvent.KEK_ROTATE_FAILED else LogEvent.DB_KEY_ROTATE_FAILED
 
-            "DispenseFlowViewModel" -> when {
+            "DispenseFlowVM" -> when {
                 "ndc" in message -> LogEvent.NDC_SCAN_FAILED
                 "vial" in message -> LogEvent.VIAL_SCAN_FAILED
                 "rx" in message -> LogEvent.RX_SCAN_FAILED
                 else -> LogEvent.DISPENSE_FAILED
             }
 
-            "BatchViewModel" ->
+            "StockBatchDetailViewModel" ->
                 if ("delete" in message) LogEvent.BATCH_DELETE_FAILED else LogEvent.BATCH_CREATE_FAILED
 
-            "InventoryScanViewModel" ->
+            "StockCountVM", "LooseCountVM", "StockCountRepository" ->
                 if ("scan" in message) LogEvent.INVENTORY_SCAN_FAILED else LogEvent.INVENTORY_COUNT_FAILED
 
-            "PillScanningViewModel" -> when {
+            "DispenseCountVM", "PillCountingEngine" -> when {
                 "model" in message -> LogEvent.MODEL_LOAD_FAILED
                 "glove" in message -> LogEvent.GLOVE_DETECT_FAILED
                 "tray" in message -> LogEvent.TRAY_CLASSIFY_FAILED

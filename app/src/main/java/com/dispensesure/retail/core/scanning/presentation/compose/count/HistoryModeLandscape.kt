@@ -46,7 +46,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSpForPillCountingHistoryScreen
 import com.dispensesure.retail.core.utils.common.drugDisplayName
-import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
+import com.dispensesure.retail.core.utils.compose.HeadlineBar
 import com.dispensesure.retail.ui.theme.AppTheme
 import com.dispensesure.retail.ui.theme.AppTheme.dimens
 

@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.navigation
+package com.dispensesure.retail.navigation
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -7,11 +7,10 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.dispensesure.retail.feature.dashboard.presentation.DashboardScreen
-import com.dispensesure.retail.feature.dispenseFlow.presentation.DispenseFlowScreen
+import com.dispensesure.retail.feature.dispense.presentation.DispenseFlowScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceIntroScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceRegistrationScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceUsersListScreen
-import com.dispensesure.retail.feature.inventoryFlow.presentation.InventoryFlowScreen
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.history.presentation.BatchHistoryDetailScreen
 import com.dispensesure.retail.feature.history.presentation.HistoryDetailScreen
@@ -20,6 +19,7 @@ import com.dispensesure.retail.feature.menu.presentation.MenuScreen
 import com.dispensesure.retail.feature.profile.presentation.ProfileScreen
 import com.dispensesure.retail.feature.settings.presentation.SettingsScreen
 import com.dispensesure.retail.feature.stockCount.loose.LooseCountScreen
+import com.dispensesure.retail.feature.stockCount.sealed.presentation.StockCountScreen
 import com.dispensesure.retail.feature.unsyncedTransaction.presentation.compose.UnsyncedTransactionScreen
 
 // Define constants for nested graph routes for better organization
@@ -71,13 +71,6 @@ fun AppNavGraph(
 //            ScanBarCodeScreen(navController, scanType, txnScanType, batchId = batchId)
 //        }
 
-//        composable(
-//            route = Screen.PillCount.route, arguments = Screen.PillCount.navArguments
-//        ) { backStackEntry ->
-//            val countType = backStackEntry.arguments?.getString(Screen.PillCount.ARG_TYPE) ?: ""
-//            InventoryFlowScreen(navController, countType)
-//        }
-
         // Merged dispense flow (RX + NDC + pill counting on one screen).
         composable(
             route = Screen.DispenseFlow.route, arguments = Screen.DispenseFlow.navArguments
@@ -103,10 +96,10 @@ fun AppNavGraph(
         }
 
         composable(
-            route = Screen.InventoryScan.route,
-            arguments = Screen.InventoryScan.navArguments,
+            route = Screen.StockCount.route,
+            arguments = Screen.StockCount.navArguments,
         ) {
-            InventoryFlowScreen(navController = navController)
+            StockCountScreen(navController = navController)
         }
 
         // Loose-pill count for a stock batch (SCAN PILLS on the sealed-bottle screen).

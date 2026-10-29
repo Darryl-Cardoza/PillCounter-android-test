@@ -37,6 +37,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
+import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraFeed
 import com.dispensesure.retail.core.scanning.presentation.compose.ContainerScanStrip
 import com.dispensesure.retail.core.scanning.presentation.compose.CountOverlay
@@ -52,7 +53,6 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.core.utils.permission.rememberPermissionStateDetailed
-import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.BtScannerInputBar
 import com.dispensesure.retail.navigation.Screen
 import kotlinx.coroutines.delay
 
@@ -287,7 +287,7 @@ fun LooseCountScreen(
                     onCameraHelperReady = { cameraHelper ->
                         viewModel.onAction(LooseCountAction.CameraHelperReady(cameraHelper))
                     },
-                    onCameraReady = { viewModel.onAction(LooseCountAction.PreviewSizeKnown) },
+                    onCameraReady = { viewModel.onAction(LooseCountAction.CameraReady) },
                     modifier = Modifier.fillMaxSize(),
                 )
                 CountOverlay(
