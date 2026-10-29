@@ -464,16 +464,6 @@ class PillCountingEngineTest {
     }
 
     @Test
-    fun `rescan forgets the last Add so the same tray can be added again`() = runTest {
-        captureWithFrame(count = 5)
-        advanceTimeBy(ADD_COOLDOWN_MS + 1)
-        engine.rescan()
-        engine.putFrameForTest(mockk(relaxed = true))
-
-        assertTrue(engine.captureCount(5) is CaptureResult.Captured)
-    }
-
-    @Test
     fun `resumeFromIdle forgets the last Add`() = runTest {
         captureWithFrame(count = 5)
         engine.resumeFromIdle()

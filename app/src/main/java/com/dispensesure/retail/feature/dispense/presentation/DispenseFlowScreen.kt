@@ -78,7 +78,7 @@ import com.dispensesure.retail.core.utils.compose.VerifyRxDetailsInlinePanel
 import com.dispensesure.retail.core.utils.compose.VerifyRxDetailsSheet
 import com.dispensesure.retail.core.utils.permission.rememberPermissionStateDetailed
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
-import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountNavigation
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountEffect
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseStage
 import com.dispensesure.retail.feature.dispense.presentation.compose.DispenseQueuePanel
 import com.dispensesure.retail.feature.dispense.presentation.compose.TargetPillsCountDialog
@@ -86,7 +86,6 @@ import com.dispensesure.retail.feature.dispense.presentation.viewmodel.DispenseC
 import com.dispensesure.retail.feature.dispense.presentation.viewmodel.DispenseFlowViewModel
 import com.dispensesure.retail.ui.theme.AppTheme
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlin.math.roundToInt
@@ -135,7 +134,7 @@ fun DispenseFlowScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val isTabletDevice = configuration.smallestScreenWidthDp >= 600
-    val isSoundEnabled by dispenseCountViewModel.isSoundEnabled.collectAsState()
+    val isSoundEnabled = dispenseCountState.isVoiceOverEnabled
     val keyboardController = LocalSoftwareKeyboardController.current
 
     val ftueState = FtueController.state
@@ -174,20 +173,18 @@ fun DispenseFlowScreen(
         }
     }
 
-    // One-time init for the pill counting workflow side: reset glove state and
-    // start listening for the dispenseCountViewModel's own navigation events (Done → Dashboard).
+    // Listen for the dispenseCountViewModel's toasts and its "finished" (Done → Dashboard).
     // Without this collect, hitting "All Done" in the pill panel would
     // fire the confirmation dialog but the user would never actually leave the
     // screen on confirm.
     LaunchedEffect(Unit) {
-        dispenseCountViewModel.resetGloveDetection()
-        dispenseCountViewModel.navigation.collectLatest { event ->
-            when (event) {
-                is DispenseCountNavigation.NavigateToDashboard -> {
-                    dispenseCountViewModel.resetGloveDetection()
+        dispenseCountViewModel.effects.collect { effect ->
+            when (effect) {
+                is DispenseCountEffect.ShowToast -> showToast(context, effect.text)
+                DispenseCountEffect.Finished -> {
                     // Do NOT reset workflow steps here — that changes pillStepType
                     // while still on COUNTING stage and triggers unwanted TTS speech.
-                    // Steps are reset via LaunchedEffect(stage) when stage becomes QUEUE.
+                    // Steps are reset via StageChanged(QUEUE) in onStageChanged when stage becomes QUEUE.
                     // Always check for pending dispense items after completing a transaction;
                     // show the queue if any exist, otherwise navigate to Dashboard.
                     dispenseVm.resetToQueueOrNavigateDashboard()
@@ -227,28 +224,14 @@ fun DispenseFlowScreen(
     // drop the user back to the history grid.
     var fullScreenImagePath by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(showHistory) {
-        if (showHistory) {
-            dispenseCountViewModel.pauseIdleTimer()
-        } else {
-            dispenseCountViewModel.resetIdleTimer()
-        }
-        dispenseCountViewModel.setCameraPaused(showHistory)
+        dispenseCountViewModel.onAction(DispenseCountAction.HistoryVisibilityChanged(showHistory))
     }
 
-    val pillStepType by dispenseCountViewModel.currentStep.collectAsState()
-    val capturedBitmap by dispenseCountViewModel.capturedBitmap.collectAsState()
-    val pillSteps by dispenseCountViewModel.steps.collectAsState()
-    val glovesDetected by dispenseCountViewModel.glovesDetected.collectAsState()
-    val recentDetectionCounts by dispenseCountViewModel.lastTenDetections.collectAsState()
-    val isCapturing by dispenseCountViewModel.isCapturing.collectAsState()
-    val showFlash by dispenseCountViewModel.showFlash.collectAsState()
-    val txnInfo by dispenseCountViewModel.txnInfo.collectAsState()
-
-    // The workflow is only built when counting starts, so the SCAN step has no
-    // steps to show. Land the VM on SCAN as the user gets here.
-    LaunchedEffect(dispenseState.stage) {
-        if (dispenseState.stage == DispenseStage.PRE_NDC) dispenseCountViewModel.enterScanStep()
-    }
+    val pillStepType = dispenseCountState.currentStep
+    val capturedBitmap = dispenseCountState.capturedStill
+    val pillSteps = dispenseCountState.steps
+    val recentDetectionCounts by dispenseCountViewModel.recentDetectionCounts.collectAsState()
+    val engineState by dispenseCountViewModel.engineState.collectAsState()
     // Announce the SCAN step once per visit, the way its title chip used to.
     // Tracks which step was announced rather than a plain flag, so a step arriving
     // after the strip composes still gets its turn. Keyed on the stage so coming
@@ -298,51 +281,28 @@ fun DispenseFlowScreen(
         sessionHazardous = false
     }
 
-    // === Pill-VM toasts ===
-    val maxCountReachedToastText = stringResource(id = R.string.max_count_reached)
-    LaunchedEffect(dispenseCountState.restrictAdd) {
-        if (dispenseCountState.restrictAdd) {
-            showToast(maxCountReachedToastText)
-            dispenseCountViewModel.resetRestrictAdd()
-        }
-    }
-    val noTransactionFoundToastText = stringResource(id = R.string.no_transaction_found)
-    LaunchedEffect(dispenseCountState.showNoTransaction) {
-        if (dispenseCountState.showNoTransaction) {
-            showToast(noTransactionFoundToastText)
-            dispenseCountViewModel.resetNoTransaction()
-        }
-    }
-    LaunchedEffect(dispenseCountState.showErrorMessage) {
-        dispenseCountState.showErrorMessage?.let { message ->
-            showToast(message = message)
-            dispenseCountViewModel.clearErrorMessage()
-        }
-    }
-
     // === Pill-VM dialogs ===
     if (dispenseCountState.showTargetCountDialog) {
         TargetPillsCountDialog(
             onDismiss = {
-                dispenseCountViewModel.setTargetCountDialogShown(false)
+                dispenseCountViewModel.onAction(DispenseCountAction.TargetCountDismissed)
                 if (fromQueue) {
-                    dispenseCountViewModel.resetWorkflowSteps()
+                    dispenseCountViewModel.onAction(DispenseCountAction.LeavingForQueue(resetGloves = false))
                     dispenseVm.resetToQueue()
                 } else {
                     navController.navigateBackToDashboard()
                 }
             },
             onOkay = { count ->
-                dispenseCountViewModel.updateTargetCount(count)
-                dispenseCountViewModel.setTargetCountDialogShown(false)
+                dispenseCountViewModel.onAction(DispenseCountAction.TargetCountEntered(count))
             }
         )
     }
 
     if (dispenseCountState.showNotesDialog) {
         AddNoteDialog(
-            onDismiss = { dispenseCountViewModel.setNoteDialogShown(false) },
-            onSkip = { dispenseCountViewModel.onAction(DispenseCountAction.NoteSkip) },
+            onDismiss = { dispenseCountViewModel.onAction(DispenseCountAction.NoteDismissed) },
+            onSkip = { dispenseCountViewModel.onAction(DispenseCountAction.NoteSkipped) },
             onSave = { note -> dispenseCountViewModel.onAction(DispenseCountAction.NoteSaved(note)) },
         )
     }
@@ -353,11 +313,8 @@ fun DispenseFlowScreen(
             title = stringResource(R.string.count_mismatch),
             confirmText = stringResource(R.string.yes),
             cancelText = stringResource(R.string.no),
-            onConfirm = { dispenseCountViewModel.moveNextStep() },
-            onCancel = {
-                dispenseCountViewModel.resetIdleOverlay()
-                dispenseCountViewModel.handleDismissDialog()
-            },
+            onConfirm = { dispenseCountViewModel.onAction(DispenseCountAction.CountMismatchConfirmed) },
+            onCancel = { dispenseCountViewModel.onAction(DispenseCountAction.CountMismatchDismissed) },
         )
     }
 
@@ -367,8 +324,8 @@ fun DispenseFlowScreen(
             title = stringResource(R.string.new_bottle_detected),
             confirmText = stringResource(R.string.ok),
             cancelText = stringResource(R.string.cancel),
-            onConfirm = { dispenseCountViewModel.onAction(DispenseCountAction.ConfirmAddBottle) },
-            onCancel = { dispenseCountViewModel.onAction(DispenseCountAction.CancelAddBottle) },
+            onConfirm = { dispenseCountViewModel.onAction(DispenseCountAction.AddBottleConfirmed) },
+            onCancel = { dispenseCountViewModel.onAction(DispenseCountAction.AddBottleDismissed) },
         )
     }
 
@@ -378,8 +335,8 @@ fun DispenseFlowScreen(
             title = stringResource(R.string.replace_bottle_detected),
             confirmText = stringResource(R.string.ok),
             cancelText = stringResource(R.string.cancel),
-            onConfirm = { dispenseCountViewModel.onAction(DispenseCountAction.ConfirmReplaceBottle) },
-            onCancel = { dispenseCountViewModel.onAction(DispenseCountAction.CancelReplaceBottle) },
+            onConfirm = { dispenseCountViewModel.onAction(DispenseCountAction.ReplaceBottleConfirmed) },
+            onCancel = { dispenseCountViewModel.onAction(DispenseCountAction.ReplaceBottleDismissed) },
         )
     }
 
@@ -389,7 +346,7 @@ fun DispenseFlowScreen(
             title = stringResource(R.string.skip_step_title),
             confirmText = stringResource(R.string.skip),
             cancelText = "",
-            onConfirm = { dispenseCountViewModel.skipBackCount() },
+            onConfirm = { dispenseCountViewModel.onAction(DispenseCountAction.SkipBackCountTapped) },
             onCancel = {},
             isSingleButton = true
         )
@@ -398,7 +355,7 @@ fun DispenseFlowScreen(
     // ── Tray color classification popup ─────────────────────────────────────
     // Shown when a tray color is detected during a hazardous transaction and has
     // not been previously classified as hazardous or non-hazardous.
-    dispenseCountState.pendingTrayColorForClassification?.let { pendingColor ->
+    engineState.pendingTrayColor?.let { pendingColor ->
         Log.i(HAZARDOUS_TAG, "Tray classification popup shown | color=${pendingColor.label} | isHazardousTxn=${dispenseState.isHazardous}")
         CommonDialog(
             title = stringResource(R.string.tray_classification_title),
@@ -407,11 +364,11 @@ fun DispenseFlowScreen(
             cancelText = stringResource(R.string.no),
             onConfirm = {
                 Log.i(HAZARDOUS_TAG, "Tray classification: user confirmed ${pendingColor.label} as HAZARDOUS → saving")
-                dispenseCountViewModel.classifyTrayColor(pendingColor, isHazardous = true)
+                dispenseCountViewModel.onAction(DispenseCountAction.TrayClassified(pendingColor, isHazardous = true))
             },
             onCancel = {
                 Log.i(HAZARDOUS_TAG, "Tray classification: user rejected ${pendingColor.label} as hazardous → saving false")
-                dispenseCountViewModel.classifyTrayColor(pendingColor, isHazardous = false)
+                dispenseCountViewModel.onAction(DispenseCountAction.TrayClassified(pendingColor, isHazardous = false))
             },
         )
     }
@@ -426,30 +383,10 @@ fun DispenseFlowScreen(
     LaunchedEffect(dispenseState.stage) {
         if (dispenseState.stage == DispenseStage.COUNTING) {
             Log.i(HAZARDOUS_TAG, "Stage → COUNTING | txnId=${dispenseState.txnId} | drug=${dispenseState.drugName} | isHazardous=${dispenseState.isHazardous}")
-            dispenseCountViewModel.resumePillDetection()
-            dispenseCountViewModel.getDrugInfo(forceStartStep = null)
-            dispenseCountViewModel.showTxnInfo()
-            dispenseCountViewModel.observeResetAvailability()
-            // Enable tray color detection for all transactions (hazardous and non-hazardous).
-            Log.i(HAZARDOUS_TAG, "Calling setHazardousTransaction(isHazardous=${dispenseState.isHazardous})")
-            dispenseCountViewModel.setHazardousTransaction(dispenseState.isHazardous)
-            // Load glove model only now that RX + NDC are confirmed and drug is hazardous.
-            if (dispenseState.isHazardous) {
-                Log.i(HAZARDOUS_TAG, "Hazardous drug — loading glove model")
-                dispenseCountViewModel.loadGloveModelAndRebuildAnalyzer()
-            }
-        } else {
-            // PRE_RX / PRE_NDC / QUEUE — run the detector so the voice prompt can react
-            // to pills-in-frame, but keep CPU/GPU off when an overlay is active.
-            dispenseCountViewModel.resumePillDetection()
-            if (dispenseState.stage == DispenseStage.QUEUE) {
-                // Clear workflow step icons when returning to queue so COUNTING steps
-                // don't linger. Done here (not in the NavigateToDashboard handler) to
-                // avoid changing pillStepType while still on COUNTING stage, which
-                // would trigger unwanted TTS speech.
-                dispenseCountViewModel.resetWorkflowSteps()
-            }
         }
+        dispenseCountViewModel.onAction(
+            DispenseCountAction.StageChanged(dispenseState.stage, isHazardousDrug = dispenseState.isHazardous)
+        )
     }
 
     // Pause pill detection any time a verification sheet, popup, error dialog,
@@ -470,8 +407,7 @@ fun DispenseFlowScreen(
                 dispenseState.showInvalidScanDialog ||
                 dispenseState.showNdcEquivalenceDialog ||
                 dispenseState.isLoading
-        if (anyOverlay) dispenseCountViewModel.pausePillDetection()
-        else dispenseCountViewModel.resumePillDetection()
+        dispenseCountViewModel.onAction(DispenseCountAction.FlowOverlayChanged(isShown = anyOverlay))
     }
 
     val barcodeAnalyzer = remember {
@@ -535,10 +471,10 @@ fun DispenseFlowScreen(
         drugName = dispenseCountState.drugName,
         ndc = dispenseCountState.ndc,
         strength = dispenseCountState.strength,
-        bucket = dispenseCountState.bucket,
+        bucket = dispenseCountState.bucketId ?: stringResource(R.string.default_bucket),
         dosageForm = dispenseCountState.dosageForm,
         drugImage = dispenseCountState.drugImage,
-        totalCount = dispenseCountState.txnDetailHistory.sumOf { txnDetail -> txnDetail.count },
+        totalCount = dispenseCountState.totalCount,
         targetCount = dispenseCountState.targetCount,
         isOpenCount = false,
         stepType = pillStepType,
@@ -546,12 +482,12 @@ fun DispenseFlowScreen(
         isVoiceOverEnabled = isSoundEnabled,
         detectedCount = filteredPillCount,
         recentDetectionCounts = recentDetectionCounts,
-        isAddCooldown = dispenseCountState.isAddCooldown,
-        isIdle = dispenseCountState.showIdleOverlay,
+        isAddCooldown = engineState.isAddCooldown,
+        isIdle = engineState.showIdleOverlay,
         showGloveIcon = sessionHazardous,
-        glovesDetected = glovesDetected,
+        glovesDetected = engineState.glovesDetected,
         hasStill = capturedBitmap != null,
-        isCapturing = isCapturing,
+        isCapturing = dispenseCountState.isCapturing,
     )
 
     // ── Back handling ───────────────────────────────────────────────────────
@@ -565,14 +501,13 @@ fun DispenseFlowScreen(
     BackHandler {
         if (showHistory) {
             showHistory = false
-        } else if (dispenseCountState.showIdleOverlay) {
-            dispenseCountViewModel.resetIdleOverlay()
+        } else if (engineState.showIdleOverlay) {
+            dispenseCountViewModel.onAction(DispenseCountAction.ResumeFromIdleTapped)
         } else if (dispenseState.stage == DispenseStage.QUEUE) {
             navController.navigateBackToDashboard()
         } else if (fromQueue && dispenseState.stage == DispenseStage.PRE_RX) {
             // Cancel RX scan before any transaction is created → return to queue list.
-            dispenseCountViewModel.resetGloveDetection()
-            dispenseCountViewModel.resetWorkflowSteps()
+            dispenseCountViewModel.onAction(DispenseCountAction.LeavingForQueue(resetGloves = true))
             dispenseVm.resetToQueue()
         } else {
             // Pop back to whichever screen launched this flow (Dashboard for a
@@ -626,7 +561,7 @@ fun DispenseFlowScreen(
             onCancel = {
                 dispenseVm.dismissContinueRxDialog()
                 if (fromQueue) {
-                    dispenseCountViewModel.resetWorkflowSteps()
+                    dispenseCountViewModel.onAction(DispenseCountAction.LeavingForQueue(resetGloves = false))
                     dispenseVm.resetToQueue()
                 } else {
                     navController.navigateBackToDashboard()
@@ -774,17 +709,14 @@ fun DispenseFlowScreen(
                 dispenseVm.returnToContainerScan {
                     // Delete first, then move the stage — otherwise the SCAN strip
                     // renders against counts that are still on their way out.
+                    // Land on SCAN before the stage flips. The stage effect would do
+                    // it a frame later, by which time the strip has already composed
+                    // against the step we just left and spent its announcement on it.
+                    // The effect repeating the call after the flip is harmless.
                     // A failed reset keeps the current step (the VM shows the error).
-                    dispenseCountViewModel.resetTransaction().also { ok ->
-                        // Land on SCAN before the stage flips. The stage effect would do
-                        // it a frame later, by which time the strip has already composed
-                        // against the step we just left and spent its announcement on it.
-                        // The effect repeating the call after the flip is harmless.
-                        if (ok) {
-                            dispenseCountViewModel.enterScanStep()
-                            // The analyzer self-pauses after every read; re-arm it for the rescan.
-                            barcodeAnalyzer.resume()
-                        }
+                    dispenseCountViewModel.resetForRecount().also { ok ->
+                        // The analyzer self-pauses after every read; re-arm it for the rescan.
+                        if (ok) barcodeAnalyzer.resume()
                     }
                 }
             },
@@ -800,7 +732,7 @@ fun DispenseFlowScreen(
                 awaitPointerEventScope {
                     while (true) {
                         awaitPointerEvent(PointerEventPass.Initial)
-                        dispenseCountViewModel.noteCountActivity()
+                        dispenseCountViewModel.onAction(DispenseCountAction.ScreenTouched)
                     }
                 }
             }
@@ -811,7 +743,7 @@ fun DispenseFlowScreen(
         if (!showHistory) {
             if (hasCameraPermission) {
                 CameraFeed(
-                    isCameraPaused = dispenseCountViewModel.cameraPaused.collectAsState().value,
+                    isCameraPaused = engineState.isCameraPaused,
                     isStillShown = capturedBitmap != null,
                     onFrame = { imageProxy ->
                         // Only the barcode analyzer reads the frame metadata before the
@@ -837,8 +769,8 @@ fun DispenseFlowScreen(
                                 if (!dispatched) barcodeAnalyzer.resume()
                             }
                         } else if (
-                            pillStepType == StepState.TARGET_VERIFICATION ||
-                            pillStepType == StepState.TARGET_REVERIFICATION
+                            dispenseCountState.currentStep == StepState.TARGET_VERIFICATION ||
+                            dispenseCountState.currentStep == StepState.TARGET_REVERIFICATION
                         ) {
                             // Actively counting pills: keep the scanner live so a rescan of the
                             // same NDC (a second bottle) can be detected mid-count. The analyzer
@@ -846,11 +778,11 @@ fun DispenseFlowScreen(
                             // this hook never itself surfaces a full-screen sheet that would
                             // otherwise re-trigger on the same barcode.
                             barcodeAnalyzer.analyze(imageProxy) { value, imagePath ->
-                                dispenseCountViewModel.onNdcRescannedDuringCount(value, imagePath)
+                                dispenseCountViewModel.onAction(DispenseCountAction.BottleScanned(value, imagePath))
                                 barcodeAnalyzer.resume()
                             }
                         } else if (
-                            pillStepType == StepState.VIAL && capturedBitmap == null
+                            dispenseCountState.currentStep == StepState.VIAL && dispenseCountState.capturedStill == null
                         ) {
                             // Conditions are read live here (not via the precomputed
                             // isVialCaptureStep) because this lambda is captured once
@@ -873,17 +805,19 @@ fun DispenseFlowScreen(
                                     // captured image and wait for the user to tap Done
                                     // before advancing. Manual capture (camera button)
                                     // always requires a Done tap.
-                                    dispenseCountViewModel.captureImage(autoConfirm = dispenseCountViewModel.isVialLastStep())
+                                    dispenseCountViewModel.onAction(DispenseCountAction.VialLabelMatched)
                                 } else {
                                     barcodeAnalyzer.resume()
                                 }
                             }
                         }
-                        dispenseCountViewModel.onFrameCaptured(imageProxy)
+                        dispenseCountViewModel.onAction(DispenseCountAction.FrameArrived(imageProxy))
                     },
-                    onCameraHelperReady = dispenseCountViewModel::attachCameraHelper,
+                    onCameraHelperReady = { cameraHelper ->
+                        dispenseCountViewModel.onAction(DispenseCountAction.CameraHelperReady(cameraHelper))
+                    },
                     onCameraReady = {
-                        dispenseCountViewModel.initializeInterpreter()
+                        dispenseCountViewModel.onAction(DispenseCountAction.PreviewSizeKnown)
                     },
                     modifier = Modifier
                         .fillMaxSize()
@@ -895,12 +829,12 @@ fun DispenseFlowScreen(
                     targetCount = dispenseCountState.targetCount,
                     stepType = pillStepType,
                     // Red excess dots once the dispense txn is loaded.
-                    showExcessPills = txnInfo != null,
+                    showExcessPills = dispenseCountState.isTxnLoaded,
                     capturedStill = capturedBitmap,
-                    showFlash = showFlash,
-                    addPops = dispenseCountViewModel.addPopEvents,
+                    showFlash = dispenseCountState.showFlash,
+                    addPops = dispenseCountViewModel.addPops,
                     onFilteredPills = { filteredPills ->
-                        dispenseCountViewModel.updateFilteredPills(filteredPills)
+                        dispenseCountViewModel.onAction(DispenseCountAction.FilteredPillsDrawn(filteredPills))
                         filteredPillCount = filteredPills.size
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -934,23 +868,14 @@ fun DispenseFlowScreen(
                         InformationPanelSection(
                             state = countPanelState,
                             onAdd = {
-                                dispenseCountViewModel.onAction(
-                                    DispenseCountAction.AddTransactionDetailClicked(filteredPillCount, pillStepType)
-                                )
+                                dispenseCountViewModel.onAction(DispenseCountAction.AddTapped(filteredPillCount))
                             },
-                            onDone = {
-                                dispenseCountViewModel.onAction(
-                                    DispenseCountAction.FinalDone(
-                                        stepType = pillStepType,
-                                        totalCount = countPanelState.totalCount,
-                                    )
-                                )
-                            },
+                            onDone = { dispenseCountViewModel.onAction(DispenseCountAction.DoneTapped) },
                             onShowHistory = { showHistory = true },
-                            onCountSteady = dispenseCountViewModel::playCountSoundIfEnabled,
-                            onCapture = { dispenseCountViewModel.captureImage() },
-                            onRedoCapture = { dispenseCountViewModel.redoCaptureImage() },
-                            onSaveCapture = { dispenseCountViewModel.saveCaptureImage() },
+                            onCountSteady = { dispenseCountViewModel.onAction(DispenseCountAction.CountSteadied) },
+                            onCapture = { dispenseCountViewModel.onAction(DispenseCountAction.VialCaptureTapped) },
+                            onRedoCapture = { dispenseCountViewModel.onAction(DispenseCountAction.VialRedoTapped) },
+                            onSaveCapture = { dispenseCountViewModel.onAction(DispenseCountAction.VialSaveTapped) },
                             onReset = if (dispenseCountState.canReset) {
                                 { showResetDialog = true }
                             } else null,
@@ -964,11 +889,11 @@ fun DispenseFlowScreen(
                     // sits along the bottom edge.
                     LiveCountCircle(
                         detectedCount = filteredPillCount,
-                        pillsInView = filteredPillCount > 0 || dispenseCountState.detectedPills.isNotEmpty(),
+                        pillsInView = filteredPillCount > 0 || engineState.detectedPills.isNotEmpty(),
                         recentDetectionCounts = recentDetectionCounts,
-                        isAddCooldown = dispenseCountState.isAddCooldown,
-                        isIdle = dispenseCountState.showIdleOverlay,
-                        onCountSteady = dispenseCountViewModel::playCountSoundIfEnabled,
+                        isAddCooldown = engineState.isAddCooldown,
+                        isIdle = engineState.showIdleOverlay,
+                        onCountSteady = { dispenseCountViewModel.onAction(DispenseCountAction.CountSteadied) },
                         isLandscape = isLandscape,
                         bottomInset = if (dispenseState.stage == DispenseStage.PRE_NDC) {
                             scanStripHeight
@@ -1103,9 +1028,9 @@ fun DispenseFlowScreen(
                     showTargetCount = countPanelState.isFixed,
                     targetCount = dispenseCountState.targetCount,
                     totalCount = countPanelState.totalCount,
-                    txnHistory = dispenseCountState.txnDetailHistory,
-                    onDeleteTxn = { id ->
-                        dispenseCountViewModel.onAction(DispenseCountAction.TransactionDetailDeleted(id))
+                    txnHistory = dispenseCountState.stepCounts,
+                    onDeleteTxn = { countId ->
+                        dispenseCountViewModel.onAction(DispenseCountAction.CountDeleted(countId))
                     },
                     drugName = dispenseCountState.drugName,
                     onBack = { showHistory = false },
@@ -1118,9 +1043,9 @@ fun DispenseFlowScreen(
                     showTargetCount = countPanelState.isFixed,
                     targetCount = dispenseCountState.targetCount,
                     totalCount = countPanelState.totalCount,
-                    txnHistory = dispenseCountState.txnDetailHistory,
-                    onDeleteTxn = { id ->
-                        dispenseCountViewModel.onAction(DispenseCountAction.TransactionDetailDeleted(id))
+                    txnHistory = dispenseCountState.stepCounts,
+                    onDeleteTxn = { countId ->
+                        dispenseCountViewModel.onAction(DispenseCountAction.CountDeleted(countId))
                     },
                     drugName = dispenseCountState.drugName,
                     onBack = { showHistory = false },
@@ -1133,8 +1058,8 @@ fun DispenseFlowScreen(
         // Idle overlay — when the pill VM pauses itself due to inactivity, fade
         // in a "Counting paused" prompt with a Resume button. Matches the
         // legacy screen.
-        if (dispenseCountState.showIdleOverlay && !showHistory) {
-            CountingPausedOverlay(onResume = { dispenseCountViewModel.resetIdleOverlay() })
+        if (engineState.showIdleOverlay && !showHistory) {
+            CountingPausedOverlay(onResume = { dispenseCountViewModel.onAction(DispenseCountAction.ResumeFromIdleTapped) })
         }
 
         if (!showHistory) {
@@ -1185,8 +1110,7 @@ fun DispenseFlowScreen(
                     },
                     onClick = {
                         if (fromQueue && dispenseState.stage == DispenseStage.PRE_RX) {
-                            dispenseCountViewModel.resetGloveDetection()
-                            dispenseCountViewModel.resetWorkflowSteps()
+                            dispenseCountViewModel.onAction(DispenseCountAction.LeavingForQueue(resetGloves = true))
                             dispenseVm.resetToQueue()
                         } else {
                             navController.navigateBackToDashboard()
@@ -1420,15 +1344,15 @@ fun DispenseFlowScreen(
                             }
                             // The count circle only exists once the workflow is on a counting step;
                             // without this the next step would spotlight nothing.
-                            withTimeout(TourActionTimeoutMs) { dispenseCountViewModel.currentStep.first { it in countingSteps } }
+                            withTimeout(TourActionTimeoutMs) { dispenseCountViewModel.uiState.first { it.currentStep in countingSteps } }
                         }
                         "d_count" -> {
                             dispenseCountViewModel.dummyCompleteCount()
                             withTimeout(TourActionTimeoutMs) {
-                                dispenseCountViewModel.currentStep.first { it == StepState.VIAL || it !in countingSteps }
+                                dispenseCountViewModel.uiState.first { it.currentStep == StepState.VIAL || it.currentStep !in countingSteps }
                             }
                             // The vial photo isn't a tour step; save a demo one so the count can finish.
-                            if (dispenseCountViewModel.currentStep.value == StepState.VIAL) dispenseCountViewModel.captureVialForTour()
+                            if (dispenseCountViewModel.uiState.value.currentStep == StepState.VIAL) dispenseCountViewModel.captureVialForTour()
                         }
                     }
                 },

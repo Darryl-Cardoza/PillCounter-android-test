@@ -795,7 +795,7 @@ class DispenseFlowViewModel @Inject constructor(
                 // The container scan replaced drugImage with the server's image URL, but
                 // the details bar loads a local file. Take the drug row's own path back,
                 // the same value the counting header reads.
-                // Same txn id resetTransaction works from, so both halves of a reset
+                // Same txn id resetForRecount works from, so both halves of a reset
                 // agree on which transaction they are restarting.
                 val txnId = _uiState.value.txnId.takeIf { it != 0L } ?: preferenceHelper.getTxnId()
                 // The count is already wiped: a failed lookup only loses the display fallbacks, so still move the stage.
@@ -844,7 +844,7 @@ class DispenseFlowViewModel @Inject constructor(
                 val txn = dispenseTxnDao.getById(txnId) ?: return@launch
                 val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
                 dispenseTxnDao.updateGlovesPresent(txnId, false)
-                // Persist so dispenseCountViewModel.getDrugInfo() picks up the correct txn and restores
+                // Persist so the count view model's start of counting picks up the correct txn and restores
                 // the saved workflow step (workflowStep column) from the DB.
                 preferenceHelper.saveTxnId(txnId)
                 // If NDC was already verified the user was mid-count: jump to COUNTING so
@@ -925,7 +925,7 @@ class DispenseFlowViewModel @Inject constructor(
                 val isSubstitute = state.isSubstituteConfirmed
                 val substitutedDrugId = if (isSubstitute && state.ndcScannedValue.isNotBlank()) {
                     // Persist the substitute drug record so the existing
-                    // DispenseCountViewModel.getDrugInfo flow can resolve it.
+                    // DispenseCountViewModel start-of-counting load can resolve it.
                     drugMasterDao.upsertPreservingId(
                         DrugMasterEntity(
                             ndc = state.ndcScannedValue,

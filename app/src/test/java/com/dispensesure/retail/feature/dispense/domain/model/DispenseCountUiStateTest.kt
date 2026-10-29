@@ -1,174 +1,54 @@
 package com.dispensesure.retail.feature.dispense.domain.model
 
-import com.dispensesure.retail.core.scanning.logic.GloveDetection
-import com.dispensesure.retail.core.scanning.logic.TrayColor
-import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
-import io.mockk.mockk
+import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DispenseCountUiStateTest {
 
-    private val pill = DetectedPill(1f, 2f, 0.5f)
-
-    // GloveDetection wraps android.graphics.RectF -> use relaxed mock for rect.
-    private fun glove() = GloveDetection(
-        rect = mockk(relaxed = true),
-        confidence = 0.8f,
-        classId = 0,
-        className = "gloves"
-    )
-
-    private fun full() = DispenseCountUiState(
-        drugName = "Crocin",
-        totalCount = 100,
-        targetCount = 120,
-        currentScanCount = 20,
-        txnDetailHistory = listOf(mockk(relaxed = true)),
-        detectedPills = listOf(pill),
-        filteredPills = listOf(pill),
-        gloveDetections = listOf(glove()),
-        isPaused = true,
-        isLoading = true,
-        restrictAdd = true,
-        showNoTransaction = true,
-        showTargetCountDialog = true,
-        showIdleOverlay = true,
-        showNotesDialog = true,
-        isAddCooldown = true,
-        addCount = 3,
-        showDialogForControl = true,
-        showErrorMessage = "err",
-        isHl7Txn = true,
-        showCountMismatchDialog = true,
-        pendingTrayColorForClassification = TrayColor.WHITE,
-        showAddBottleDialog = true,
-        showReplaceBottleDialog = true,
-        canReset = true,
-        showSkipStepDialog = true
+    private fun stepCount(countId: Long, count: Int) = TxnDetail(
+        txnDetailId = countId, count = count, createdAt = 0L, image = null, type = StepState.TARGET_VERIFICATION,
     )
 
     @Test
     fun defaults_areCorrect() {
-        val s = DispenseCountUiState()
-        assertEquals("", s.drugName)
-        assertEquals(0, s.totalCount)
-        assertEquals(0, s.targetCount)
-        assertEquals(0, s.currentScanCount)
-        assertTrue(s.txnDetailHistory.isEmpty())
-        assertTrue(s.detectedPills.isEmpty())
-        assertTrue(s.filteredPills.isEmpty())
-        assertTrue(s.gloveDetections.isEmpty())
-        assertFalse(s.isPaused)
-        assertFalse(s.isLoading)
-        assertFalse(s.restrictAdd)
-        assertFalse(s.showNoTransaction)
-        assertFalse(s.showTargetCountDialog)
-        assertFalse(s.showIdleOverlay)
-        assertFalse(s.showNotesDialog)
-        assertFalse(s.isAddCooldown)
-        assertEquals(0, s.addCount)
-        assertFalse(s.showDialogForControl)
-        assertNull(s.showErrorMessage)
-        assertFalse(s.isHl7Txn)
-        assertFalse(s.showCountMismatchDialog)
-        assertNull(s.pendingTrayColorForClassification)
-        assertFalse(s.showAddBottleDialog)
-        assertFalse(s.showReplaceBottleDialog)
-        assertFalse(s.showSkipStepDialog)
+        val state = DispenseCountUiState()
+        assertEquals("", state.drugName)
+        assertNull(state.bucketId)
+        assertEquals(0, state.targetCount)
+        assertTrue(state.stepCounts.isEmpty())
+        assertEquals(0, state.totalCount)
+        assertEquals(StepState.TARGET_VERIFICATION, state.currentStep)
+        assertTrue(state.steps.isEmpty())
+        assertFalse(state.isTxnLoaded)
+        assertFalse(state.canReset)
+        assertNull(state.capturedStill)
+        assertFalse(state.showFlash)
+        assertFalse(state.isCapturing)
+        assertFalse(state.showTargetCountDialog)
+        assertFalse(state.showNotesDialog)
+        assertFalse(state.showCountMismatchDialog)
+        assertFalse(state.showAddBottleDialog)
+        assertFalse(state.showReplaceBottleDialog)
+        assertFalse(state.showSkipStepDialog)
     }
 
     @Test
-    fun getters_returnValues() {
-        val s = full()
-        assertEquals("Crocin", s.drugName)
-        assertEquals(100, s.totalCount)
-        assertEquals(120, s.targetCount)
-        assertEquals(20, s.currentScanCount)
-        assertEquals(1, s.txnDetailHistory.size)
-        assertEquals(listOf(pill), s.detectedPills)
-        assertEquals(listOf(pill), s.filteredPills)
-        assertEquals(1, s.gloveDetections.size)
-        assertTrue(s.isPaused)
-        assertTrue(s.isLoading)
-        assertTrue(s.restrictAdd)
-        assertTrue(s.showNoTransaction)
-        assertTrue(s.showTargetCountDialog)
-        assertTrue(s.showIdleOverlay)
-        assertTrue(s.showNotesDialog)
-        assertTrue(s.isAddCooldown)
-        assertEquals(3, s.addCount)
-        assertTrue(s.showDialogForControl)
-        assertEquals("err", s.showErrorMessage)
-        assertTrue(s.isHl7Txn)
-        assertTrue(s.showCountMismatchDialog)
-        assertEquals(TrayColor.WHITE, s.pendingTrayColorForClassification)
-        assertTrue(s.showAddBottleDialog)
-        assertTrue(s.showReplaceBottleDialog)
-        assertTrue(s.showSkipStepDialog)
-    }
+    fun totalCount_sumsTheStepCounts() {
+        val state = DispenseCountUiState(stepCounts = listOf(stepCount(1L, 3), stepCount(2L, 4)))
 
-    @Test
-    fun equalsHashCode_equal() {
-        val a = DispenseCountUiState(drugName = "A", detectedPills = listOf(pill))
-        val b = DispenseCountUiState(drugName = "A", detectedPills = listOf(pill))
-        assertEquals(a, b)
-        assertEquals(a.hashCode(), b.hashCode())
-    }
-
-    @Test
-    fun equals_notEqual() {
-        val a = DispenseCountUiState(drugName = "A")
-        assertNotEquals(a, a.copy(drugName = "B"))
-    }
-
-    @Test
-    fun toString_containsField() {
-        assertTrue(DispenseCountUiState(drugName = "Crocin").toString().contains("Crocin"))
+        assertEquals(7, state.totalCount)
     }
 
     @Test
     fun copy_overrides() {
-        assertEquals("Z", DispenseCountUiState().copy(drugName = "Z").drugName)
-    }
+        val state = DispenseCountUiState().copy(currentStep = StepState.VIAL, targetCount = 30)
 
-    @Test
-    fun componentN_returnValues() {
-        val s = full()
-        assertEquals("Crocin", s.component1())          // drugName
-        assertEquals("", s.component2())                // ndc
-        assertEquals("", s.component3())                // strength
-        assertEquals("", s.component4())                // dosageForm
-        assertEquals("", s.component5())                // bucket
-        assertEquals("", s.component6())                // drugImage
-        assertEquals(100, s.component7())               // totalCount
-        assertEquals(120, s.component8())               // targetCount
-        assertEquals(20, s.component9())                // currentScanCount
-        assertEquals(s.txnDetailHistory, s.component10()) // txnDetailHistory
-        assertEquals(listOf(pill), s.component11())     // detectedPills
-        assertEquals(listOf(pill), s.component12())     // filteredPills
-        assertEquals(s.gloveDetections, s.component13()) // gloveDetections
-        assertTrue(s.component14())                     // isPaused
-        assertTrue(s.component15())                     // isLoading
-        assertTrue(s.component16())                     // restrictAdd
-        assertTrue(s.component17())                     // showNoTransaction
-        assertTrue(s.component18())                     // showTargetCountDialog
-        assertTrue(s.component19())                     // showIdleOverlay
-        assertTrue(s.component20())                     // showNotesDialog
-        assertTrue(s.component21())                     // isAddCooldown
-        assertEquals(3, s.component22())                // addCount
-        assertTrue(s.component23())                     // showDialogForControl
-        assertEquals("err", s.component24())            // showErrorMessage
-        assertTrue(s.component25())                     // isHl7Txn
-        assertTrue(s.component26())                     // showCountMismatchDialog
-        assertEquals(TrayColor.WHITE, s.component27())  // pendingTrayColorForClassification
-        assertTrue(s.component28())                     // showAddBottleDialog
-        assertTrue(s.component29())                     // showReplaceBottleDialog
-        assertTrue(s.component30())                     // canReset
-        assertTrue(s.component31())                     // showSkipStepDialog
+        assertEquals(StepState.VIAL, state.currentStep)
+        assertEquals(30, state.targetCount)
     }
 }
