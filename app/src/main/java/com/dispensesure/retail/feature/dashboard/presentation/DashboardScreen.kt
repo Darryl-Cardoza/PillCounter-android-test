@@ -22,7 +22,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
 import com.dispensesure.retail.core.tourguide.TourDialogHost
@@ -147,18 +146,6 @@ fun DashboardScreen(
         }
     }
 
-    LaunchedEffect(uiState.createdBatchId) {
-        uiState.createdBatchId?.let { batchId ->
-            navController.navigate(
-                Screen.DispenseFlow.createRoute(
-                    scanType = CountType.REGULAR.toString(),
-                    batchId = batchId,
-                )
-            )
-            viewModel.clearCreatedBatchId()
-        }
-    }
-
     // Inventory quick action: bucket selected but no StockBatchEntity yet — the batch is
     // created on the first NDC scan inside InventoryScanViewModel. Routes to the
     // new Batch Stock Count panel (Screen.InventoryScan), NOT the legacy DispenseFlow.
@@ -192,9 +179,7 @@ fun DashboardScreen(
         {
             viewModel.saveTxnId()
             navController.navigate(
-                Screen.DispenseFlow.createRoute(
-                    scanType = CountType.FIXED.toString(),
-                )
+                Screen.DispenseFlow.createRoute()
             )
         }
     }
@@ -223,7 +208,6 @@ fun DashboardScreen(
                 viewModel.selectCurrentTransaction(txnId)
                 navController.navigate(
                     Screen.DispenseFlow.createRoute(
-                        scanType = CountType.FIXED.toString(),
                         fromResume = true,
                         fromQueue = true,
                     )

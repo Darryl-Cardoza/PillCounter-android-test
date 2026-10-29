@@ -15,6 +15,7 @@ import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.dtos.DispenseCountInfo
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.utils.common.DateFormats
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.io.File
@@ -115,7 +116,13 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
 
             val ctx = Ctx(pdf)
             ctx.y = drawHeader(ctx.cv, genTime)
-            ctx.y = drawInfoLine(ctx.cv, ctx.y, txn.drugName ?: "—", txnDate, userName)
+            ctx.y = drawInfoLine(
+                ctx.cv,
+                ctx.y,
+                context.resources.drugDisplayName(txn.drugName),
+                txnDate,
+                userName,
+            )
 
             val verCount = txn.counts.sumForStep(StepState.TARGET_VERIFICATION)
             ctx.y = drawSummaryTile(ctx.cv, ctx.y + 12f, verCount, txn.targetCount)
@@ -130,10 +137,15 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
                     ctx.y += 10f
                 }
                 if (txn.isSubstitute) {
-                    ctx.y = drawKvCard(ctx, context.getString(R.string.requested_drug_details), listOf(
-                        context.getString(R.string.drug_name) to (txn.requestedDrugName ?: "—"),
-                        context.getString(R.string.pdf_ndc_label) to (txn.requestedNdc ?: "—"),
-                    ))
+                    ctx.y = drawKvCard(
+                        ctx, context.getString(R.string.requested_drug_details),
+                        listOf(
+                            context.getString(R.string.drug_name) to context.resources.drugDisplayName(
+                                txn.requestedDrugName,
+                            ),
+                            context.getString(R.string.pdf_ndc_label) to (txn.requestedNdc ?: "—"),
+                        ),
+                    )
                     ctx.y += 10f
                 }
                 val drugTitle = if (txn.isSubstitute)
@@ -155,10 +167,15 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
                     ctx.y += 10f
                 }
                 if (txn.isSubstitute) {
-                    ctx.y = drawKvCard(ctx, context.getString(R.string.requested_drug_details), listOf(
-                        context.getString(R.string.drug_name) to (txn.requestedDrugName ?: "—"),
-                        context.getString(R.string.pdf_ndc_label) to (txn.requestedNdc ?: "—"),
-                    ))
+                    ctx.y = drawKvCard(
+                        ctx, context.getString(R.string.requested_drug_details),
+                        listOf(
+                            context.getString(R.string.drug_name) to context.resources.drugDisplayName(
+                                txn.requestedDrugName,
+                            ),
+                            context.getString(R.string.pdf_ndc_label) to (txn.requestedNdc ?: "—"),
+                        ),
+                    )
                     ctx.y += 10f
                 }
                 val drugTitle = if (txn.isSubstitute)
@@ -503,7 +520,7 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
     private fun List<DispenseCountInfo>.sumForStep(step: StepState) = forStep(step).sumOf { it.pillCount ?: 0 }
 
     private fun drugKvRows(txn: DispenseTxnDetail, dateOnly: String, timeOnly: String) = listOf(
-        context.getString(R.string.drug_name) to (txn.drugName ?: "—"),
+        context.getString(R.string.drug_name) to context.resources.drugDisplayName(txn.drugName),
         context.getString(R.string.pdf_ndc_label) to (txn.ndc ?: "—"),
         context.getString(R.string.date) to dateOnly,
         context.getString(R.string.time) to timeOnly,

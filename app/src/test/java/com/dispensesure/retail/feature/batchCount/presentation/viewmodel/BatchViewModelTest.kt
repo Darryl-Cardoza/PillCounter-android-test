@@ -191,7 +191,7 @@ class BatchViewModelTest {
             assertEquals(1, first.openedLots.size)
 
             val second = groups.first { it.drugId == 20L }
-            assertEquals("Unknown Drug", second.drugName)
+            assertEquals("", second.drugName)
             assertEquals("", second.ndc)
             assertEquals(0, second.sealedTotal)
             assertEquals(0, second.openedTotal)
@@ -242,7 +242,7 @@ class BatchViewModelTest {
             txn(txnId = 1, drugId = 10L, lotNo = "L1", bottleQty = 3, looseQty = 0, packageQty = 2),
             txn(txnId = 2, drugId = 10L, lotNo = "L2", bottleQty = 0, looseQty = 6, packageQty = 1),
             // Drug 20: nulls exercise the default branches (packageQty -> 1, qtys -> 0,
-            // drugName -> "Unknown Drug", ndc -> "").
+            // drugName -> "", ndc -> "").
             txn(
                 txnId = 3, drugId = 20L, drugName = null, ndc = null,
                 bottleQty = null, looseQty = null, packageQty = null
@@ -264,7 +264,7 @@ class BatchViewModelTest {
         assertEquals(1, drug10.openedLots.size)
 
         val drug20 = groups.first { it.drugId == 20L }
-        assertEquals("Unknown Drug", drug20.drugName)
+        assertEquals("", drug20.drugName)
         assertEquals("", drug20.ndc)
         assertEquals(0, drug20.sealedTotal)
         assertEquals(0, drug20.openedTotal)

@@ -61,6 +61,43 @@ sealed interface Screen {
             "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}"
     }
 
+    // Loose-pill count for a stock batch, opened from SCAN PILLS on the sealed-bottle screen.
+    data object LooseCount : Screen {
+        private const val ROUTE_PREFIX = "loose_count"
+        const val ARG_BATCH_ID = "batch_id"
+        const val ARG_BUCKET_ID = "bucket_id"
+        const val ARG_ALLOWED_NDCS = "allowed_ndcs"
+
+        // Set on the previous back-stack entry when a count is saved: the batch it went into.
+        const val RESULT_BATCH_ID = "loose_count_batch_id"
+
+        override val route: String =
+            "$ROUTE_PREFIX?$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}&$ARG_ALLOWED_NDCS={$ARG_ALLOWED_NDCS}"
+
+        val navArguments: List<NamedNavArgument> = listOf(
+            navArgument(ARG_BATCH_ID) {
+                type = NavType.LongType
+                defaultValue = 0L
+            },
+            navArgument(ARG_BUCKET_ID) {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+            navArgument(ARG_ALLOWED_NDCS) {
+                type = NavType.StringType
+                defaultValue = ""
+            },
+        )
+
+        /**
+         * [batchId] 0 = no batch yet; saving creates one in [bucketId]. A PMS batch passes
+         * its requested NDCs in [allowedNdcs]; empty = any NDC.
+         */
+        fun createRoute(batchId: Long, bucketId: String?, allowedNdcs: Set<String>): String =
+            "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}&$ARG_ALLOWED_NDCS=${allowedNdcs.joinToString(",")}"
+    }
+
     data object HistoryDetail : Screen {
         override val route: String = "history_detail"
     }
@@ -180,32 +217,16 @@ sealed interface Screen {
     // and hydrate from the existing PMS-created transaction (drugName,
     // hl7-expected NDC, targetCount, rxNo are all pre-populated, RX scan is
     // skipped entirely).
-    //
-    // The optional `batch_id` is used in the stock count (REGULAR) flow to
-    // associate the new transaction with the active batch.
     data object DispenseFlow : Screen {
         private const val ROUTE_PREFIX = "dispense_flow"
-        const val ARG_TYPE = "type"
         const val ARG_FROM_HL7 = "from_hl7"
         const val ARG_FROM_RESUME = "from_resume"
-        const val ARG_BATCH_ID = "batch_id"
-        const val ARG_BUCKET_ID = "bucket_id"
         const val ARG_FROM_QUEUE = "from_queue"
-        const val ARG_ALLOWED_NDCS = "allowed_ndcs"
-
-        /**
-         * SavedStateHandle key used by DispenseFlow to publish a lazily-created
-         * stock-count batchId to the previous back-stack entry (InventoryScanHost).
-         * The host consumes it on resume so its list re-subscribes to the real
-         * batch instead of the initial 0L nav argument.
-         */
-        const val NAV_KEY_STOCK_COUNT_BATCH_ID = "stock_count_batch_id"
 
         override val route: String =
-            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}&$ARG_FROM_QUEUE={$ARG_FROM_QUEUE}&$ARG_ALLOWED_NDCS={$ARG_ALLOWED_NDCS}"
+            "$ROUTE_PREFIX?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_FROM_QUEUE={$ARG_FROM_QUEUE}"
 
         val navArguments: List<NamedNavArgument> = listOf(
-            navArgument(ARG_TYPE) { type = NavType.StringType },
             navArgument(ARG_FROM_HL7) {
                 type = NavType.BoolType
                 defaultValue = false
@@ -214,34 +235,17 @@ sealed interface Screen {
                 type = NavType.BoolType
                 defaultValue = false
             },
-            navArgument(ARG_BATCH_ID) {
-                type = NavType.LongType
-                defaultValue = 0L
-            },
-            navArgument(ARG_BUCKET_ID) {
-                type = NavType.StringType
-                nullable = true
-                defaultValue = null
-            },
             navArgument(ARG_FROM_QUEUE) {
                 type = NavType.BoolType
                 defaultValue = false
             },
-            navArgument(ARG_ALLOWED_NDCS) {
-                type = NavType.StringType
-                defaultValue = ""
-            },
         )
 
         fun createRoute(
-            scanType: String,
             fromHl7: Boolean = false,
             fromResume: Boolean = false,
-            batchId: Long = 0L,
-            bucketId: String? = null,
             fromQueue: Boolean = false,
-            allowedNdcs: Set<String> = emptySet(),
-        ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}&$ARG_FROM_QUEUE=$fromQueue&$ARG_ALLOWED_NDCS=${allowedNdcs.joinToString(",")}"
+        ) = "$ROUTE_PREFIX?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_FROM_QUEUE=$fromQueue"
     }
 
     data object FaceIntro : Screen {

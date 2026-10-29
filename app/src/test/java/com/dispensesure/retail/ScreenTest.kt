@@ -126,51 +126,63 @@ class ScreenTest {
     @Test
     fun `DispenseFlow route and arg constants`() {
         Assert.assertEquals(
-            "dispense_flow/{type}?from_hl7={from_hl7}&from_resume={from_resume}&batch_id={batch_id}&bucket_id={bucket_id}&from_queue={from_queue}&allowed_ndcs={allowed_ndcs}",
+            "dispense_flow?from_hl7={from_hl7}&from_resume={from_resume}&from_queue={from_queue}",
             Screen.DispenseFlow.route
         )
-        Assert.assertEquals("type", Screen.DispenseFlow.ARG_TYPE)
         Assert.assertEquals("from_hl7", Screen.DispenseFlow.ARG_FROM_HL7)
         Assert.assertEquals("from_resume", Screen.DispenseFlow.ARG_FROM_RESUME)
-        Assert.assertEquals("batch_id", Screen.DispenseFlow.ARG_BATCH_ID)
-        Assert.assertEquals("bucket_id", Screen.DispenseFlow.ARG_BUCKET_ID)
         Assert.assertEquals("from_queue", Screen.DispenseFlow.ARG_FROM_QUEUE)
-        Assert.assertEquals("allowed_ndcs", Screen.DispenseFlow.ARG_ALLOWED_NDCS)
-        Assert.assertEquals(7, Screen.DispenseFlow.navArguments.size)
+        Assert.assertEquals(3, Screen.DispenseFlow.navArguments.size)
     }
 
     @Test
     fun `DispenseFlow createRoute with defaults`() {
         Assert.assertEquals(
-            "dispense_flow/FIXED?from_hl7=false&from_resume=false&batch_id=0&bucket_id=&from_queue=false&allowed_ndcs=",
-            Screen.DispenseFlow.createRoute("FIXED")
+            "dispense_flow?from_hl7=false&from_resume=false&from_queue=false",
+            Screen.DispenseFlow.createRoute()
         )
     }
 
     @Test
     fun `DispenseFlow createRoute with all args`() {
         Assert.assertEquals(
-            "dispense_flow/REGULAR?from_hl7=true&from_resume=true&batch_id=12&bucket_id=BKT&from_queue=true&allowed_ndcs=n1,n2",
+            "dispense_flow?from_hl7=true&from_resume=true&from_queue=true",
             Screen.DispenseFlow.createRoute(
-                scanType = "REGULAR",
                 fromHl7 = true,
                 fromResume = true,
-                batchId = 12L,
-                bucketId = "BKT",
                 fromQueue = true,
-                allowedNdcs = linkedSetOf("n1", "n2"),
             )
         )
     }
 
+    // ─────────────────────────── LooseCount ───────────────────────────
+
     @Test
-    fun `DispenseFlow createRoute null bucket and empty ndcs`() {
-        val route = Screen.DispenseFlow.createRoute(
-            scanType = "FIXED",
-            bucketId = null,
-            allowedNdcs = emptySet(),
+    fun `LooseCount route and arg constants`() {
+        Assert.assertEquals(
+            "loose_count?batch_id={batch_id}&bucket_id={bucket_id}&allowed_ndcs={allowed_ndcs}",
+            Screen.LooseCount.route
         )
-        Assert.assertTrue(route.contains("bucket_id=&"))
-        Assert.assertTrue(route.endsWith("allowed_ndcs="))
+        Assert.assertEquals("batch_id", Screen.LooseCount.ARG_BATCH_ID)
+        Assert.assertEquals("bucket_id", Screen.LooseCount.ARG_BUCKET_ID)
+        Assert.assertEquals("allowed_ndcs", Screen.LooseCount.ARG_ALLOWED_NDCS)
+        Assert.assertEquals("loose_count_batch_id", Screen.LooseCount.RESULT_BATCH_ID)
+        Assert.assertEquals(3, Screen.LooseCount.navArguments.size)
+    }
+
+    @Test
+    fun `LooseCount createRoute carries the batch, the bucket and the allowlist`() {
+        Assert.assertEquals(
+            "loose_count?batch_id=12&bucket_id=BKT&allowed_ndcs=n1,n2",
+            Screen.LooseCount.createRoute(batchId = 12L, bucketId = "BKT", allowedNdcs = linkedSetOf("n1", "n2"))
+        )
+    }
+
+    @Test
+    fun `LooseCount createRoute with no batch, no bucket and no allowlist`() {
+        Assert.assertEquals(
+            "loose_count?batch_id=0&bucket_id=&allowed_ndcs=",
+            Screen.LooseCount.createRoute(batchId = 0L, bucketId = null, allowedNdcs = emptySet())
+        )
     }
 }

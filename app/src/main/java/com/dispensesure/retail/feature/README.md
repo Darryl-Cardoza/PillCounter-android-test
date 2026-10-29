@@ -80,9 +80,9 @@ and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/)
 - **Purpose.** Batch Stock Count: scan NDCs and tally bottles/pills per batch.
   `InventoryFlowScreen` is a thin per-form-factor dispatcher over `shell/`
   (camera + bottom-sheet host) wrapping the `variant/` panels.
-- **Entry / hand-off.** Entered via `Screen.InventoryScan` from the dashboard.
-  Tapping SCAN PILLS stages the active bottle's txn and navigates to
-  `DispenseFlowScreen` (stock-count mode) for the actual pill count — inventory
+- **Entry / hand-off.** Entered via `Screen.InventoryScan` from the dashboard. Tapping SCAN PILLS
+  saves the active bottle's count and navigates to
+  `LooseCountScreen` (`feature/stockCount/loose`) for the loose-pill count — inventory
   does **not** run its own counting UI.
 - **Key classes.** `InventoryFlowScreen`, `InventoryScanViewModel`, the four
   `BatchStockCount{Phone,Tablet}{Portrait,Landscape}` variants, the

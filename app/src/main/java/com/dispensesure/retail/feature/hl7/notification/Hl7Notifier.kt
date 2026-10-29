@@ -14,7 +14,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.dispensesure.retail.MainActivity
-import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.navigation.Screen
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -53,11 +52,7 @@ class Hl7Notifier @Inject constructor(
         // PMS-originated dispense: deep-link into the merged DispenseFlowScreen
         // with fromHl7=true so it hydrates from the pre-created txn and starts
         // at the NDC scan step (the RX info is already in the HL7 payload).
-        // PMS dispense is always FIXED-count (driven by `targetCount` from HL7).
-        val route = Screen.DispenseFlow.createRoute(
-            scanType = CountType.FIXED.toString(),
-            fromHl7 = true,
-        )
+        val route = Screen.DispenseFlow.createRoute(fromHl7 = true)
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP

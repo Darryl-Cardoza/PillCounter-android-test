@@ -10,21 +10,14 @@ import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.StockBatchDao
-import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
-import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
-import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
-import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
-import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
 import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
 import com.dispensesure.retail.core.scanning.engine.frameForTest
 import com.dispensesure.retail.core.scanning.engine.lastAddSignatureForTest
@@ -84,8 +77,6 @@ class PillScanningViewModelTest {
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
-    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
-    private val stockBottleInfoDao: StockBottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
     private val dispenseCountDao: DispenseCountDao = mockk(relaxed = true)
@@ -95,7 +86,6 @@ class PillScanningViewModelTest {
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
-    private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
     private lateinit var engineFactory: TestEngineFactory
@@ -135,9 +125,6 @@ class PillScanningViewModelTest {
             app = application,
             preferenceHelper = preferenceHelper,
             dispenseTxnDao = dispenseTxnDao,
-            stockTxnDao = stockTxnDao,
-            stockBottleInfoDao = stockBottleInfoDao,
-            stockBatchDao = stockBatchDao,
             operatorNameProvider = operatorNameProvider,
             dispenseCountDao = dispenseCountDao,
             drugMasterDao = drugMasterDao,
@@ -152,14 +139,6 @@ class PillScanningViewModelTest {
     fun tearDown() { unmockkAll() }
 
     // ─────────────────────────── buildWorkflowSteps ───────────────────────────
-
-    @Test
-    fun `buildWorkflowSteps returns SCAN and TARGET_VERIFICATION when isDispense is false regardless of other params`() {
-        val steps = viewModel.buildWorkflowSteps(
-            isFromHl7 = true, simpleFlow = false, drugType = "CII", isDispense = false
-        )
-        assertEquals(listOf(StepState.SCAN, StepState.TARGET_VERIFICATION), steps)
-    }
 
     @Test
     fun `buildWorkflowSteps returns 3-step simple flow when isDispense true, simpleFlow true, and drugType is empty`() {
@@ -280,7 +259,6 @@ class PillScanningViewModelTest {
 
     @Test
     fun `enterScanStep publishes the dispense workflow steps`() = runTest {
-        viewModel.setScanType(CountType.FIXED.name)
         every { preferenceHelper.getTxnId() } returns 7L
         coEvery { dispenseTxnDao.getDispenseTxnDetail(7L) } returns DispenseTxnDetail(
             txnId = 7L,
@@ -311,23 +289,12 @@ class PillScanningViewModelTest {
 
     @Test
     fun `enterScanStep makes SCAN the current step without waiting on the steps lookup`() = runTest {
-        viewModel.setScanType(CountType.FIXED.name)
         every { preferenceHelper.getTxnId() } returns 7L
         coEvery { dispenseTxnDao.getDispenseTxnDetail(7L) } returns null
 
         viewModel.enterScanStep()
 
         assertEquals(StepState.SCAN, viewModel.currentStep.value)
-    }
-
-    @Test
-    fun `enterScanStep uses the stock-count steps for a REGULAR count`() = runTest {
-        viewModel.setScanType(CountType.REGULAR.name)
-
-        viewModel.enterScanStep()
-        advanceUntilIdle()
-
-        assertEquals(listOf(StepState.SCAN, StepState.TARGET_VERIFICATION), viewModel.steps.value)
     }
 
     // ─────────────────────────── resetTransaction ───────────────────────────
@@ -354,19 +321,6 @@ class PillScanningViewModelTest {
         assertFalse(image.exists())
     }
 
-    @Test
-    fun `resetTransaction clears the staging buffer`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { dispenseCountDao.getImagePathsForTxn(7L) } returns emptyList()
-        stageDetail(pillCount = 5)
-
-        viewModel.resetTransaction()
-
-        @Suppress("UNCHECKED_CAST")
-        val staged = getPrivateField("stagedDetails") as MutableList<DispenseCountEntity>
-        assertTrue(staged.isEmpty())
-    }
-
     // ─────────────────────────── observeResetAvailability ───────────────────────────
 
     @Test
@@ -378,7 +332,7 @@ class PillScanningViewModelTest {
             )
         )
 
-        viewModel.observeResetAvailability(batchId = 0L)
+        viewModel.observeResetAvailability()
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.canReset)
@@ -393,30 +347,17 @@ class PillScanningViewModelTest {
             )
         )
 
-        viewModel.observeResetAvailability(batchId = 0L)
+        viewModel.observeResetAvailability()
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.canReset)
     }
 
     @Test
-    fun `reset is unavailable once the batch has acked a chunk`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 0L
-        every { stockBatchDao.observeById(9L) } returns flowOf(
-            StockBatchEntity(batchId = 9L, isSynced = false, lastAckedChunkIndex = 2)
-        )
-
-        viewModel.observeResetAvailability(batchId = 9L)
-        advanceUntilIdle()
-
-        assertFalse(viewModel.uiState.value.canReset)
-    }
-
-    @Test
-    fun `reset is available for a batch-less stock count`() = runTest {
+    fun `reset is available when there is no txn`() = runTest {
         every { preferenceHelper.getTxnId() } returns 0L
 
-        viewModel.observeResetAvailability(batchId = 0L)
+        viewModel.observeResetAvailability()
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.canReset)
@@ -432,7 +373,7 @@ class PillScanningViewModelTest {
         )
         every { dispenseTxnDao.observeById(7L) } returns txn
 
-        viewModel.observeResetAvailability(batchId = 0L)
+        viewModel.observeResetAvailability()
         advanceUntilIdle()
         assertTrue(viewModel.uiState.value.canReset)
 
@@ -596,12 +537,17 @@ class PillScanningViewModelTest {
 
     // ─────────────────────────── handleAddTransaction: frame at the tap ───────────────────────────
 
-    private fun tapAdd(stepType: StepState = StepState.TARGET_VERIFICATION, count: Int = 5) = viewModel.onEvent(
-        PillScanningEvent.AddTransactionDetailClicked(
-            filteredCount = count,
-            stepType = stepType,
+    // Dispense always caps at the target. 100 keeps the cap out of the way; the
+    // over-target tests set their own first.
+    private fun tapAdd(stepType: StepState = StepState.TARGET_VERIFICATION, count: Int = 5) {
+        if (viewModel.uiState.value.targetCount == 0) viewModel.updateTargetCount(100)
+        viewModel.onEvent(
+            PillScanningEvent.AddTransactionDetailClicked(
+                filteredCount = count,
+                stepType = stepType,
+            )
         )
-    )
+    }
 
     // drugImagePlaceholder() is outside any try; with stubbed Android its toBitmap() hits a
     // null Bitmap and would kill the save before the insert. No drawable = no placeholder.
@@ -734,7 +680,6 @@ class PillScanningViewModelTest {
 
     @Test
     fun `Add over the target is turned down before the engine takes the frame`() = runTest {
-        viewModel.setScanType(CountType.FIXED.toString())
         viewModel.updateTargetCount(3)
         val frame = mockk<Bitmap>(relaxed = true)
         engineFactory.engine.putFrameForTest(frame)
@@ -752,7 +697,6 @@ class PillScanningViewModelTest {
         stubSavePath()
         mockkObject(UserInterfaceUtils)
         every { UserInterfaceUtils.showToast(any<String>(), any()) } returns Unit
-        viewModel.setScanType(CountType.FIXED.toString())
         viewModel.updateTargetCount(6)
         engineFactory.engine.putFrameForTest(mockk(relaxed = true))
         tapAdd(count = 5)                       // 5 <= 6: accepted, cooldown starts
@@ -822,51 +766,6 @@ class PillScanningViewModelTest {
         }
     }
 
-    @Suppress("UNCHECKED_CAST")
-    @Test
-    fun `Add in a stock session stamps the scanned lot, no Rx, and keeps no raw crop`() = runTest {
-        val stampedPhotoInfo = stubPhotoWrites()
-        val uiStateFlow = getPrivateField("_uiState") as MutableStateFlow<PillScanningUiState>
-        uiStateFlow.value = uiStateFlow.value.copy(isStockCountSession = true)
-        setPrivateField("stockDrugId", 42L)
-        setPrivateField("stockBottleId", 0L)
-        setPrivateField("stockLotNo", "10522")
-        setPrivateField("stockExpNo", "04-30-2028")
-        setPrivateField("stockSerialNo", "1000002616")
-        engineFactory.engine.putFrameForTest(mockk(relaxed = true))
-
-        tapAdd(stepType = StepState.TARGET_VERIFICATION)
-        val stagedCountRow = awaitFirstStagedDetail()
-
-        assertNull(stagedCountRow.rawImagePath)
-        with(stampedPhotoInfo.captured) {
-            assertEquals("10522", lotNumber)
-            assertEquals("1000002616", serialNumber)
-            assertEquals("04-30-2028", expirationDate)
-            assertNull(rxRefill)
-            assertTrue(isStockCount)
-        }
-        coVerify(exactly = 0) { dispenseCountDao.insert(any()) }
-    }
-
-    // Staging runs on Dispatchers.IO and writes no DB row to wait on, so poll the buffer.
-    @Suppress("UNCHECKED_CAST")
-    private fun awaitFirstStagedDetail(): DispenseCountEntity {
-        repeat(300) {
-            (getPrivateField("stagedDetails") as List<DispenseCountEntity>).firstOrNull()?.let { firstStagedRow -> return firstStagedRow }
-            Thread.sleep(10)
-        }
-        error("No detail was staged")
-    }
-
-    // ─────────────────────────── flushStagedDetails (deferred stock commit) ───────────────────────────
-
-    private fun setPrivateField(name: String, value: Any?) {
-        val field = PillScanningViewModel::class.java.getDeclaredField(name)
-        field.isAccessible = true
-        field.set(viewModel, value)
-    }
-
     private fun getPrivateField(name: String): Any? {
         val field = PillScanningViewModel::class.java.getDeclaredField(name)
         field.isAccessible = true
@@ -891,145 +790,4 @@ class PillScanningViewModelTest {
             isComingFromHL7 = isComingFromHL7,
         )
     }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun stageDetail(pillCount: Int) {
-        val list = getPrivateField("stagedDetails") as MutableList<DispenseCountEntity>
-        list.add(
-            DispenseCountEntity(
-                pillCount = pillCount,
-                step = StepState.SCAN.toString(),
-            )
-        )
-    }
-
-    /**
-     * Puts the VM into the deferred-DispenseFlow stock session shape so
-     * flushStagedDetails takes the `stockDrugId != 0L` branch that runs
-     * withTransaction. Fresh batch (stockCountBatchId == 0L), no pre-existing
-     * bottle (stockBottleId == 0L), no pre-existing header (stockTxnId == 0L).
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun seedDeferredStockSession() {
-        val uiStateFlow = getPrivateField("_uiState") as MutableStateFlow<PillScanningUiState>
-        uiStateFlow.value = uiStateFlow.value.copy(isStockCountSession = true)
-        setPrivateField("stockDrugId", 42L)
-        setPrivateField("stockBottleId", 0L)
-        setPrivateField("stockTxnId", 0L)
-        setPrivateField("stockCountBatchId", 0L)
-        seedLoadedTxnInfo()
-    }
-
-    @Test
-    fun `flushStagedDetails deferred path commits withTransaction and publishes minted batchId`() = runTest {
-        // Standard trick for suspend-extension `withTransaction` (RoomDatabaseKt):
-        // a plain relaxed AppDatabase mock returns the default suspend result WITHOUT
-        // running the lambda, so the transaction body never executes and the caller
-        // suspends indefinitely on the returned Continuation. mockkStatic on the file
-        // is the only way to make the mock actually invoke the block.
-        mockkStatic("androidx.room.RoomDatabaseKt")
-        val txBlock = slot<suspend () -> Pair<Long, Long>>()
-        coEvery {
-            appDatabase.withTransaction<Pair<Long, Long>>(capture(txBlock))
-        } coAnswers { txBlock.captured.invoke() }
-
-        coEvery { stockBatchDao.insert(any()) } returns 111L
-        coEvery { stockTxnDao.findByDrugInBatch(111L, 42L) } returns null
-        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 222L
-        coEvery { stockBottleInfoDao.insert(any()) } returns 333L
-        every { preferenceHelper.getTxnId() } returns 5L
-        coEvery { dispenseCountDao.getTotalPillCountForTxn(5L) } returns 0
-
-        seedDeferredStockSession()
-        stageDetail(pillCount = 7)
-
-        viewModel.onEvent(PillScanningEvent.DoneClicked)
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { stockBatchDao.insert(any()) }
-        coVerify(exactly = 1) { stockTxnDao.upsertPreservingId(any()) }
-        coVerify(exactly = 1) { stockBottleInfoDao.insert(any()) }
-        coVerify(exactly = 1) { stockTxnDao.refreshBatchTotalNdcs(111L) }
-        assertEquals(111L, viewModel.stockCountCommittedBatchId.value)
-    }
-
-    @Test
-    fun `flushStagedDetails deferred path stamps the scanned lot expiry and serial on the loose line`() = runTest {
-        mockkStatic("androidx.room.RoomDatabaseKt")
-        val txBlock = slot<suspend () -> Pair<Long, Long>>()
-        coEvery {
-            appDatabase.withTransaction<Pair<Long, Long>>(capture(txBlock))
-        } coAnswers { txBlock.captured.invoke() }
-        coEvery { stockBatchDao.insert(any()) } returns 111L
-        coEvery { stockTxnDao.findByDrugInBatch(111L, 42L) } returns null
-        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 222L
-        coEvery { stockBottleInfoDao.insert(any()) } returns 333L
-        every { preferenceHelper.getTxnId() } returns 5L
-        coEvery { dispenseCountDao.getTotalPillCountForTxn(5L) } returns 0
-
-        seedDeferredStockSession()
-        setPrivateField("stockLotNo", "10522")
-        setPrivateField("stockExpNo", "04-30-2028")
-        setPrivateField("stockSerialNo", "1000002616")
-        stageDetail(pillCount = 30)
-
-        viewModel.onEvent(PillScanningEvent.DoneClicked)
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) {
-            stockBottleInfoDao.insert(match {
-                it.lotNo == "10522" && it.expNo == "04-30-2028" && it.serialNo == "1000002616" &&
-                    it.bottleQty == 0 && it.looseQty == 30
-            })
-        }
-    }
-
-    @Test
-    fun `flushStagedDetails existing-header path stamps the scanned lot expiry and serial on the loose line`() = runTest {
-        coEvery { stockBottleInfoDao.insert(any()) } returns 333L
-        every { preferenceHelper.getTxnId() } returns 5L
-        coEvery { dispenseCountDao.getTotalPillCountForTxn(5L) } returns 0
-
-        seedDeferredStockSession()
-        setPrivateField("stockTxnId", 9L)
-        setPrivateField("stockLotNo", "10522")
-        setPrivateField("stockExpNo", "04-30-2028")
-        setPrivateField("stockSerialNo", "1000002616")
-        stageDetail(pillCount = 30)
-
-        viewModel.onEvent(PillScanningEvent.DoneClicked)
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) {
-            stockBottleInfoDao.insert(match {
-                it.stockTxnId == 9L && it.lotNo == "10522" && it.expNo == "04-30-2028" &&
-                    it.serialNo == "1000002616" && it.looseQty == 30
-            })
-        }
-    }
-
-    @Test
-    fun `flushStagedDetails deferred path preserves staging and surfaces error when withTransaction throws`() = runTest {
-        mockkStatic("androidx.room.RoomDatabaseKt")
-        coEvery {
-            appDatabase.withTransaction<Pair<Long, Long>>(any())
-        } throws RuntimeException("db boom")
-
-        every { preferenceHelper.getTxnId() } returns 5L
-        coEvery { dispenseCountDao.getTotalPillCountForTxn(5L) } returns 0
-
-        seedDeferredStockSession()
-        stageDetail(pillCount = 7)
-
-        viewModel.onEvent(PillScanningEvent.DoneClicked)
-        advanceUntilIdle()
-
-        assertEquals("test error", viewModel.uiState.value.showErrorMessage)
-        val staged = getPrivateField("stagedDetails") as List<*>
-        assertEquals(1, staged.size)
-        coVerify(exactly = 0) { stockTxnDao.updateStatus(any(), any()) }
-        assertEquals(null, viewModel.stockCountCommittedBatchId.value)
-    }
-
-
 }

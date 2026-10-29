@@ -9,14 +9,10 @@ import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.StockBatchDao
-import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
-import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
@@ -82,8 +78,6 @@ class PillScanningViewModelEventTest {
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
-    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
-    private val stockBottleInfoDao: StockBottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
     private val dispenseCountDao: DispenseCountDao = mockk(relaxed = true)
@@ -93,7 +87,6 @@ class PillScanningViewModelEventTest {
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
-    private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
     private lateinit var engineFactory: TestEngineFactory
@@ -131,9 +124,6 @@ class PillScanningViewModelEventTest {
             app = application,
             preferenceHelper = preferenceHelper,
             dispenseTxnDao = dispenseTxnDao,
-            stockTxnDao = stockTxnDao,
-            stockBottleInfoDao = stockBottleInfoDao,
-            stockBatchDao = stockBatchDao,
             operatorNameProvider = operatorNameProvider,
             dispenseCountDao = dispenseCountDao,
             drugMasterDao = drugMasterDao,
@@ -413,38 +403,6 @@ class PillScanningViewModelEventTest {
 
     // ─────────────────────────── FinalDone routing via handleConfirmDialog ───────────────────────────
 
-    // SCAN_VM_035
-    @Test
-    fun `FinalDone in a stock count session sets showEndStockCountDialog to true`() = runTest {
-        val txnInfo = DispenseTxnDetail(
-            txnId = 1L, drugName = null, drugId = 1L, ndc = null,
-            targetCount = 10, note = null,
-            createdAt = 0L, bottlesJson = null, totalPillCount = 0,
-            drugType = null,
-            counts = emptyList(), isComingFromHL7 = false,
-        )
-        coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns txnInfo
-        viewModel.showTxnInfo(CountType.REGULAR.toString())
-        advanceUntilIdle()
-        // A null drug stops startStockCounting, so only the session flag changes.
-        coEvery { drugMasterDao.getDrugById(any()) } returns null
-        viewModel.enterStockCountSession(bottleId = 0L, stockTxnId = 0L, batchId = 0L, drugId = 1L)
-
-        viewModel.onEvent(PillScanningEvent.FinalDone(StepState.CONTAINER_INITIATE, totalCount = 5))
-
-        assertTrue(viewModel.uiState.value.showEndStockCountDialog)
-    }
-
-    // SCAN_VM_048
-    @Test
-    fun `enterStockCountSession marks the session in uiState`() = runTest {
-        coEvery { drugMasterDao.getDrugById(any()) } returns null
-
-        viewModel.enterStockCountSession(bottleId = 0L, stockTxnId = 0L, batchId = 0L, drugId = 1L)
-
-        assertTrue(viewModel.uiState.value.isStockCountSession)
-    }
-
     // SCAN_VM_036
     @Test
     fun `FinalDone with CONTAINER_INITIATE and totalCount below target sets showErrorMessage`() = runTest {
@@ -456,7 +414,7 @@ class PillScanningViewModelEventTest {
             counts = emptyList(), isComingFromHL7 = false,
         )
         coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns txnInfo
-        viewModel.showTxnInfo(CountType.FIXED.toString())
+        viewModel.showTxnInfo()
         advanceUntilIdle()
 
         // target=10, totalCount=5 → 10 <= 5 is false → sets showErrorMessage
@@ -476,7 +434,7 @@ class PillScanningViewModelEventTest {
             counts = emptyList(), isComingFromHL7 = false,
         )
         coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns txnInfo
-        viewModel.showTxnInfo(CountType.FIXED.toString())
+        viewModel.showTxnInfo()
         advanceUntilIdle()
 
         // target=10, history sums to 0 → error, no step change

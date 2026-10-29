@@ -14,16 +14,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -48,9 +48,9 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.tourguide.TourGuideState
 import com.dispensesure.retail.core.tourguide.tourTarget
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.MenuButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
@@ -428,7 +428,7 @@ internal fun QueueItem.Dispense.toDrugCountRowData() = DrugCountRowData(
     barcodeImage = DispenseBottleJson.decode(txn.bottlesJson).firstOrNull()?.barcodeImagePath,
     ndc = txn.ndc,
     drugType = txn.drugType,
-    drugName = txn.drugName ?: "—",
+    drugName = txn.drugName.orEmpty(),
     date = txn.createdAt.toFormattedDate(),
     bucketId = txn.bucketId,
     targetCount = txn.targetCount ?: 0,

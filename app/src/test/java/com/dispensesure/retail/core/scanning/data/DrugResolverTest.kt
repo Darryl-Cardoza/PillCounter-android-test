@@ -13,6 +13,7 @@ import io.mockk.slot
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -62,6 +63,18 @@ class DrugResolverTest {
     }
 
     @Test
+    fun `rescan of a saved nameless drug with allowNoName is found without asking the server`() = runTest {
+        val saved = savedDrug(ndc = NDC, name = null)
+        coEvery { drugMasterDao.getDrugByGtin(GTIN) } returns saved
+
+        val result = resolver.resolve(GTIN, allowNoName = true, scannedGtin = GTIN)
+
+        assertEquals(DrugLookup.Found(saved, fromServer = false), result)
+        coVerify(exactly = 0) { drugRepository.getDrugInfoByNdc(any()) }
+        coVerify(exactly = 0) { drugImageDownloader.downloadAndSave(any(), any()) }
+    }
+
+    @Test
     fun `saved drug that is not the expected one goes to the server with the expected NDC`() = runTest {
         coEvery { drugMasterDao.getDrugByGtin(GTIN) } returns savedDrug(ndc = "OTHER")
         val request = slot<GetNdcRequestModel>()
@@ -106,10 +119,37 @@ class DrugResolverTest {
     fun `server without a name uses nameIfMissing and names the image file after the NDC`() = runTest {
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns serverInfo(genericName = null)
 
-        val result = resolver.resolve(GTIN, nameIfMissing = "Unknown Drug") as DrugLookup.Found
+        val result = resolver.resolve(GTIN, nameIfMissing = "Order Name") as DrugLookup.Found
 
-        assertEquals("Unknown Drug", result.drug.drugName)
+        assertEquals("Order Name", result.drug.drugName)
         coVerify { drugImageDownloader.downloadAndSave(IMAGE_URL, NDC) }
+    }
+
+    @Test
+    fun `server without a name and allowNoName saves the drug with no name`() = runTest {
+        coEvery { drugRepository.getDrugInfoByNdc(any()) } returns serverInfo(genericName = " ")
+        val saved = slot<DrugMasterEntity>()
+        coEvery { drugMasterDao.upsertPreservingId(capture(saved)) } returns SAVED_ID
+
+        val result = resolver.resolve(GTIN, allowNoName = true) as DrugLookup.Found
+
+        assertNull(saved.captured.drugName)
+        assertNull(result.drug.drugName)
+        assertEquals(SAVED_ID, result.drug.drugId)
+        coVerify { drugImageDownloader.downloadAndSave(IMAGE_URL, NDC) }
+    }
+
+    @Test
+    fun `nameIfMissing wins over allowNoName`() = runTest {
+        coEvery { drugRepository.getDrugInfoByNdc(any()) } returns serverInfo(genericName = null)
+
+        val result = resolver.resolve(
+            GTIN,
+            nameIfMissing = "Order Name",
+            allowNoName = true,
+        ) as DrugLookup.Found
+
+        assertEquals("Order Name", result.drug.drugName)
     }
 
     @Test
@@ -144,7 +184,10 @@ class DrugResolverTest {
     fun `unknown drug without nameIfUnknown is NotFound`() = runTest {
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
 
-        assertEquals(DrugLookup.NotFound, resolver.resolve(NDC, nameIfMissing = "Unknown Drug"))
+        assertEquals(
+            DrugLookup.NotFound,
+            resolver.resolve(NDC, nameIfMissing = "Order Name", allowNoName = true),
+        )
         coVerify(exactly = 0) { drugMasterDao.upsertPreservingId(any()) }
     }
 
@@ -156,7 +199,7 @@ class DrugResolverTest {
         assertEquals(DrugLookup.Failed(boom), resolver.resolve(NDC))
     }
 
-    private fun savedDrug(ndc: String, name: String = "Aspirin") =
+    private fun savedDrug(ndc: String, name: String? = "Aspirin") =
         DrugMasterEntity(drugId = 5L, ndc = ndc, drugName = name, packageQty = 100, createdAt = 1L)
 
     private fun serverInfo(

@@ -6,9 +6,7 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,8 +15,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -36,50 +32,43 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraFeed
+import com.dispensesure.retail.core.scanning.presentation.compose.ContainerScanStrip
 import com.dispensesure.retail.core.scanning.presentation.compose.CountOverlay
-import com.dispensesure.retail.core.scanning.presentation.compose.count.CircularCountIndicator
-import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModeBottomStrip
+import com.dispensesure.retail.core.scanning.presentation.compose.CountingPausedOverlay
+import com.dispensesure.retail.core.scanning.presentation.compose.LiveCountCircle
 import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModePhonePortraitDetailsBar
 import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModeTopDetailsBar
 import com.dispensesure.retail.core.scanning.presentation.compose.count.CountPanelState
 import com.dispensesure.retail.core.scanning.presentation.compose.count.HistoryModeLandscape
 import com.dispensesure.retail.core.scanning.presentation.compose.count.HistoryModePortrait
 import com.dispensesure.retail.core.scanning.presentation.compose.count.InformationPanelSection
-import com.dispensesure.retail.core.scanning.presentation.compose.count.countModeStepSize
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.core.utils.compose.GlobalLoadingOverlay
@@ -94,14 +83,11 @@ import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.BtScann
 import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.DispenseQueuePanel
 import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.TargetPillsCountDialog
 import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
-import com.dispensesure.retail.navigation.Screen
 import com.dispensesure.retail.ui.theme.AppTheme
-import com.dispensesure.retail.ui.theme.AppTheme.dimens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
-import java.util.Locale
 import kotlin.math.roundToInt
 import com.dispensesure.retail.core.scanning.domain.data.NavigationEvent as PillNavigationEvent
 
@@ -128,10 +114,6 @@ import com.dispensesure.retail.core.scanning.domain.data.NavigationEvent as Pill
  * component (StepTitleWithSpeech) is only rendered during COUNTING.
  */
 
-// Grace period before hiding the count circle after detections drop to 0,
-// so momentary empty frames don't flicker the circle off and on.
-private const val COUNT_CIRCLE_HIDE_GRACE_MS = 700L
-
 private const val HAZARDOUS_TAG = "HazardousFlow"
 
 // Total rightward drag that dismisses the landscape Rx panel. Measured from
@@ -141,14 +123,9 @@ private val INLINE_PANEL_DISMISS_DRAG = 56.dp
 @Composable
 fun DispenseFlowScreen(
     navController: NavController,
-    countType: String,
     fromHl7: Boolean = false,
     fromResume: Boolean = false,
-    batchId: Long = 0L,
     fromQueue: Boolean = false,
-    // Comma-separated NDC allowlist from a PMS batch Scan-Pills hand-off.
-    // Empty string = no restriction (plain dispense / non-PMS batch).
-    allowedNdcs: String = "",
     dispenseVm: DispenseFlowViewModel = hiltViewModel(),
     pillVm: PillScanningViewModel = hiltViewModel(),
 ) {
@@ -197,54 +174,9 @@ fun DispenseFlowScreen(
         }
     }
 
-    LaunchedEffect(countType) {
-        dispenseVm.setCountType(countType)
-        pillVm.setScanType(countType)
-    }
-
-    LaunchedEffect(batchId) {
-        dispenseVm.setBatchId(batchId)
-    }
-
-    LaunchedEffect(allowedNdcs) {
-        val ndcSet = allowedNdcs
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .toSet()
-        dispenseVm.setAllowedNdcs(ndcSet)
-    }
-
-    // Forward a lazily-created stock-count batchId to the previous screen
-    // (InventoryScanHost) via NavController's SavedStateHandle so its Recent
-    // Counts list adopts the real batchId on resume; otherwise the list stays
-    // bound to the initial 0L nav arg and shows nothing after we pop back.
-    LaunchedEffect(Unit) {
-        dispenseVm.lazilyCreatedStockBatchId.collectLatest { newBatchId ->
-            if (newBatchId != null && newBatchId != 0L) {
-                navController.previousBackStackEntry
-                    ?.savedStateHandle
-                    ?.set(Screen.DispenseFlow.NAV_KEY_STOCK_COUNT_BATCH_ID, newBatchId)
-                dispenseVm.consumeLazilyCreatedStockBatchId()
-            }
-        }
-    }
-
-    // Deferred stock-count commit: PillScanningVM mints the batchId inside its
-    // atomic flush at All Done. Route it through dispenseVm so the existing
-    // lazilyCreatedStockBatchId publish path handles the SavedStateHandle write.
-    LaunchedEffect(Unit) {
-        pillVm.stockCountCommittedBatchId.collectLatest { committedBatchId ->
-            if (committedBatchId != null && committedBatchId != 0L) {
-                dispenseVm.publishStockCountBatchId(committedBatchId)
-                pillVm.consumeStockCountCommittedBatchId()
-            }
-        }
-    }
-
     // One-time init for the pill counting workflow side: reset glove state and
-    // start listening for the pillVm's own navigation events (Done → Dashboard /
-    // Batch). Without this collect, hitting "All Done" in the pill panel would
+    // start listening for the pillVm's own navigation events (Done → Dashboard).
+    // Without this collect, hitting "All Done" in the pill panel would
     // fire the confirmation dialog but the user would never actually leave the
     // screen on confirm.
     LaunchedEffect(Unit) {
@@ -252,7 +184,6 @@ fun DispenseFlowScreen(
         pillVm.navigationEvent.collectLatest { event ->
             when (event) {
                 is PillNavigationEvent.NavigateToDashboard -> {
-                    pillVm.discardStagedCount()
                     pillVm.resetGloveDetection()
                     // Do NOT reset workflow steps here — that changes pillStepType
                     // while still on COUNTING stage and triggers unwanted TTS speech.
@@ -260,16 +191,6 @@ fun DispenseFlowScreen(
                     // Always check for pending dispense items after completing a transaction;
                     // show the queue if any exist, otherwise navigate to Dashboard.
                     dispenseVm.resetToQueueOrNavigateDashboard()
-                }
-
-                is PillNavigationEvent.NavigateToBatch -> {
-                    // Pop back to the inventory/batch screen that launched this flow
-                    // (the Batch Stock Count screen for the "Scan Pills" hand-off).
-                    // If nothing can be popped (root entry), fall back to Dashboard.
-                    val popped = navController.popBackStack()
-                    if (!popped) {
-                        navController.navigateBackToDashboard()
-                    }
                 }
             }
         }
@@ -334,9 +255,8 @@ fun DispenseFlowScreen(
     // back to SCAN announces it again.
     var announcedScanStep by remember(dispenseState.stage) { mutableStateOf<StepState?>(null) }
 
-    // The container-scan step only has drug details for a dispense — they come from
-    // the RX. A stock count learns them from the container it is about to scan, so
-    // there is nothing to put in a details bar yet.
+    // The container-scan step's drug details come from the RX, so the bar only shows
+    // once they are loaded.
     val showScanDetailsBar = dispenseState.stage == DispenseStage.PRE_NDC &&
         (dispenseState.drugName.isNotBlank() || dispenseState.ndc.isNotBlank())
 
@@ -346,7 +266,6 @@ fun DispenseFlowScreen(
     // Real height of the SCAN step's strip, so the live count circle clears it without
     // a hardcoded guess. Zero for one frame on first composition.
     var scanStripHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
 
     // Resume/HL7 entries jump to their real start stage (COUNTING / PRE_NDC)
     // asynchronously via initializeFromResumedTxn()/initializeFromHl7Txn(). Until
@@ -464,20 +383,6 @@ fun DispenseFlowScreen(
         )
     }
 
-    if (pillState.showEndStockCountDialog) {
-        CommonDialog(
-            message = stringResource(R.string.are_you_sure_you_want_to_end_this_count),
-            title = stringResource(R.string.confirmation),
-            confirmText = stringResource(R.string.yes),
-            cancelText = stringResource(R.string.no),
-            onConfirm = { pillVm.moveNextStep() },
-            onCancel = {
-                pillVm.resetIdleOverlay()
-                pillVm.handleDismissDialog()
-            },
-        )
-    }
-
     if (pillState.showSkipStepDialog) {
         CommonDialog(
             message = stringResource(R.string.skip_step_message),
@@ -520,30 +425,11 @@ fun DispenseFlowScreen(
     // LaunchedEffect below).
     LaunchedEffect(dispenseState.stage) {
         if (dispenseState.stage == DispenseStage.COUNTING) {
-            Log.i(HAZARDOUS_TAG, "Stage → COUNTING | countType=$countType | txnId=${dispenseState.txnId} | drug=${dispenseState.drugName} | isHazardous=${dispenseState.isHazardous}")
+            Log.i(HAZARDOUS_TAG, "Stage → COUNTING | txnId=${dispenseState.txnId} | drug=${dispenseState.drugName} | isHazardous=${dispenseState.isHazardous}")
             pillVm.resumePillDetection()
-            // Stock count (REGULAR): no dispense_txn — count loose pills into the
-            // already-created BottleInfo line via the stock-count session. Dispense (FIXED)
-            // keeps loading its txn from dispense_txn via getDrugInfo.
-            if (countType == CountType.REGULAR.toString()) {
-                // Stock count: enterStockCountSession → startStockCounting sets up the
-                // synthetic txn info and header fields itself. Calling showTxnInfo() here
-                // would clobber it with a null DB lookup (no dispense_txn row for stock).
-                pillVm.enterStockCountSession(
-                    bottleId = dispenseState.stockBottleId,
-                    stockTxnId = dispenseState.stockTxnId,
-                    batchId = dispenseState.batchId,
-                    drugId = dispenseState.stockDrugId,
-                    bucketId = dispenseState.selectedBucketId.ifBlank { null },
-                    lotNo = dispenseState.pendingFirstBottle?.lotNumber,
-                    expNo = dispenseState.pendingFirstBottle?.expirationDate,
-                    serialNo = dispenseState.pendingFirstBottle?.serialNumber,
-                )
-            } else {
-                pillVm.getDrugInfo(forceStartStep = null)
-                pillVm.showTxnInfo(countType)
-            }
-            pillVm.observeResetAvailability(batchId = dispenseState.batchId)
+            pillVm.getDrugInfo(forceStartStep = null)
+            pillVm.showTxnInfo()
+            pillVm.observeResetAvailability()
             // Enable tray color detection for all transactions (hazardous and non-hazardous).
             Log.i(HAZARDOUS_TAG, "Calling setHazardousTransaction(isHazardous=${dispenseState.isHazardous})")
             pillVm.setHazardousTransaction(dispenseState.isHazardous)
@@ -576,7 +462,6 @@ fun DispenseFlowScreen(
         dispenseState.showNdcNotFoundDialog,
         dispenseState.showInvalidScanDialog,
         dispenseState.showNdcEquivalenceDialog,
-        dispenseState.showRxScannedInStockCountDialog,
         dispenseState.isLoading,
     ) {
         val anyOverlay = dispenseState.showRxDetails ||
@@ -584,7 +469,6 @@ fun DispenseFlowScreen(
                 dispenseState.showNdcNotFoundDialog ||
                 dispenseState.showInvalidScanDialog ||
                 dispenseState.showNdcEquivalenceDialog ||
-                dispenseState.showRxScannedInStockCountDialog ||
                 dispenseState.isLoading
         if (anyOverlay) pillVm.pausePillDetection()
         else pillVm.resumePillDetection()
@@ -607,29 +491,6 @@ fun DispenseFlowScreen(
     // LaunchedEffect below so a dialog opening mid-cooldown still wins.
     var scanCooldownActive by remember { mutableStateOf(false) }
 
-    // NDC not in PMS allowlist — show the correct toast and explicitly resume
-    // the barcode analyzer. Without the explicit resume here the analyzer stays
-    // self-paused (from the MLKit hit) because the isLoading true→false
-    // transition can be batched away by Compose and the generic LaunchedEffect
-    // below never fires the resume.
-    val ndcNotAllowedToastText = stringResource(
-        R.string.batch_stock_count_ndc_not_in_request,
-        dispenseState.ndcNotAllowedValue,
-    )
-    LaunchedEffect(dispenseState.ndcNotAllowedToastTick) {
-        if (dispenseState.ndcNotAllowedToastTick > 0) {
-            showToast(ndcNotAllowedToastText)
-        }
-    }
-
-    // Safety net for process/nav death: if the screen leaves composition with
-    // staged-but-uncommitted loose pills (e.g. an unhandled back path), discard
-    // them. After a successful Done the buffer is already flushed/cleared, so
-    // this is a no-op in that case.
-    DisposableEffect(Unit) {
-        onDispose { pillVm.discardStagedCount() }
-    }
-
     // Pause/resume the barcode analyzer to match the stage. Outside the
     // pre-stages the barcode scanner sits idle; while ANY verification sheet,
     // error dialog, or loading indicator is on top of the camera we don't want
@@ -645,7 +506,6 @@ fun DispenseFlowScreen(
         dispenseState.showNdcNotFoundDialog,
         dispenseState.showInvalidScanDialog,
         dispenseState.showNdcEquivalenceDialog,
-        dispenseState.showRxScannedInStockCountDialog,
         dispenseState.isLoading,
         scanCooldownActive,
     ) {
@@ -662,7 +522,6 @@ fun DispenseFlowScreen(
                 !dispenseState.showNdcNotFoundDialog &&
                 !dispenseState.showInvalidScanDialog &&
                 !dispenseState.showNdcEquivalenceDialog &&
-                !dispenseState.showRxScannedInStockCountDialog &&
                 !dispenseState.isLoading &&
                 !scanCooldownActive
         if (shouldRun) barcodeAnalyzer.resume() else barcodeAnalyzer.pause()
@@ -671,9 +530,7 @@ fun DispenseFlowScreen(
     // Track in-flight pill count from the detector (only meaningful in COUNTING).
     var filteredPillCount by remember { mutableStateOf(0) }
 
-    // One snapshot for the count panel, the camera overlay and View All. A stock
-    // loose count (REGULAR) keeps its own session total.
-    val isOpenCount = pillState.scanType == CountType.REGULAR.toString()
+    // One snapshot for the count panel, the camera overlay and View All.
     val countPanelState = CountPanelState(
         drugName = pillState.drugName,
         ndc = pillState.ndc,
@@ -681,13 +538,9 @@ fun DispenseFlowScreen(
         bucket = pillState.bucket,
         dosageForm = pillState.dosageForm,
         drugImage = pillState.drugImage,
-        totalCount = if (isOpenCount) {
-            pillState.stockCountSessionTotal
-        } else {
-            pillState.txnDetailHistory.sumOf { txnDetail -> txnDetail.count }
-        },
+        totalCount = pillState.txnDetailHistory.sumOf { txnDetail -> txnDetail.count },
         targetCount = pillState.targetCount,
-        isOpenCount = isOpenCount,
+        isOpenCount = false,
         stepType = pillStepType,
         steps = pillSteps,
         isVoiceOverEnabled = isSoundEnabled,
@@ -704,8 +557,8 @@ fun DispenseFlowScreen(
     // ── Back handling ───────────────────────────────────────────────────────
     // Device-back priority order:
     //  1. If the history view is open, dismiss it (return to camera + pill panel).
-    //  2. If the idle overlay is up, just resume — back must not discard the
-    //     staged count from what the user sees as a paused screen.
+    //  2. If the idle overlay is up, just resume — back on a paused screen must
+    //     not leave it.
     //  3. In QUEUE stage: back navigates to Dashboard (queue is the home for dispense).
     //  4. In non-QUEUE stage with fromQueue=true: cancel current scan, return to QUEUE.
     //  5. Otherwise: exit the dispense flow to the Dashboard.
@@ -718,15 +571,12 @@ fun DispenseFlowScreen(
             navController.navigateBackToDashboard()
         } else if (fromQueue && dispenseState.stage == DispenseStage.PRE_RX) {
             // Cancel RX scan before any transaction is created → return to queue list.
-            pillVm.discardStagedCount()
             pillVm.resetGloveDetection()
             pillVm.resetWorkflowSteps()
             dispenseVm.resetToQueue()
         } else {
-            pillVm.discardStagedCount()
             // Pop back to whichever screen launched this flow (Dashboard for a
-            // direct-dispense entry, InventoryScan for a stock-count Scan Pills
-            // hand-off). Fall back to Dashboard only if the back-stack is empty.
+            // direct-dispense entry). Fall back to Dashboard only if the back-stack is empty.
             val popped = navController.popBackStack()
             if (!popped) {
                 navController.navigateBackToDashboard()
@@ -811,14 +661,6 @@ fun DispenseFlowScreen(
         )
     }
 
-    val rxScannedInStockCountToastText = stringResource(R.string.scan_correct_label)
-    LaunchedEffect(dispenseState.showRxScannedInStockCountDialog) {
-        if (dispenseState.showRxScannedInStockCountDialog) {
-            showToast(rxScannedInStockCountToastText)
-            dispenseVm.dismissRxScannedInStockCountDialog()
-        }
-    }
-
     // Hard PMS NDC mismatch (scanned NDC doesn't match HL7 and isn't a
     // substitute) is surfaced as a non-blocking toast via ndcMismatchToastTick
     // below, not a popup — the popup variant was too disruptive when the user
@@ -884,7 +726,6 @@ fun DispenseFlowScreen(
         dispenseState.txnNotFoundToastTick,
         dispenseState.rxDrugNotFoundToastTick,
         dispenseState.vialRxMismatchToastTick,
-        dispenseState.ndcNotAllowedToastTick,
         dispenseState.rxAlreadyCompletedToastTick,
     ) {
         val anyToastTick = dispenseState.ndcMismatchToastTick +
@@ -892,7 +733,6 @@ fun DispenseFlowScreen(
                 dispenseState.txnNotFoundToastTick +
                 dispenseState.rxDrugNotFoundToastTick +
                 dispenseState.vialRxMismatchToastTick +
-                dispenseState.ndcNotAllowedToastTick +
                 dispenseState.rxAlreadyCompletedToastTick
         if (anyToastTick > 0) {
             scanCooldownActive = true
@@ -908,7 +748,6 @@ fun DispenseFlowScreen(
             dispenseState.showNdcNotFoundDialog ||
             dispenseState.showInvalidScanDialog ||
             dispenseState.showNdcEquivalenceDialog ||
-            dispenseState.showRxScannedInStockCountDialog ||
             dispenseState.showOnHoldDialog ||
             dispenseState.isLoading
     LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
@@ -985,11 +824,9 @@ fun DispenseFlowScreen(
                                     value = value,
                                     imagePath = imagePath,
                                     stage = dispenseState.stage,
-                                    countType = countType,
                                     onRx = dispenseVm::onRxBarcodeRead,
                                     onNdc = dispenseVm::onNdcBarcodeRead,
                                     onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
-                                    onRxInStockCount = dispenseVm::onRxScannedInStockCount,
                                 )
                                 // The analyzer self-pauses on every MLKit hit. If we
                                 // dropped the read (false positive, wrong format, or
@@ -1054,11 +891,11 @@ fun DispenseFlowScreen(
                 )
                 CountOverlay(
                     engineStates = pillVm.engineState,
-                    runningTotal = pillState.txnDetailHistory.sumOf { txnDetail -> txnDetail.count },
+                    runningTotal = countPanelState.totalCount,
                     targetCount = pillState.targetCount,
                     stepType = pillStepType,
-                    // Today's rule: a loaded dispense txn, not a stock loose count.
-                    showExcessPills = txnInfo != null && !pillState.isStockCountSession,
+                    // Red excess dots once the dispense txn is loaded.
+                    showExcessPills = txnInfo != null,
                     capturedStill = capturedBitmap,
                     showFlash = showFlash,
                     addPops = pillVm.addPopEvents,
@@ -1079,22 +916,11 @@ fun DispenseFlowScreen(
             // required): RX + NDC are confirmed, counting is the only step
             // left, so the panel is the primary affordance. Hiding it would
             // leave the screen looking empty and the user with no Done button.
-            val pillsLive = filteredPillCount > 0 || pillState.detectedPills.isNotEmpty()
-            var showCountCircle by remember { mutableStateOf(false) }
-            LaunchedEffect(pillsLive) {
-                if (pillsLive) {
-                    showCountCircle = true
-                } else {
-                    delay(COUNT_CIRCLE_HIDE_GRACE_MS)
-                    showCountCircle = false
-                }
-            }
-            val showPillPanel = dispenseState.stage == DispenseStage.COUNTING || showCountCircle
             // Suppress the pre-COUNTING pill panel while a resume/HL7 entry is
             // still resolving its real stage — we keep the live camera visible
             // under the loading scrim, but the wrong-stage overlay must not bleed
             // through it.
-            if (showPillPanel && !awaitingResume) {
+            if (!awaitingResume) {
                 if (dispenseState.stage == DispenseStage.COUNTING) {
                     // Full pill panel — total / target / circle / Add / Done. Every
                     // counting step, VIAL included, uses the full-bleed overlay:
@@ -1136,37 +962,20 @@ fun DispenseFlowScreen(
                     // NDC are scanned, and the voice prompt guides them there.
                     // In portrait the circle clears the SCAN step's stepper, which
                     // sits along the bottom edge.
-                    Box(
-                        modifier = if (isLandscape) {
-                            Modifier
-                                .align(Alignment.CenterEnd)
-                                .fillMaxHeight()
-                                .fillMaxWidth(0.3f)
+                    LiveCountCircle(
+                        detectedCount = filteredPillCount,
+                        pillsInView = filteredPillCount > 0 || pillState.detectedPills.isNotEmpty(),
+                        recentDetectionCounts = recentDetectionCounts,
+                        isAddCooldown = pillState.isAddCooldown,
+                        isIdle = pillState.showIdleOverlay,
+                        onCountSteady = pillVm::playCountSoundIfEnabled,
+                        isLandscape = isLandscape,
+                        bottomInset = if (dispenseState.stage == DispenseStage.PRE_NDC) {
+                            scanStripHeight
                         } else {
-                            Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .fillMaxHeight(0.25f)
-                                // Lift clear of the SCAN strip rather than padding
-                                // into it, so the circle keeps its size on short screens.
-                                .offset(
-                                    y = if (dispenseState.stage == DispenseStage.PRE_NDC) {
-                                        -scanStripHeight
-                                    } else {
-                                        0.dp
-                                    }
-                                )
+                            0.dp
                         },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularCountIndicator(
-                            count = filteredPillCount,
-                            recentDetectionCounts = recentDetectionCounts,
-                            isAddCooldown = pillState.isAddCooldown,
-                            isIdle = pillState.showIdleOverlay,
-                            onCountSteady = pillVm::playCountSoundIfEnabled,
-                        )
-                    }
+                    )
                 }
             }
         }
@@ -1208,35 +1017,17 @@ fun DispenseFlowScreen(
             // The same bottom strip the counting steps use. Every counting widget is
             // off — nothing has been counted before a container is scanned — so the
             // steps are all it carries.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .onSizeChanged { scanStripHeight = with(density) { it.height.toDp() } },
-            ) {
-                CountModeBottomStrip(
-                    steps = pillSteps,
-                    currentStep = pillStepType,
-                    isVoiceOverEnabled = isSoundEnabled,
-                    circleSize = countModeStepSize(
-                        isTablet = isTabletDevice,
-                        isLandscape = isLandscape,
-                    ),
-                    isLandscape = isLandscape,
-                    autoRevealCurrentStep = announcedScanStep != pillStepType,
-                    onAutoRevealed = { announcedScanStep = pillStepType },
-                    isFixed = countType == CountType.FIXED.toString(),
-                    totalCount = 0,
-                    targetCount = 0,
-                    onShowHistory = {},
-                    onProceed = {},
-                    showViewAllCounts = false,
-                    showCount = false,
-                    // Portrait has nothing to put in the bar on SCAN, on any device — the
-                    // steps float on the feed instead of sitting above an empty strip.
-                    showBar = isLandscape,
-                )
-            }
+            ContainerScanStrip(
+                steps = pillSteps,
+                currentStep = pillStepType,
+                isVoiceOverEnabled = isSoundEnabled,
+                isTablet = isTabletDevice,
+                isLandscape = isLandscape,
+                autoRevealCurrentStep = announcedScanStep != pillStepType,
+                onAutoRevealed = { announcedScanStep = pillStepType },
+                isFixed = true,
+                onHeightKnown = { stripHeight -> scanStripHeight = stripHeight },
+            )
         }
 
         // ── QUEUE stage overlay ───────────────────────────────────────────────
@@ -1343,44 +1134,7 @@ fun DispenseFlowScreen(
         // in a "Counting paused" prompt with a Resume button. Matches the
         // legacy screen.
         if (pillState.showIdleOverlay && !showHistory) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    // this is to disable the user to click the items below this overlay of resume.
-                    // Only the resume button has the touch.
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                awaitPointerEvent().changes.forEach { it.consume() }
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier.padding(24.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.counting_paused).uppercase(Locale.ROOT),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(bottom = 16.dp),
-                    )
-                    ActionButtonPrimary(
-                        text = stringResource(R.string.resume).uppercase(Locale.ROOT),
-                        onClick = { pillVm.resetIdleOverlay() },
-                        modifier = Modifier.width(dimens.dialogButtonWidth),
-                        color = MaterialTheme.colorScheme.secondary,
-                    )
-                }
-            }
+            CountingPausedOverlay(onResume = { pillVm.resetIdleOverlay() })
         }
 
         if (!showHistory) {
@@ -1430,16 +1184,10 @@ fun DispenseFlowScreen(
                         Modifier.align(Alignment.CenterStart)
                     },
                     onClick = {
-                        pillVm.discardStagedCount()
                         if (fromQueue && dispenseState.stage == DispenseStage.PRE_RX) {
                             pillVm.resetGloveDetection()
                             pillVm.resetWorkflowSteps()
                             dispenseVm.resetToQueue()
-                        } else if (batchId > 0L) {
-                            val popped = navController.popBackStack()
-                            if (!popped) {
-                                navController.navigateBackToDashboard()
-                            }
                         } else {
                             navController.navigateBackToDashboard()
                         }
@@ -1452,11 +1200,6 @@ fun DispenseFlowScreen(
                     DispenseStage.COUNTING -> pillStepType
                 }
                 Box(modifier = Modifier.align(Alignment.Center)) {
-                    // Stock count (REGULAR) during COUNTING no longer shows a
-                    // persistent "Scan open pills" header banner. The step name is
-                    // surfaced via the workflow stepper instead — revealed on entry
-                    // and whenever a step is tapped.
-                    //
                     // Also suppress while a resume/HL7 entry is still resolving its
                     // real start stage: otherwise the default PRE_RX header would
                     // both flash AND speak "Scan Rx Label" before snapping to the
@@ -1497,11 +1240,9 @@ fun DispenseFlowScreen(
                             value = barcode,
                             imagePath = null,
                             stage = dispenseState.stage,
-                            countType = countType,
                             onRx = dispenseVm::onRxBarcodeRead,
                             onNdc = dispenseVm::onNdcBarcodeRead,
                             onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
-                            onRxInStockCount = dispenseVm::onRxScannedInStockCount,
                         )
                         if (!dispatched) barcodeAnalyzer.resume()
                     }
@@ -1530,7 +1271,7 @@ fun DispenseFlowScreen(
         if (dispenseState.showRxDetails) {
             if (!isLandscape) {
                 VerifyRxDetailsSheet(
-                    drugName = dispenseState.drugName,
+                    drugName = drugDisplayName(dispenseState.drugName),
                     quantity = dispenseState.qty.orEmpty(),
                     bucket = dispenseState.selectedBucketId,
                     ndcNumber = dispenseState.ndc,
@@ -1573,7 +1314,7 @@ fun DispenseFlowScreen(
                         }
                 ) {
                     VerifyRxDetailsInlinePanel(
-                        drugName = dispenseState.drugName,
+                        drugName = drugDisplayName(dispenseState.drugName),
                         quantity = dispenseState.qty.orEmpty(),
                         bucket = dispenseState.selectedBucketId,
                         ndcNumber = dispenseState.ndc,
@@ -1591,12 +1332,11 @@ fun DispenseFlowScreen(
         // ── NDC bottomsheet / inline panel ───────────────────────────────────
         // Same surface treatment as the RX sheet: portrait → ModalBottomSheet,
         // landscape → inline right-side drawer. Non-dismissible: user must hit
-        // Cancel or Proceed. Stock count skips this sheet entirely — the
-        // stock line is created lazily in advanceToCountingStage.
+        // Cancel or Proceed.
         if (dispenseState.showNdcDetails) {
             if (!isLandscape) {
                 VerifyNdcDetailsSheet(
-                    drugName = dispenseState.ndcDrugName,
+                    drugName = drugDisplayName(dispenseState.ndcDrugName),
                     bucket = dispenseState.selectedBucketId,
                     ndcNumber = dispenseState.ndcScannedValue,
                     onCancel = { dispenseVm.onNdcCancelled() },
@@ -1616,7 +1356,7 @@ fun DispenseFlowScreen(
                         .background(androidx.compose.ui.graphics.Color.Transparent)
                 ) {
                     VerifyNdcDetailsInlinePanel(
-                        drugName = dispenseState.ndcDrugName,
+                        drugName = drugDisplayName(dispenseState.ndcDrugName),
                         bucket = dispenseState.selectedBucketId,
                         ndcNumber = dispenseState.ndcScannedValue,
                         onCancel = { dispenseVm.onNdcCancelled() },
@@ -1714,11 +1454,9 @@ internal fun handleBarcode(
     value: String,
     imagePath: String?,
     stage: DispenseStage,
-    countType: String,
     onRx: (String, String?) -> Unit,
     onNdc: (String, String?, DispenseBottle?) -> Unit,
     onRxInNdcStage: () -> Unit,
-    onRxInStockCount: () -> Unit,
 ): Boolean {
     // No real scans during the tour: the demo data is fed in by the tour card's Next.
     if (value.isBlank() || FtueController.state.isActive) return false
@@ -1731,13 +1469,8 @@ internal fun handleBarcode(
         DispenseStage.PRE_NDC -> {
             // Pipe-delimited payloads are the RX-label template
             // ({RXNO}|{NDCNO}|{QTY}|{BUCKET}) — never a valid GTIN / GS1.
-            // Stock count: show a blocking dialog since RX labels are never valid here.
-            // Dispense flow: nudge with a toast and resume scanning.
+            // Nudge with a toast and resume scanning.
             if (value.contains('|')) {
-                if (countType == CountType.REGULAR.toString()) {
-                    onRxInStockCount()
-                    return true
-                }
                 onRxInNdcStage()
                 return false
             }

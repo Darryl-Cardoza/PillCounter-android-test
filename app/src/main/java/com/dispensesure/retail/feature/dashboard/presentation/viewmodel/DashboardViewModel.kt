@@ -650,12 +650,6 @@ class DashboardViewModel @Inject constructor(
         _uiState.update { it.copy(pendingStockCountBucketId = bucketId) }
     }
 
-    fun clearCreatedBatchId() {
-        _uiState.update {
-            it.copy(createdBatchId = null)
-        }
-    }
-
     fun clearPendingStockCountBucketId() {
         _uiState.update { it.copy(pendingStockCountBucketId = null) }
     }

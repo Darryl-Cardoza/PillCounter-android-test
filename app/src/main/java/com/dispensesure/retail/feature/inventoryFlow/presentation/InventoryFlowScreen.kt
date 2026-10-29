@@ -12,8 +12,8 @@ import com.dispensesure.retail.feature.inventoryFlow.presentation.shell.Inventor
 /**
  * Entry point for the inventory (Batch Stock Count) flow. Shows the persistent
  * Batch Stock Count panel over the camera; ML/tray detection stay off until the
- * user taps SCAN PILLS, which hands off to DispenseFlowScreen in stock-count
- * mode. Dispatches to the right shell per form factor.
+ * user taps SCAN PILLS, which opens LooseCountScreen. Dispatches to the right
+ * shell per form factor.
  */
 @Composable
 fun InventoryFlowScreen(navController: NavController) {

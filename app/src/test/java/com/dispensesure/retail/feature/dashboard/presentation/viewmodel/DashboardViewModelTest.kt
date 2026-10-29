@@ -1135,16 +1135,6 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun `clearCreatedBatchId nulls field`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.clearCreatedBatchId()
-
-        assertNull(vm.uiState.value.createdBatchId)
-    }
-
-    @Test
     fun `clearPendingStockCountBucketId nulls field`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()

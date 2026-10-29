@@ -1,6 +1,5 @@
 ﻿package com.dispensesure.retail.core.scanning.domain.model
 
-import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.logic.GloveDetection
 import com.dispensesure.retail.core.scanning.logic.TrayColor
 
@@ -10,7 +9,6 @@ import com.dispensesure.retail.core.scanning.logic.TrayColor
  * Tracks progress of scanning and counting pills, including batch information,
  * detected pills, and system flags such as pause or loading status.
  *
- * @param scanType Whether this is a FIXED or REGULAR scan ([CountType]).
  * @param drugName Name of the drug being scanned (e.g., "Crocin 50mg").
  * @param totalCount Total number of pills counted across all batches so far.
  * @param targetCount Expected total number of pills to be scanned (ignored if FIXED).
@@ -21,7 +19,6 @@ import com.dispensesure.retail.core.scanning.logic.TrayColor
  * @param isLoading Whether a loading state is active (e.g., processing results).
  */
 data class PillScanningUiState(
-    val scanType: String = "REGULAR",
     val drugName: String = "",
     val ndc: String = "",
     val strength: String = "",
@@ -48,13 +45,9 @@ data class PillScanningUiState(
     val showErrorMessage: String? = null,
     val isHl7Txn: Boolean = false,
     val showCountMismatchDialog: Boolean = false,
-    val showEndStockCountDialog: Boolean = false,
-    val stockCountSessionTotal: Int = 0,
     val pendingTrayColorForClassification: TrayColor? = null,
     val showAddBottleDialog: Boolean = false,
     val showReplaceBottleDialog: Boolean = false,
     val canReset: Boolean = false,
-    val showSkipStepDialog: Boolean = false,
-    // True for a stock loose-count session; set by enterStockCountSession.
-    val isStockCountSession: Boolean = false
+    val showSkipStepDialog: Boolean = false
 )

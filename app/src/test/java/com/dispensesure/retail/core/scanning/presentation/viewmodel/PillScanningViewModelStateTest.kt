@@ -1,12 +1,9 @@
 package com.dispensesure.retail.core.scanning.presentation.viewmodel
 
 import android.app.Application
-import com.dispensesure.retail.core.room.dao.StockBatchDao
-import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
-import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.AppDatabase
@@ -58,8 +55,6 @@ class PillScanningViewModelStateTest {
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
-    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
-    private val stockBottleInfoDao: StockBottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
     private val dispenseCountDao: DispenseCountDao = mockk(relaxed = true)
@@ -69,7 +64,6 @@ class PillScanningViewModelStateTest {
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
-    private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
     private lateinit var engineFactory: TestEngineFactory
@@ -95,9 +89,6 @@ class PillScanningViewModelStateTest {
             app = application,
             preferenceHelper = preferenceHelper,
             dispenseTxnDao = dispenseTxnDao,
-            stockTxnDao = stockTxnDao,
-            stockBottleInfoDao = stockBottleInfoDao,
-            stockBatchDao = stockBatchDao,
             operatorNameProvider = operatorNameProvider,
             dispenseCountDao = dispenseCountDao,
             drugMasterDao = drugMasterDao,
@@ -121,23 +112,12 @@ class PillScanningViewModelStateTest {
         assertNull(viewModel.uiState.value.showErrorMessage)
     }
 
-    // SCAN_VM_002
-    @Test
-    fun `showEndStockCountDialog sets showEndStockCountDialog to true`() = runTest {
-        viewModel.showEndStockCountDialog()
-
-        assertTrue(viewModel.uiState.value.showEndStockCountDialog)
-    }
-
     // SCAN_VM_003
     @Test
-    fun `handleDismissDialog clears showCountMismatchDialog and showEndStockCountDialog`() = runTest {
-        viewModel.showEndStockCountDialog() // sets showEndStockCountDialog = true
-
+    fun `handleDismissDialog clears showCountMismatchDialog and showDialogForControl`() = runTest {
         viewModel.handleDismissDialog()
 
         assertFalse(viewModel.uiState.value.showCountMismatchDialog)
-        assertFalse(viewModel.uiState.value.showEndStockCountDialog)
         assertFalse(viewModel.uiState.value.showDialogForControl)
     }
 
@@ -188,14 +168,6 @@ class PillScanningViewModelStateTest {
     }
 
     // ─────────────────────────── Scan type / target count ───────────────────────────
-
-    // SCAN_VM_009
-    @Test
-    fun `setScanType stores the type string in uiState scanType field`() = runTest {
-        viewModel.setScanType("FIXED")
-
-        assertEquals("FIXED", viewModel.uiState.value.scanType)
-    }
 
     // SCAN_VM_010
     @Test

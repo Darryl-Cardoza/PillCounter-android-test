@@ -44,6 +44,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.EditDrugDetails
@@ -124,7 +125,7 @@ internal fun EditDetailsContent(
                 Row(modifier = Modifier.fillMaxWidth()) {
                     EditDetailField(
                         label = stringResource(R.string.batch_stock_count_label_drug_name),
-                        value = details.drugName,
+                        value = drugDisplayName(details.drugName),
                         modifier = Modifier.weight(2f),
                     )
                     EditDetailField(
@@ -142,7 +143,7 @@ internal fun EditDetailsContent(
                 // Drug Name on its own full-width row, then NDC | Bucket.
                 EditDetailField(
                     label = stringResource(R.string.batch_stock_count_label_drug_name),
-                    value = details.drugName,
+                    value = drugDisplayName(details.drugName),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 HorizontalDivider(

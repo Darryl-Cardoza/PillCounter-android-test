@@ -51,6 +51,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSpForPillCountingHistoryScreen
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.compose.cardSelectionShadow
 import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
 import com.dispensesure.retail.ui.theme.AppTheme
@@ -126,7 +127,7 @@ fun HistoryModePortrait(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = drugName,
+                    text = drugDisplayName(drugName),
                     color = AppTheme.extendedColors.textColor,
                     fontSize = responsiveSpForPillCountingHistoryScreen(18.sp),
                     fontWeight = FontWeight.SemiBold,

@@ -151,7 +151,7 @@ fun DispenseQueuePanel(
                             barcodeImage = DispenseBottleJson.decode(item.txn.bottlesJson).firstOrNull()?.barcodeImagePath,
                             ndc = item.txn.ndc,
                             drugType = item.txn.drugType,
-                            drugName = item.txn.drugName ?: "—",
+                            drugName = item.txn.drugName.orEmpty(),
                             date = item.txn.createdAt.toFormattedDate(),
                             bucketId = item.txn.bucketId,
                             targetCount = item.txn.targetCount ?: 0,

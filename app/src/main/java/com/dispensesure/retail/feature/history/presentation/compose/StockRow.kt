@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import com.dispensesure.retail.ui.theme.AppTheme
 
@@ -85,7 +86,7 @@ fun StockRow(
                 // Medicine name + timestamp
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = rowData.drugName.toString(),
+                        text = drugDisplayName(rowData.drugName),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
                         color = AppTheme.extendedColors.textColor

@@ -1,6 +1,5 @@
 ﻿package com.dispensesure.retail.feature.dispenseFlow.domain.model
 
-import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
@@ -26,7 +25,6 @@ data class DispenseFlowUiState(
     val initResolved: Boolean = false,
     val queueItems: List<QueueItem.Dispense> = emptyList(),
     val selectedQueueFilter: KpiFilter? = null,
-    val scanType: String = CountType.FIXED.toString(),
 
     val drugName: String = "",
     val drugImage: String = "",
@@ -70,9 +68,6 @@ data class DispenseFlowUiState(
     val txnNotFoundToastTick: Int = 0,
     // Fired when a standalone Rx label's NDC matches no drug. No sheet is shown.
     val rxDrugNotFoundToastTick: Int = 0,
-    // Fired when a scanned NDC is rejected by the batch PMS allowlist.
-    val ndcNotAllowedToastTick: Int = 0,
-    val ndcNotAllowedValue: String = "",
     // Fired during the VIAL step when a scanned vial barcode's RX does not match
     // the active transaction's RX number.
     val vialRxMismatchToastTick: Int = 0,
@@ -95,32 +90,12 @@ data class DispenseFlowUiState(
 
     val txnId: Long = 0L,
 
-    // Stock-count (normalized) session: set when a REGULAR loose-count line is created so
-    // the shared PillScanningViewModel can count into the BottleInfo line. Stock counts do
-    // not use dispense_txn, so [txnId] stays 0 for them.
-    val stockTxnId: Long = 0L,
-    val stockBottleId: Long = 0L,
-    val stockDrugId: Long = 0L,
-
     val isHazardous: Boolean = false,
-
-    // Stock-count only: shown when the user scans an RX label instead of an NDC container.
-    val showRxScannedInStockCountDialog: Boolean = false,
 
     // RX duplicate check: shown when a scanned RX already has a PARTIAL txn in the DB.
     val showContinueRxDialog: Boolean = false,
     // RX on-hold check: shown when the found txn is in ON_HOLD status.
     val showOnHoldDialog: Boolean = false,
-
-    // Stock-count batch association. 0L means no batch (dispense flow or stock count
-    // started without a batch context).
-    val batchId: Long = 0L,
-
-    // NDC allowlist for batch Scan-Pills from a PMS batch. Non-empty only when the
-    // batch was PMS-sourced.
-    // onNdcBarcodeRead rejects any scanned NDC that isn't in this set.
-    // Empty = no restriction (manually-started batch or plain dispense flow).
-    val allowedNdcs: Set<String> = emptySet(),
 
     // One-shot signal: set true when a transaction completes and the queue is empty.
     val navigateToDashboard: Boolean = false,
