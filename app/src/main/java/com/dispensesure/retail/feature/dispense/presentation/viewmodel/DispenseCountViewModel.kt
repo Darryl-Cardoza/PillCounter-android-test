@@ -745,6 +745,8 @@ class DispenseCountViewModel @Inject constructor(
                         _uiState.update { it.copy(showReplaceBottleDialog = true) }
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logger.e("BOTTLE_SCAN onBottleScanned failed", e, event = LogEvent.NDC_SCAN_FAILED)
             } finally {
