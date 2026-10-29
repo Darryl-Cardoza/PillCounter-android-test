@@ -246,7 +246,7 @@ class BatchViewModelTest {
             txn(
                 txnId = 3, drugId = 20L, drugName = null, ndc = null,
                 bottleQty = null, looseQty = null, packageQty = null
-            ),
+            )
         )
 
         val groups = vm.invokeGroupAndMap(txns)

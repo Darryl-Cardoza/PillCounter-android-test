@@ -90,7 +90,7 @@ fun HistoryDetailScreen(
                     .orEmpty(),
                 requestedNdc = uiState.txnInfo?.requestedNdc ?: "",
                 bottleList = bottleList,
-                onImagePreview = { previewImagePath = it },
+                onImagePreview = { previewImagePath = it }
             )
 
             if (showDeleteConfirmDialog) {

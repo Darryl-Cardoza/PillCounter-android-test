@@ -28,7 +28,8 @@ class DrugResolver @Inject constructor(
      * @param expectedNdc drug the order asks for; a saved drug with another NDC goes to the server.
      * @param nameIfMissing name to save when the server knows the drug but sends no name.
      * @param nameIfUnknown name to save a minimal record under when the server doesn't know the drug.
-     * @param allowNoName with no name from the server or [nameIfMissing], save the drug without one.
+     * @param allowNoName with no name from the server or [nameIfMissing], save the drug without one;
+     *   a saved drug without a name is also used as is.
      * @param scannedGtin GTIN saved on the drug so the next scan finds it locally.
      */
     suspend fun resolve(
@@ -40,7 +41,7 @@ class DrugResolver @Inject constructor(
         scannedGtin: String? = null,
     ): DrugLookup {
         val saved = listOfNotNull(drugMasterDao.getDrugByGtin(code), drugMasterDao.getDrugByNdc(code))
-            .firstOrNull { !it.drugName.isNullOrBlank() }
+            .firstOrNull { allowNoName || !it.drugName.isNullOrBlank() }
         if (saved != null && (expectedNdc.isNullOrBlank() || saved.ndc == expectedNdc)) {
             return DrugLookup.Found(saved, fromServer = false)
         }

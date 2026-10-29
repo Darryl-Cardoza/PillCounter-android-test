@@ -148,7 +148,7 @@ internal fun BoxScope.CountModePhonePortraitDetailsBar(
                     fontSize = responsiveSp(9.sp, boostOnPhone = true),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 

@@ -63,6 +63,18 @@ class DrugResolverTest {
     }
 
     @Test
+    fun `rescan of a saved nameless drug with allowNoName is found without asking the server`() = runTest {
+        val saved = savedDrug(ndc = NDC, name = null)
+        coEvery { drugMasterDao.getDrugByGtin(GTIN) } returns saved
+
+        val result = resolver.resolve(GTIN, allowNoName = true, scannedGtin = GTIN)
+
+        assertEquals(DrugLookup.Found(saved, fromServer = false), result)
+        coVerify(exactly = 0) { drugRepository.getDrugInfoByNdc(any()) }
+        coVerify(exactly = 0) { drugImageDownloader.downloadAndSave(any(), any()) }
+    }
+
+    @Test
     fun `saved drug that is not the expected one goes to the server with the expected NDC`() = runTest {
         coEvery { drugMasterDao.getDrugByGtin(GTIN) } returns savedDrug(ndc = "OTHER")
         val request = slot<GetNdcRequestModel>()
@@ -187,7 +199,7 @@ class DrugResolverTest {
         assertEquals(DrugLookup.Failed(boom), resolver.resolve(NDC))
     }
 
-    private fun savedDrug(ndc: String, name: String = "Aspirin") =
+    private fun savedDrug(ndc: String, name: String? = "Aspirin") =
         DrugMasterEntity(drugId = 5L, ndc = ndc, drugName = name, packageQty = 100, createdAt = 1L)
 
     private fun serverInfo(

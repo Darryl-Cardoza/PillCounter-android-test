@@ -539,55 +539,38 @@ class DispenseFlowViewModel @Inject constructor(
 
         _uiState.update { it.copy(isLoading = true, pendingFirstBottle = firstBottle) }
 
-        FtueController.track(
-            viewModelScope.launch {
-                try {
-                    // Expected NDC comes from HL7 in the PMS flow, and from the RX
-                    // label the user just scanned in the manual flow. Either way,
-                    // the container scan has to match it (or be a server-flagged
-                    // substitute) before we'll show the success sheet.
-                    val expectedNdc = _uiState.value.hl7ExpectedNdc
-                        ?.takeIf { it.isNotBlank() }
-                        ?: _uiState.value.ndc.takeIf { it.isNotBlank() }
+        FtueController.track(viewModelScope.launch {
+            try {
+                // Expected NDC comes from HL7 in the PMS flow, and from the RX
+                // label the user just scanned in the manual flow. Either way,
+                // the container scan has to match it (or be a server-flagged
+                // substitute) before we'll show the success sheet.
+                val expectedNdc = _uiState.value.hl7ExpectedNdc
+                    ?.takeIf { it.isNotBlank() }
+                    ?: _uiState.value.ndc.takeIf { it.isNotBlank() }
 
-                    val lookup = drugResolver.resolve(
-                        code = gtin14,
-                        expectedNdc = expectedNdc,
-                        allowNoName = true,
-                        scannedGtin = gtin14.trim(),
-                    )
-                    when (lookup) {
-                        is DrugLookup.Found -> applyContainerDrug(lookup, expectedNdc)
-                        DrugLookup.NoName, DrugLookup.NotFound ->
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    showNdcNotFoundDialog = true
-                                )
-                            }
-                        // DrugResolver already logged the failure, so don't rethrow into the catch below.
-                        is DrugLookup.Failed ->
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    error = appContext.getString(R.string.error_generic)
-                                )
-                            }
-                    }
-                } catch (e: CancellationException) {
-                    _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
-                    throw e
-                } catch (e: Exception) {
-                    logger.e("NDC barcode processing failed", e, event = LogEvent.NDC_SCAN_FAILED)
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            error = appContext.getString(R.string.error_generic)
-                        )
-                    }
+                val lookup = drugResolver.resolve(
+                    code = gtin14,
+                    expectedNdc = expectedNdc,
+                    allowNoName = true,
+                    scannedGtin = gtin14.trim(),
+                )
+                when (lookup) {
+                    is DrugLookup.Found -> applyContainerDrug(lookup, expectedNdc)
+                    DrugLookup.NoName, DrugLookup.NotFound ->
+                        _uiState.update { it.copy(isLoading = false, showNdcNotFoundDialog = true) }
+                    // DrugResolver already logged the failure, so don't rethrow into the catch below.
+                    is DrugLookup.Failed ->
+                        _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
                 }
-            },
-        )
+            } catch (e: CancellationException) {
+                _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
+                throw e
+            } catch (e: Exception) {
+                logger.e("NDC barcode processing failed", e, event = LogEvent.NDC_SCAN_FAILED)
+                _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
+            }
+        })
     }
 
     /** Applies a resolved container drug: saved match, server match, substitute or mismatch. */
@@ -775,7 +758,7 @@ class DispenseFlowViewModel @Inject constructor(
                     strength = state.ndcStrength,
                     dosageForm = state.ndcDosageForm,
                     drugImagePath = existingImagePath,
-                ),
+                )
             )
         } else null
         // Stamp the first bottle scanned against this txn — only when the txn has no
@@ -953,7 +936,7 @@ class DispenseFlowViewModel @Inject constructor(
                             strength = state.ndcStrength,
                             drugImagePath = state.drugImage,
                             dosageForm = state.ndcDosageForm,
-                        ),
+                        )
                     )
                 } else null
 

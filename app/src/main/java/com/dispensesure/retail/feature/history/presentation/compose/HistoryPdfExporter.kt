@@ -170,7 +170,7 @@ class HistoryPdfExporter(private val context: Context) {
                         context.resources.drugDisplayName(item.drugName),
                         item.ndc ?: "N/A",
                         item.pillCount?.toString() ?: "0",
-                        item.status.toString(),
+                        item.status.toString()
                     )
 
                     drawTableRow(canvas, margin.toFloat(), yPosition, colWidths, rowData)

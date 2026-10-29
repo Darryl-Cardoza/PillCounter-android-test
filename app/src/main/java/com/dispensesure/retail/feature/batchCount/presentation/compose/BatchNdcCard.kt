@@ -60,7 +60,7 @@ fun BatchNdcCard(
                     text = drugDisplayName(group.drugName),
                     color = AppTheme.extendedColors.textColor,
                     fontSize = responsiveSpForBatchScreen(14.sp),
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(

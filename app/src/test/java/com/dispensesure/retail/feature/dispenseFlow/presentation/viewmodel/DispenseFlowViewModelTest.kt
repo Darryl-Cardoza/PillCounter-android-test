@@ -553,6 +553,7 @@ class DispenseFlowViewModelTest {
     fun `onRxBarcodeRead standalone shows the sheet without creating a txn`() = runTest(testDispatcher) {
         every { preferenceHelper.isStandaloneMode() } returns true
         coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
+        coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
         coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
 
         val vm = createViewModel()
@@ -923,6 +924,7 @@ class DispenseFlowViewModelTest {
     fun `onRxConfirmed standalone creates the txn and advances to PRE_NDC`() = runTest(testDispatcher) {
         every { preferenceHelper.isStandaloneMode() } returns true
         coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns null
+        coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
         coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
         coEvery { dispenseTxnDao.upsertPreservingId(any<DispenseTxnEntity>()) } returns 200L
 

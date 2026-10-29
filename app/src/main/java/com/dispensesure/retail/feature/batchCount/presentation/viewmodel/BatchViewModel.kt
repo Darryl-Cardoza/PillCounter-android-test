@@ -124,7 +124,7 @@ class BatchViewModel @Inject constructor(
                     totalCount = sealedLots.sumOf { it.count } + openedLots.sumOf { it.count },
                     sealedBottleQty = sealedBottleQty,
                     sealedLots = sealedLots,
-                    openedLots = openedLots,
+                    openedLots = openedLots
                 )
             }
 }

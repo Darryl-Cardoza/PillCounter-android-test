@@ -183,7 +183,7 @@ interface DispenseTxnDao {
                  ELSE 2
              END ASC, /* values correspond to TxnPriority enum names */
              txn.createdAt ASC
-    """,
+    """
     )
 
     fun observePartialDispenses(
@@ -449,7 +449,7 @@ interface DispenseTxnDao {
         ON pct.txnId = pcd.txnId
     WHERE pct.txnId = :transactionId AND pct.isDeleted = 0
     GROUP BY pct.txnId
-    """,
+    """
     )
     suspend fun getDispenseTxnDetail(transactionId: Long): DispenseTxnDetail?
 
@@ -571,7 +571,7 @@ interface DispenseTxnDao {
       AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
-    """,
+    """
     )
     fun getTransactionsForDateRange(
         startDate: Long,
@@ -801,7 +801,7 @@ interface DispenseTxnDao {
       AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
-    """,
+    """
     )
     fun observeUnsyncedDispenses(
         completeStatus: CountStatus = CountStatus.COMPLETED,

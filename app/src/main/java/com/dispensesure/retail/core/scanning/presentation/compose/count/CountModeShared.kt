@@ -141,7 +141,7 @@ internal fun BoxScope.CountModeTopDetailsBar(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(end = 32.dp),
+                modifier = Modifier.padding(end = 32.dp)
             )
         }
 
@@ -187,7 +187,7 @@ internal fun DrugImageTile(imageFile: File, drugName: String, modifier: Modifier
         ),
         contentDescription = drugDisplayName(drugName),
         contentScale = ContentScale.Crop,
-        modifier = modifier.clip(RoundedCornerShape(8.dp)),
+        modifier = modifier.clip(RoundedCornerShape(8.dp))
     )
 }
 

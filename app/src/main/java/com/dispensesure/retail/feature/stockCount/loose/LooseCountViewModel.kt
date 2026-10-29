@@ -310,11 +310,7 @@ class LooseCountViewModel @Inject constructor(
 
     // Gloves and tray results are saved for dispense only; a stock count just shows tray warnings.
     private fun onEngineEvent(engineEvent: EngineEvent) {
-        if (engineEvent is EngineEvent.Warning) _effects.trySend(
-            LooseCountEffect.ShowToast(
-                engineEvent.messageRes,
-            ),
-        )
+        if (engineEvent is EngineEvent.Warning) _effects.trySend(LooseCountEffect.ShowToast(engineEvent.messageRes))
     }
 
     override fun onCleared() {

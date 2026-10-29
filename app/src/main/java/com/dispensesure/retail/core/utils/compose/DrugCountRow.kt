@@ -162,7 +162,7 @@ fun DrugCountRow(
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Ellipsis
                     )
                     val idLine = data.identifierLine()
                     if (idLine.isNotEmpty()) {
@@ -241,7 +241,7 @@ fun DrugThumbnail(
                     contentScale = ContentScale.FillBounds,
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(8.dp)),
+                        .clip(RoundedCornerShape(8.dp))
                 )
             }
 

@@ -279,9 +279,7 @@ internal fun ScaffoldTabStrip(
     modifier: Modifier = Modifier,
     tourState: TourGuideState? = null,
 ) {
-    Row(modifier = modifier
-        .fillMaxWidth()
-        .tourTarget(tourState, "tabs")) {
+    Row(modifier = modifier.fillMaxWidth().tourTarget(tourState, "tabs")) {
         ScaffoldTab(
             label = stringResource(R.string.tab_label_with_count, stringResource(R.string.dispense_queue), dispenseCount),
             isActive = activeTab == DashboardTab.DISPENSE_QUEUE,

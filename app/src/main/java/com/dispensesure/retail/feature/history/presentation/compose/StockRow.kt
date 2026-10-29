@@ -89,7 +89,7 @@ fun StockRow(
                         text = drugDisplayName(rowData.drugName),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
-                        color = AppTheme.extendedColors.textColor,
+                        color = AppTheme.extendedColors.textColor
                     )
                     Text(
                         text = date,
