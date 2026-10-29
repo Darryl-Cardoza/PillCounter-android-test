@@ -1,8 +1,8 @@
-﻿package com.dispensesure.retail.feature.dispenseFlow.presentation
+package com.dispensesure.retail.feature.dispenseFlow.presentation
 
 import android.Manifest
-import android.util.Log
 import android.content.res.Configuration
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -57,10 +57,20 @@ import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
-import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
-import com.dispensesure.retail.core.scanning.presentation.compose.CameraPreviewSection
-import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
+import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
+import com.dispensesure.retail.core.scanning.presentation.compose.CameraFeed
+import com.dispensesure.retail.core.scanning.presentation.compose.CountOverlay
+import com.dispensesure.retail.core.scanning.presentation.compose.count.CircularCountIndicator
+import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModeBottomStrip
+import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModePhonePortraitDetailsBar
+import com.dispensesure.retail.core.scanning.presentation.compose.count.CountModeTopDetailsBar
+import com.dispensesure.retail.core.scanning.presentation.compose.count.CountPanelState
+import com.dispensesure.retail.core.scanning.presentation.compose.count.HistoryModeLandscape
+import com.dispensesure.retail.core.scanning.presentation.compose.count.HistoryModePortrait
+import com.dispensesure.retail.core.scanning.presentation.compose.count.InformationPanelSection
+import com.dispensesure.retail.core.scanning.presentation.compose.count.countModeStepSize
+import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
@@ -82,13 +92,6 @@ import com.dispensesure.retail.core.utils.permission.rememberPermissionStateDeta
 import com.dispensesure.retail.feature.dispenseFlow.domain.model.DispenseStage
 import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.BtScannerInputBar
 import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.DispenseQueuePanel
-import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.HistoryModeLandscape
-import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.HistoryModePortrait
-import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.CountModeBottomStrip
-import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.CountModePhonePortraitDetailsBar
-import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.CountModeTopDetailsBar
-import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.countModeStepSize
-import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.InformationPanelSection
 import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.TargetPillsCountDialog
 import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
 import com.dispensesure.retail.navigation.Screen
@@ -314,6 +317,11 @@ fun DispenseFlowScreen(
     val pillStepType by pillVm.currentStep.collectAsState()
     val capturedBitmap by pillVm.capturedBitmap.collectAsState()
     val pillSteps by pillVm.steps.collectAsState()
+    val glovesDetected by pillVm.glovesDetected.collectAsState()
+    val recentDetectionCounts by pillVm.lastTenDetections.collectAsState()
+    val isCapturing by pillVm.isCapturing.collectAsState()
+    val showFlash by pillVm.showFlash.collectAsState()
+    val txnInfo by pillVm.txnInfo.collectAsState()
 
     // The workflow is only built when counting starts, so the SCAN step has no
     // steps to show. Land the VM on SCAN as the user gets here.
@@ -663,6 +671,36 @@ fun DispenseFlowScreen(
     // Track in-flight pill count from the detector (only meaningful in COUNTING).
     var filteredPillCount by remember { mutableStateOf(0) }
 
+    // One snapshot for the count panel, the camera overlay and View All. A stock
+    // loose count (REGULAR) keeps its own session total.
+    val isOpenCount = pillState.scanType == CountType.REGULAR.toString()
+    val countPanelState = CountPanelState(
+        drugName = pillState.drugName,
+        ndc = pillState.ndc,
+        strength = pillState.strength,
+        bucket = pillState.bucket,
+        dosageForm = pillState.dosageForm,
+        drugImage = pillState.drugImage,
+        totalCount = if (isOpenCount) {
+            pillState.stockCountSessionTotal
+        } else {
+            pillState.txnDetailHistory.sumOf { txnDetail -> txnDetail.count }
+        },
+        targetCount = pillState.targetCount,
+        isOpenCount = isOpenCount,
+        stepType = pillStepType,
+        steps = pillSteps,
+        isVoiceOverEnabled = isSoundEnabled,
+        detectedCount = filteredPillCount,
+        recentDetectionCounts = recentDetectionCounts,
+        isAddCooldown = pillState.isAddCooldown,
+        isIdle = pillState.showIdleOverlay,
+        showGloveIcon = sessionHazardous,
+        glovesDetected = glovesDetected,
+        hasStill = capturedBitmap != null,
+        isCapturing = isCapturing,
+    )
+
     // ── Back handling ───────────────────────────────────────────────────────
     // Device-back priority order:
     //  1. If the history view is open, dismiss it (return to camera + pill panel).
@@ -933,10 +971,9 @@ fun DispenseFlowScreen(
         // rotation-driven lifecycle restarts behind the history list.
         if (!showHistory) {
             if (hasCameraPermission) {
-                CameraPreviewSection(
-                    viewModel = pillVm,
-                    pills = pillState.detectedPills,
+                CameraFeed(
                     isCameraPaused = pillVm.cameraPaused.collectAsState().value,
+                    isStillShown = capturedBitmap != null,
                     onFrame = { imageProxy ->
                         // Only the barcode analyzer reads the frame metadata before the
                         // frame is forwarded to the pill VM (which always closes it). When
@@ -980,7 +1017,7 @@ fun DispenseFlowScreen(
                         ) {
                             // Conditions are read live here (not via the precomputed
                             // isVialCaptureStep) because this lambda is captured once
-                            // by CameraPreviewSection's frame collector — a plain
+                            // by CameraFeed's frame collector — a plain
                             // captured Boolean would be frozen at first composition.
                             // VIAL step: read the vial label and auto-capture the
                             // photo when its RX matches the active transaction. The
@@ -1007,15 +1044,29 @@ fun DispenseFlowScreen(
                         }
                         pillVm.onFrameCaptured(imageProxy)
                     },
-                    onFilteredCountChanged = { filteredPillCount = it },
+                    onCameraHelperReady = pillVm::attachCameraHelper,
+                    onCameraReady = {
+                        pillVm.initializeInterpreter()
+                    },
                     modifier = Modifier
                         .fillMaxSize()
                         .tourTarget(ftueState, "camera_preview"),
-                    imageFrameWidth = pillState.imageFrameWidth,
-                    imageFrameHeight = pillState.imageFrameHeight,
-                    onCameraReady = {
-                        pillVm.initializeInterpreter()
-                    }
+                )
+                CountOverlay(
+                    engineStates = pillVm.engineState,
+                    runningTotal = pillState.txnDetailHistory.sumOf { txnDetail -> txnDetail.count },
+                    targetCount = pillState.targetCount,
+                    stepType = pillStepType,
+                    // Today's rule: a loaded dispense txn, not a stock loose count.
+                    showExcessPills = txnInfo != null && !pillState.isStockCountSession,
+                    capturedStill = capturedBitmap,
+                    showFlash = showFlash,
+                    addPops = pillVm.addPopEvents,
+                    onFilteredPills = { filteredPills ->
+                        pillVm.updateFilteredPills(filteredPills)
+                        filteredPillCount = filteredPills.size
+                    },
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
 
@@ -1055,12 +1106,25 @@ fun DispenseFlowScreen(
                             .fillMaxSize()
                     ) {
                         InformationPanelSection(
-                            uiState = pillState,
-                            viewModel = pillVm,
-                            onEvent = pillVm::onEvent,
-                            filteredPillCount = filteredPillCount,
+                            state = countPanelState,
+                            onAdd = {
+                                pillVm.onEvent(
+                                    PillScanningEvent.AddTransactionDetailClicked(filteredPillCount, pillStepType)
+                                )
+                            },
+                            onDone = {
+                                pillVm.onEvent(
+                                    PillScanningEvent.FinalDone(
+                                        stepType = pillStepType,
+                                        totalCount = countPanelState.totalCount,
+                                    )
+                                )
+                            },
                             onShowHistory = { showHistory = true },
-                            showGloveIcon = sessionHazardous,
+                            onCountSteady = pillVm::playCountSoundIfEnabled,
+                            onCapture = { pillVm.captureImage() },
+                            onRedoCapture = { pillVm.redoCaptureImage() },
+                            onSaveCapture = { pillVm.saveCaptureImage() },
                             onReset = if (pillState.canReset) {
                                 { showResetDialog = true }
                             } else null,
@@ -1095,9 +1159,12 @@ fun DispenseFlowScreen(
                         },
                         contentAlignment = Alignment.Center,
                     ) {
-                        com.dispensesure.retail.feature.dispenseFlow.presentation.compose.CircularCountIndicator(
+                        CircularCountIndicator(
                             count = filteredPillCount,
-                            viewModel = pillVm,
+                            recentDetectionCounts = recentDetectionCounts,
+                            isAddCooldown = pillState.isAddCooldown,
+                            isIdle = pillState.showIdleOverlay,
+                            onCountSteady = pillVm::playCountSoundIfEnabled,
                         )
                     }
                 }
@@ -1239,22 +1306,16 @@ fun DispenseFlowScreen(
 
         // History list takes over the screen when the user taps Total Count.
         if (showHistory) {
-            val totalCount = if (pillState.scanType == CountType.REGULAR.toString()) {
-                pillState.stockCountSessionTotal
-            } else {
-                pillState.txnDetailHistory.sumOf { it.count }
-            }
             if (isLandscape) {
                 HistoryModeLandscape(
                     navController = navController,
-                    scanType = pillState.scanType,
+                    showTargetCount = countPanelState.isFixed,
                     targetCount = pillState.targetCount,
-                    totalCount = totalCount,
+                    totalCount = countPanelState.totalCount,
                     txnHistory = pillState.txnDetailHistory,
                     onDeleteTxn = { id ->
                         pillVm.onEvent(PillScanningEvent.TransactionDetailDeleted(id))
                     },
-                    viewModel = pillVm,
                     drugName = pillState.drugName,
                     onBack = { showHistory = false },
                     selectedImagePath = fullScreenImagePath,
@@ -1263,14 +1324,13 @@ fun DispenseFlowScreen(
             } else {
                 HistoryModePortrait(
                     navController = navController,
-                    scanType = pillState.scanType,
+                    showTargetCount = countPanelState.isFixed,
                     targetCount = pillState.targetCount,
-                    totalCount = totalCount,
+                    totalCount = countPanelState.totalCount,
                     txnHistory = pillState.txnDetailHistory,
                     onDeleteTxn = { id ->
                         pillVm.onEvent(PillScanningEvent.TransactionDetailDeleted(id))
                     },
-                    viewModel = pillVm,
                     drugName = pillState.drugName,
                     onBack = { showHistory = false },
                     selectedImagePath = fullScreenImagePath,

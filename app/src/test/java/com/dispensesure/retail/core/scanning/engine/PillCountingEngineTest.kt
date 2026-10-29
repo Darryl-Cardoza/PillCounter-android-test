@@ -7,10 +7,10 @@ import androidx.core.content.ContextCompat
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
-import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.ADD_COOLDOWN_MS
 import com.dispensesure.retail.core.scanning.engine.CountConfirmer.Companion.COUNT_CONFIRM_FRAMES
 import com.dispensesure.retail.core.scanning.engine.IdleWatchdog.Companion.IDLE_STEP_MS
 import com.dispensesure.retail.core.scanning.engine.IdleWatchdog.Companion.IDLE_TIMEOUT_MS
+import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.ADD_COOLDOWN_MS
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.TrayColor
@@ -486,7 +486,7 @@ class PillCountingEngineTest {
     @Test
     fun `saveCountPhoto passes grayscale to the writer when the colour setting is off`() = runTest {
         stubPhotoWrites()
-        every { preferenceHelper.getIsColorImageEnabled() } returns false
+        every { preferenceHelper.isGrayscaleImage() } returns true
 
         engine.saveCountPhoto(captureWithFrame(), label, keepRawCrop = false)
 

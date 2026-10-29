@@ -1,4 +1,4 @@
-package com.dispensesure.retail.feature.dispenseFlow.presentation.compose
+package com.dispensesure.retail.core.scanning.presentation.compose.count
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -58,7 +58,6 @@ import coil.request.ImageRequest
 import kotlin.math.roundToInt
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.compose.WorkflowStepper
@@ -220,19 +219,17 @@ internal fun GloveIndicator(glovesDetected: Boolean) {
 /**
  * The live count circle, centred over the camera feed. The circle IS the action:
  * tapping commits the count ([onAdd]) while counting, or finishes ([onDone]) once
- * a FIXED target is met ([isAllDone]). It can be long-pressed and dragged anywhere
+ * a FIXED target is met ([CountPanelState.isAllDone]). It can be long-pressed and dragged anywhere
  * over the feed; the position is persisted to prefs and re-clamped on rotation.
  *
  * Identical in every form factor.
  */
 @Composable
 internal fun BoxWithConstraintsScope.CountModeCenterCircle(
-    detectedCount: Int,
-    viewModel: PillScanningViewModel,
-    isAllDone: Boolean,
-    isAddCooldown: Boolean,
+    state: CountPanelState,
     onAdd: () -> Unit,
     onDone: () -> Unit,
+    onCountSteady: () -> Unit,
 ) {
     val context = LocalContext.current
     val circleSize = responsiveDpForCircularCountIndicator()
@@ -281,22 +278,25 @@ internal fun BoxWithConstraintsScope.CountModeCenterCircle(
             }
             // Whole-circle tap commits the count (Add) while counting, or finishes
             // (Done) once the target is met. Disabled mid-cooldown.
-            .clickable(enabled = !isAddCooldown) {
-                if (isAllDone) onDone() else onAdd()
+            .clickable(enabled = !state.isAddCooldown) {
+                if (state.isAllDone) onDone() else onAdd()
             }
             .tourTarget(FtueController.state, "count_add_circle"),
         contentAlignment = Alignment.Center
     ) {
         CircularCountIndicator(
-            count = detectedCount,
-            viewModel = viewModel,
-            label = if (isAllDone) {
+            count = state.detectedCount,
+            recentDetectionCounts = state.recentDetectionCounts,
+            isAddCooldown = state.isAddCooldown,
+            isIdle = state.isIdle,
+            onCountSteady = onCountSteady,
+            label = if (state.isAllDone) {
                 stringResource(R.string.pill_scanning_all_done)
             } else {
                 stringResource(R.string.pill_scanning_add_this)
             },
             // Target met → play the Ookla-style completion breath + ripple.
-            pulsing = isAllDone,
+            pulsing = state.isAllDone,
         )
     }
 }

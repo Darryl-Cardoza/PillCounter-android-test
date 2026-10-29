@@ -5,21 +5,21 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
-import com.dispensesure.retail.core.room.dao.StockBatchDao
-import com.dispensesure.retail.core.tourguide.FtueController
-import com.dispensesure.retail.core.tourguide.TutorialData
-import com.dispensesure.retail.core.room.dao.insertNewInProgressBatch
-import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
+import com.dispensesure.retail.core.room.dao.insertNewInProgressBatch
 import com.dispensesure.retail.core.room.models.StockBottleInfoEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
+import com.dispensesure.retail.core.room.models.dtos.RequestedDrugDto
+import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
+import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
-import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
-import com.dispensesure.retail.core.room.models.dtos.RequestedDrugDto
-import com.dispensesure.retail.core.room.models.enums.CountStatus
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -530,6 +530,9 @@ class InventoryScanViewModel @Inject constructor(
     fun clearErrorMessage() {
         _errorMessage.value = null
     }
+
+    /** True when the backend's colour-image setting is off; the barcode analyzer saves its frame grayscale then. */
+    fun isGrayscaleImage(): Boolean = preferenceHelper.isGrayscaleImage()
 
     /* ─────────────────────────  Counter  ───────────────────────── */
 

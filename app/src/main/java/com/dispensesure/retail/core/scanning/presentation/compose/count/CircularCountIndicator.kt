@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.feature.dispenseFlow.presentation.compose
+package com.dispensesure.retail.core.scanning.presentation.compose.count
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -16,7 +16,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -31,15 +30,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import java.util.ArrayDeque
 
 @Composable
 fun CircularCountIndicator(
     count: Int,
+    // The engine's recent per-frame counts; two equal in a row = steady.
+    recentDetectionCounts: ArrayDeque<Int>,
+    isAddCooldown: Boolean,
+    isIdle: Boolean,
+    // Called once each time the count turns steady (count sound / haptic).
+    onCountSteady: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: PillScanningViewModel,
     // Optional caption rendered under the count (e.g. "ADD THIS"). Null = no caption.
     label: String? = null,
     // When true (e.g. a FIXED count has met its target) the circle plays an
@@ -49,13 +53,10 @@ fun CircularCountIndicator(
 ) {
 
     val indicatorColor = MaterialTheme.colorScheme.primary
-    val lastDetections by viewModel.lastTenDetections.collectAsState()
-
-    val uiState by viewModel.uiState.collectAsState()
 
     // Derive last 4 values and whether they're same
-    val (_, lastFourSame) = remember(lastDetections) {
-        val values = lastDetections.toList().takeLast(2)
+    val (_, lastFourSame) = remember(recentDetectionCounts) {
+        val values = recentDetectionCounts.toList().takeLast(2)
         val same = values.size == 2 && values.distinct().size == 1
         values to same
     }
@@ -74,7 +75,7 @@ fun CircularCountIndicator(
 
     LaunchedEffect(lastFourSame) {
         if (lastFourSame) {
-            viewModel.playCountSoundIfEnabled()
+            onCountSteady()
         }
     }
 
@@ -107,7 +108,7 @@ fun CircularCountIndicator(
     // While the post-Add cooldown is active the circle isn't tappable, so dim it
     // and swap the caption to "Wait.." for immediate feedback that the tap landed
     // and Add is briefly disabled.
-    val isCooldown = uiState.isAddCooldown
+    val isCooldown = isAddCooldown
 
     Box(
         modifier = modifier
@@ -137,9 +138,9 @@ fun CircularCountIndicator(
             // shown. The sweeping/steady arc appears once a count is detected,
             // which is when its "counting" animation is meaningful.
             if (count > 0) {
-                // If last 4 are same or uiState.showIdleOverlay is true, show full circle (steady), else animate
+                // If last 4 are same or isIdle is true, show full circle (steady), else animate
                 val sweepAngle =
-                    if (lastFourSame || uiState.showIdleOverlay) 360f else 360 * sweepProgress
+                    if (lastFourSame || isIdle) 360f else 360 * sweepProgress
 
                 drawArc(
                     color = indicatorColor,

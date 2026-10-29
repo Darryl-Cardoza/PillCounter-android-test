@@ -1,40 +1,40 @@
 package com.dispensesure.retail.core.scanning.presentation.viewmodel
 
 import android.app.Application
+import androidx.room.withTransaction
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.room.AppDatabase
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
-import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
+import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
+import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
 import com.dispensesure.retail.core.scanning.engine.feedGloveFrameForTest
 import com.dispensesure.retail.core.scanning.engine.feedTrayFrameForTest
 import com.dispensesure.retail.core.scanning.engine.putFrameForTest
-import com.dispensesure.retail.core.scanning.logic.TrayColor
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
-import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
-import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
-import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
-import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
+import com.dispensesure.retail.core.scanning.logic.TrayColor
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.util.MainDispatcherRule
-import androidx.room.withTransaction
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
@@ -489,11 +489,10 @@ class PillScanningViewModelEventTest {
 
     // SCAN_VM_038
     @Test
-    fun `pausePillDetection clears both detectedPills and trayDetections`() = runTest {
+    fun `pausePillDetection clears detectedPills`() = runTest {
         viewModel.pausePillDetection()
 
         assertTrue(viewModel.uiState.value.detectedPills.isEmpty())
-        assertTrue(viewModel.trayDetections.value.isEmpty())
     }
 
     // ─────────────────────────── operator stamp on completion ───────────────────────────

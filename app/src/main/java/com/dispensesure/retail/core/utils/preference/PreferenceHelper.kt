@@ -2,14 +2,14 @@ package com.dispensesure.retail.core.utils.preference
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.google.gson.Gson
-import com.dispensesure.retail.feature.settings.domain.model.ColorSettings
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
 import com.dispensesure.retail.feature.hl7.util.Hl7Format
-import com.dispensesure.retail.feature.profile.domain.model.PharmacyTypeOption
 import com.dispensesure.retail.feature.profile.domain.model.Country
+import com.dispensesure.retail.feature.profile.domain.model.PharmacyTypeOption
+import com.dispensesure.retail.feature.settings.domain.model.ColorSettings
+import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -264,6 +264,9 @@ class PreferenceHelper @Inject constructor(
 
     fun saveIsColorImageEnabled(colorImageEnabled: Boolean) =
         prefs.putBoolean(KEY_IS_COLOR_IMAGE_ENABLED, colorImageEnabled)
+
+    /** True when the colour-image setting is off, so saved photos and frames go grayscale. */
+    fun isGrayscaleImage(): Boolean = !getIsColorImageEnabled()
 
     fun getContext(): Context = context
 

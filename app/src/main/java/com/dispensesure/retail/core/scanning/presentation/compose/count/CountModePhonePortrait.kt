@@ -1,4 +1,4 @@
-package com.dispensesure.retail.feature.dispenseFlow.presentation.compose
+package com.dispensesure.retail.core.scanning.presentation.compose.count
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxScope
@@ -17,8 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,9 +29,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.models.enums.CountType
-import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.compose.dosageFormIcon
@@ -58,83 +53,50 @@ private const val FORM_IMAGE_ASPECT = 4f / 3f
  */
 @Composable
 fun CountModePhonePortrait(
-    totalCount: Int,
-    targetCount: Int,
-    scanType: String,
-    detectedCount: Int,
+    state: CountPanelState,
     onAdd: () -> Unit,
     onDone: () -> Unit,
-    viewModel: PillScanningViewModel,
-    drugName: String,
-    ndc: String,
-    strength: String,
-    bucket: String,
     showHistory: () -> Unit,
     autoRevealCurrentStep: Boolean,
     onAutoRevealed: () -> Unit,
-    dosageForm: String = "",
-    drugImage: String? = "",
-    showGloveIcon: Boolean = false,
-    glovesDetected: Boolean = false,
+    onCountSteady: () -> Unit,
     onReset: (() -> Unit)? = null,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val stepType by viewModel.currentStep.collectAsState()
-    val steps by viewModel.steps.collectAsState()
-    val isVoiceOverEnabled by viewModel.isSoundEnabled.collectAsState()
-
-    val isFixed = scanType == CountType.FIXED.toString() &&
-        stepType != StepState.CONTAINER_INITIATE
-    val isAllDone = isFixed && targetCount > 0 && totalCount >= targetCount
-    val isRegular = scanType == CountType.REGULAR.toString()
-    // Stock count (REGULAR) has no target count, so the centre circle never
-    // reaches "All Done" — surface a Proceed button to finish the count instead.
-    val showProceed = stepType == StepState.CONTAINER_INITIATE ||
-        stepType == StepState.CONTAINER_PENDING ||
-        isRegular
-
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
 
         CountModePhonePortraitDetailsBar(
-            ndc = ndc,
-            drugName = drugName,
-            strength = strength,
-            bucket = bucket,
-            dosageForm = dosageForm,
-            drugImage = drugImage,
-            showGloveIcon = showGloveIcon,
-            glovesDetected = glovesDetected,
+            ndc = state.ndc,
+            drugName = state.drugName,
+            strength = state.strength,
+            bucket = state.bucket,
+            dosageForm = state.dosageForm,
+            drugImage = state.drugImage,
+            showGloveIcon = state.showGloveIcon,
+            glovesDetected = state.glovesDetected,
         )
 
         CountModeCenterCircle(
-            detectedCount = detectedCount,
-            viewModel = viewModel,
-            isAllDone = isAllDone,
-            isAddCooldown = uiState.isAddCooldown,
+            state = state,
             onAdd = onAdd,
             onDone = onDone,
+            onCountSteady = onCountSteady,
         )
 
         CountModeBottomStrip(
-            steps = steps,
-            currentStep = stepType,
-            isVoiceOverEnabled = isVoiceOverEnabled,
+            steps = state.steps,
+            currentStep = state.stepType,
+            isVoiceOverEnabled = state.isVoiceOverEnabled,
             circleSize = PHONE_PORTRAIT_STEP_SIZE,
             isLandscape = false,
             autoRevealCurrentStep = autoRevealCurrentStep,
             onAutoRevealed = onAutoRevealed,
-            isFixed = isFixed,
-            totalCount = totalCount,
-            targetCount = targetCount,
+            isFixed = state.isFixed,
+            totalCount = state.totalCount,
+            targetCount = state.targetCount,
             onShowHistory = showHistory,
             onProceed = onDone,
-            // REGULAR labels the counting step "Scan Open Pills".
-            titleOverrides = if (isRegular) {
-                mapOf(StepState.TARGET_VERIFICATION to R.string.scan_open_pills)
-            } else {
-                emptyMap()
-            },
-            showProceed = showProceed,
+            titleOverrides = state.stepTitleOverrides,
+            showProceed = state.showProceed,
             onReset = onReset,
         )
     }

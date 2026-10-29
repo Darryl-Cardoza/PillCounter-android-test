@@ -275,7 +275,7 @@ class PillCountingEngine @AssistedInject constructor(
     /**
      * Handle each analyzed frame and maintain rolling detection state.
      *
-     * [trayDetections] is forwarded to [EngineState.trayDetections] so [CameraPreviewSection]
+     * [trayDetections] is forwarded to [EngineState.trayDetections] so [com.dispensesure.retail.core.scanning.presentation.compose.CountOverlay]
      * can draw the tray bounding box overlay.
      */
     @VisibleForTesting
@@ -614,7 +614,7 @@ class PillCountingEngine @AssistedInject constructor(
     }
 
     /** True when the backend's colour-image setting is off, so saved photos go grayscale. */
-    fun isGrayscale(): Boolean = !preferenceHelper.getIsColorImageEnabled()
+    fun isGrayscale(): Boolean = preferenceHelper.isGrayscaleImage()
 
     fun playCountSoundIfEnabled() {
         if (preferenceHelper.isSoundEnabled()) {

@@ -101,7 +101,7 @@ class PillCountingApplication : Application() {
 
         // Pre-warm CameraX. ProcessCameraProvider.getInstance(...) does the heavy
         // one-time init (libraries, camera2 interop, vendor extensions) and caches
-        // a singleton. Triggering it at app start means CameraPreviewSection's
+        // a singleton. Triggering it at app start means CameraFeed's
         // first bindToLifecycle() finds the provider already resolved instead of
         // paying that cost on the first tap of Dispense — the gap between tapping
         // Dispense and seeing live pixels shrinks by ~150–300ms on most devices.

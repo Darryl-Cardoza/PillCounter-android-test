@@ -42,8 +42,6 @@ data class PillScanningUiState(
     val showTargetCountDialog: Boolean = false,
     val showIdleOverlay: Boolean = false,
     val showNotesDialog: Boolean = false,
-    val imageFrameWidth: Int = 0,
-    val imageFrameHeight: Int = 0,
     val isAddCooldown: Boolean = false,
     val addCount: Int = 0,
     val showDialogForControl: Boolean = false,
