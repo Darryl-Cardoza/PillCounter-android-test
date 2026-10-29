@@ -377,7 +377,7 @@ private fun MiniStepper(value: Int, onMinus: () -> Unit, onPlus: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.Default.Remove,
-                contentDescription = null,
+                contentDescription = stringResource(R.string.batch_stock_count_decrease),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(responsiveDp(16.dp)),
             )
@@ -406,7 +406,7 @@ private fun MiniStepper(value: Int, onMinus: () -> Unit, onPlus: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
-                contentDescription = null,
+                contentDescription = stringResource(R.string.batch_stock_count_increase),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(responsiveDp(16.dp)),
             )

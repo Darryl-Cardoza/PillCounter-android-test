@@ -31,7 +31,7 @@ fun Modifier.repeatWhileHeld(onTick: () -> Unit): Modifier = composed {
     // Always call the newest callback: Edit Details rebuilds it on every tick.
     val latestOnTick by rememberUpdatedState(onTick)
     val interactionSource = remember { MutableInteractionSource() }
-    semantics {
+    semantics(mergeDescendants = true) {
         // TalkBack reads a button; its double-tap steps once.
         role = Role.Button
         onClick {

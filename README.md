@@ -86,9 +86,9 @@ app/src/main/java/com/dispensesure/retail/
 │   ├── settings/                # app settings repo + MainActivityViewModel
 │   └── utils/                   # compose helpers, logging, notifications, prefs
 ├── feature/                     # one folder per feature (see below)
-│   ├── batchCount/ countResume/ dashboard/ dispenseFlow/ history/
-│   ├── hl7/ login/ menu/ pillCountScan/ profile/ settings/
-│   ├── unsyncedTransaction/ verifyPin/
+│   ├── dashboard/ dispense/ faceAuth/ history/ hl7/ login/ menu/
+│   ├── profile/ settings/ stockCount/ unsyncedTransaction/
+│   ├── verifyPin/
 │   └── …                        # each: presentation/ domain/ data/ di/
 ├── navigation/                  # AppNavGraph, NavGraphBuilder, Screen (routes)
 └── ui/theme/                    # Compose theme

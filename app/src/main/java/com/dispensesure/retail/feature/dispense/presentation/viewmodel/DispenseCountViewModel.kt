@@ -760,59 +760,53 @@ class DispenseCountViewModel @Inject constructor(
 
     private fun handleConfirmDone() {
         confirmDoneStarted = true
-        FtueController.track(
-            viewModelScope.launch {
-                try {
-                    val txnId = preferenceHelper.getTxnId()
-                    val total = dispenseCountDao.getTotalPillCountForTxn(txnId)
-                    val txn = dispenseTxnDao.getById(txnId) ?: return@launch
-                    if (total == 0) {
-                        return@launch
-                    }
-                    // Only the prescribed-count step decides partial vs complete. The pour-out and
-                    // recount steps count other pills and used to push this past the target.
-                    val dispensedCount = dispenseCountDao
-                        .getPillCountForStep(txnId, DISPENSED_QUANTITY_STEP.name)
-                    val status =
-                        if (txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
-
-                    // Stamp who ran this count now, not at send time: an unsynced txn resent later
-                    // must still report this operator, not whoever is at the device then.
-                    // MUST be written before the status flips to COMPLETED — that write wakes
-                    // observePendingHl7Txn, whose resend sweep reads this row and would build a
-                    // message with a blank operator if it got there first.
-                    val operator = operatorNameProvider()
-                    dispenseTxnDao.updateOperatorName(txnId, operator.firstName, operator.lastName)
-
-                    if (txn.isComingFromHL7 == true) {
-                        dispenseTxnDao.markCompletedAndUnsynced(txnId = txnId, status = status)
-                    } else {
-                        dispenseTxnDao.updateTxnStatus(txnId, status)
-                    }
-
-                    // Send the dispense to the PMS now, not on the next reconnect. Completion used to
-                    // only persist the status; the HL7 message went out when the MLLP connection next
-                    // re-established, so a pharmacist finishing a count on a stable connection saw
-                    // nothing arrive at the Companion. Failures are fine — the row stays unsynced and
-                    // the resend-on-connect sweep retries it.
-                    hl7Repository.sendDispenseNow(txnId)
-
-                    _capturedBitmap.value = null
-                    _navigation.send(DispenseCountNavigation.NavigateToDashboard)
-                    logger.i("Transaction completed. Status=$status")
-
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logger.e(
-                        "Failed to confirm/complete transaction",
-                        e,
-                        event = LogEvent.PILL_COUNT_FAILED
-                    )
-                    showGenericError()
+        FtueController.track(viewModelScope.launch {
+            try {
+                val txnId = preferenceHelper.getTxnId()
+                val total = dispenseCountDao.getTotalPillCountForTxn(txnId)
+                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
+                if (total == 0) {
+                    return@launch
                 }
-            },
-        )
+                // Only the prescribed-count step decides partial vs complete. The pour-out and
+                // recount steps count other pills and used to push this past the target.
+                val dispensedCount = dispenseCountDao
+                    .getPillCountForStep(txnId, DISPENSED_QUANTITY_STEP.name)
+                val status =
+                    if (txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
+
+                // Stamp who ran this count now, not at send time: an unsynced txn resent later
+                // must still report this operator, not whoever is at the device then.
+                // MUST be written before the status flips to COMPLETED — that write wakes
+                // observePendingHl7Txn, whose resend sweep reads this row and would build a
+                // message with a blank operator if it got there first.
+                val operator = operatorNameProvider()
+                dispenseTxnDao.updateOperatorName(txnId, operator.firstName, operator.lastName)
+
+                if (txn.isComingFromHL7 == true) {
+                    dispenseTxnDao.markCompletedAndUnsynced(txnId = txnId, status = status)
+                } else {
+                    dispenseTxnDao.updateTxnStatus(txnId, status)
+                }
+
+                // Send the dispense to the PMS now, not on the next reconnect. Completion used to
+                // only persist the status; the HL7 message went out when the MLLP connection next
+                // re-established, so a pharmacist finishing a count on a stable connection saw
+                // nothing arrive at the Companion. Failures are fine — the row stays unsynced and
+                // the resend-on-connect sweep retries it.
+                hl7Repository.sendDispenseNow(txnId)
+
+                _capturedBitmap.value = null
+                _navigation.send(DispenseCountNavigation.NavigateToDashboard)
+                logger.i("Transaction completed. Status=$status")
+
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to confirm/complete transaction", e, event = LogEvent.PILL_COUNT_FAILED)
+                showGenericError()
+            }
+        })
     }
 
     private fun handleDeleteTransaction(action: DispenseCountAction.TransactionDetailDeleted) {

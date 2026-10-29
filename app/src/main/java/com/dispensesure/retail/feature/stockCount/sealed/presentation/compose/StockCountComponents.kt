@@ -516,7 +516,9 @@ private fun CounterButton(
     ) {
         Icon(
             imageVector = if (icon) Icons.Default.Add else Icons.Default.Remove,
-            contentDescription = null,
+            contentDescription = stringResource(
+                if (icon) R.string.batch_stock_count_increase else R.string.batch_stock_count_decrease
+            ),
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(iconSize),
         )
