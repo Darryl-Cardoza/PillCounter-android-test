@@ -8,8 +8,9 @@ import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourSection
 import com.dispensesure.retail.core.utils.common.ParsedScanData
-import com.dispensesure.retail.core.utils.common.parseScanData
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
@@ -31,6 +32,7 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -65,11 +67,8 @@ class DispenseFlowViewModelTest {
 
     @Before
     fun setUp() {
-        // The vial check calls the top-level parseScanData; mock it via its file class.
-        mockkStatic("com.dispensesure.retail.core.utils.common.ParsedScanDataKt")
         every { preferenceHelper.getLocalId() } returns 1L
         every { preferenceHelper.getTxnId() } returns 0L
-        every { preferenceHelper.getBarcodeRegex() } returns "{RXNO}|{NDCNO}|{QTY}|{BUCKET}"
         coEvery { dispenseFlowRepository.loadTxn(any()) } returns null
         coEvery { dispenseFlowRepository.loadDrug(any()) } returns null
         coEvery { dispenseFlowRepository.loadOrderedDrug(any()) } returns null
@@ -268,6 +267,25 @@ class DispenseFlowViewModelTest {
         assertEquals(DispenseStage.COUNTING, viewModel.uiState.value.stage)
         assertEquals("RX999", viewModel.uiState.value.rxNo)
         coVerify { dispenseFlowRepository.clearGlovesPresent(7L) }
+    }
+
+    @Test
+    fun `a resume entry straight to counting loads the order's NDC, bucket and details`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 7L
+        coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(isNdcVerified = true, bucketId = "B7")
+        coEvery { dispenseFlowRepository.loadDrug(10L) } returns
+            drug(strength = "10 mg", dosageForm = "Tablet", drugImagePath = "/images/aspirin.webp")
+
+        val viewModel = createViewModel(fromResume = true)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(DispenseStage.COUNTING, state.stage)
+        assertEquals("NDC123", state.hl7ExpectedNdc)
+        assertEquals("B7", state.selectedBucketId)
+        assertEquals("/images/aspirin.webp", state.drugImage)
+        assertEquals("10 mg", state.ndcStrength)
+        assertEquals("Tablet", state.ndcDosageForm)
     }
 
     @Test
@@ -498,8 +516,8 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
-    fun `a failure with no message shows nothing`() = runTest {
-        coEvery { rxLabelResolver.resolve(any()) } throws RuntimeException()
+    fun `a cancelled Rx lookup shows no error`() = runTest {
+        coEvery { rxLabelResolver.resolve(any()) } throws CancellationException()
         val viewModel = createViewModel()
         val effects = collectEffects(viewModel)
 
@@ -507,6 +525,26 @@ class DispenseFlowViewModelTest {
         advanceUntilIdle()
 
         assertTrue(effects.isEmpty())
+    }
+
+    @Test
+    fun `the tour's Rx Next toasts when the demo drug can't be read back`() = runTest {
+        coEvery { dispenseFlowRepository.upsertDemoDrug(any()) } returns null
+        val viewModel = createViewModel()
+        val effects = collectEffects(viewModel)
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false)
+
+        try {
+            viewModel.onAction(DispenseFlowAction.TourRxNextTapped("Demo drug"))
+            advanceUntilIdle()
+        } finally {
+            FtueController.end() // process-wide singleton: don't leak the tour into other tests
+        }
+
+        assertEquals(
+            listOf(DispenseFlowEffect.ScanRejected(R.string.rx_label_drug_not_found_toast, pauseScanning = true)),
+            effects,
+        )
         assertFalse(viewModel.uiState.value.isLoading)
     }
 
@@ -770,7 +808,7 @@ class DispenseFlowViewModelTest {
         val viewModel = containerStepViewModel()
         val effects = collectEffects(viewModel)
 
-        scanContainer(viewModel, ContainerOutcome.LookupFailed(RuntimeException("offline")))
+        scanContainer(viewModel, ContainerOutcome.LookupFailed)
 
         assertEquals(listOf(DispenseFlowEffect.GenericError), effects)
         assertFalse(viewModel.uiState.value.isLoading)
@@ -925,7 +963,7 @@ class DispenseFlowViewModelTest {
 
     @Test
     fun `a vial Rx label with the txn's Rx matches`() = runTest {
-        every { parseScanData(any(), RAW_RX_LABEL) } returns label(rxNo = "RX999")
+        every { rxLabelResolver.rxNoOf(RAW_RX_LABEL) } returns "RX999"
         val viewModel = countingViewModel()
         val effects = collectEffects(viewModel)
 
@@ -964,7 +1002,7 @@ class DispenseFlowViewModelTest {
 
     @Test
     fun `a vial label that parses to no Rx is read again at once`() = runTest {
-        every { parseScanData(any(), "garbage|data") } returns label(rxNo = null)
+        every { rxLabelResolver.rxNoOf("garbage|data") } returns null
         val viewModel = countingViewModel()
         val effects = collectEffects(viewModel)
 
@@ -1113,6 +1151,17 @@ class DispenseFlowViewModelTest {
         assertEquals("/local/drug.webp", viewModel.uiState.value.drugImage)
         assertEquals("20mg", viewModel.uiState.value.ndcStrength)
         assertEquals("CAPSULE", viewModel.uiState.value.ndcDosageForm)
+    }
+
+    @Test
+    fun `a container scan after a reset from a resumed count checks the order's NDC`() = runTest {
+        val viewModel = countingViewModel()
+        viewModel.onAction(DispenseFlowAction.ResetConfirmed { true })
+        advanceUntilIdle()
+
+        scanContainer(viewModel, ContainerOutcome.NotFound)
+
+        coVerify { containerVerifier.verify(GTIN, "NDC123") }
     }
 
     @Test

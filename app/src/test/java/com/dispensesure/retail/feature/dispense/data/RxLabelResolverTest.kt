@@ -1,7 +1,5 @@
 package com.dispensesure.retail.feature.dispense.data
 
-import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
@@ -20,6 +18,7 @@ import io.mockk.unmockkAll
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
@@ -29,10 +28,9 @@ private const val RAW_RX_LABEL = "RX999|NDC123|10|B1"
 class RxLabelResolverTest {
 
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
-    private val dispenseTxnDao: DispenseTxnDao = mockk()
-    private val drugMasterDao: DrugMasterDao = mockk()
+    private val dispenseFlowRepository: DispenseFlowRepository = mockk()
     private val drugResolver: DrugResolver = mockk()
-    private val resolver = RxLabelResolver(preferenceHelper, dispenseTxnDao, drugMasterDao, drugResolver)
+    private val resolver = RxLabelResolver(preferenceHelper, dispenseFlowRepository, drugResolver)
 
     @Before
     fun setUp() {
@@ -40,10 +38,10 @@ class RxLabelResolverTest {
         mockkStatic("com.dispensesure.retail.core.utils.common.ParsedScanDataKt")
         every { preferenceHelper.getBarcodeRegex() } returns "{RXNO}|{NDCNO}|{QTY}|{BUCKET}"
         every { parseScanData(any(), any()) } returns label()
-        coEvery { dispenseTxnDao.getMostRecentByRxNo(any()) } returns null
-        coEvery { dispenseTxnDao.getByRxNoAndFillNo(any(), any()) } returns null
-        coEvery { dispenseTxnDao.getActiveByRxNo(any()) } returns null
-        coEvery { drugMasterDao.getDrugById(any()) } returns null
+        coEvery { dispenseFlowRepository.loadMostRecentTxnByRxNo(any()) } returns null
+        coEvery { dispenseFlowRepository.loadTxnByRxNoAndFill(any(), any()) } returns null
+        coEvery { dispenseFlowRepository.loadActiveTxnByRxNo(any()) } returns null
+        coEvery { dispenseFlowRepository.loadDrug(any()) } returns null
     }
 
     @After
@@ -72,8 +70,8 @@ class RxLabelResolverTest {
         DrugMasterEntity(drugId = drugId, drugName = "Aspirin", ndc = ndc)
 
     private fun orderOnFile(existingTxn: DispenseTxnEntity, orderedDrug: DrugMasterEntity?) {
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns existingTxn
-        coEvery { drugMasterDao.getDrugById(10L) } returns orderedDrug
+        coEvery { dispenseFlowRepository.loadActiveTxnByRxNo("RX999") } returns existingTxn
+        coEvery { dispenseFlowRepository.loadDrug(10L) } returns orderedDrug
     }
 
     // ─────────────────────────── label format ───────────────────────────
@@ -102,22 +100,22 @@ class RxLabelResolverTest {
         every { parseScanData(any(), any()) } returns label(qty = "not-a-number")
 
         assertEquals(RxScanOutcome.Invalid, resolver.resolve(RAW_RX_LABEL))
-        coVerify(exactly = 0) { dispenseTxnDao.getActiveByRxNo(any()) }
+        coVerify(exactly = 0) { dispenseFlowRepository.loadActiveTxnByRxNo(any()) }
     }
 
     // ─────────────────────────── already dispensed ───────────────────────────
 
     @Test
     fun `an Rx whose latest txn is completed is blocked`() = runTest {
-        coEvery { dispenseTxnDao.getMostRecentByRxNo("RX999") } returns txn(status = CountStatus.COMPLETED)
+        coEvery { dispenseFlowRepository.loadMostRecentTxnByRxNo("RX999") } returns txn(status = CountStatus.COMPLETED)
 
         assertEquals(RxScanOutcome.AlreadyCompleted, resolver.resolve(RAW_RX_LABEL))
-        coVerify(exactly = 0) { dispenseTxnDao.getActiveByRxNo(any()) }
+        coVerify(exactly = 0) { dispenseFlowRepository.loadActiveTxnByRxNo(any()) }
     }
 
     @Test
     fun `an Rx whose latest txn is force completed is blocked`() = runTest {
-        coEvery { dispenseTxnDao.getMostRecentByRxNo("RX999") } returns txn(status = CountStatus.FORCE_COMPLETED)
+        coEvery { dispenseFlowRepository.loadMostRecentTxnByRxNo("RX999") } returns txn(status = CountStatus.FORCE_COMPLETED)
 
         assertEquals(RxScanOutcome.AlreadyCompleted, resolver.resolve(RAW_RX_LABEL))
     }
@@ -126,7 +124,7 @@ class RxLabelResolverTest {
     fun `an Rx whose latest txn is partial is not blocked`() = runTest {
         val existingTxn = txn()
         val orderedDrug = drug()
-        coEvery { dispenseTxnDao.getMostRecentByRxNo("RX999") } returns existingTxn
+        coEvery { dispenseFlowRepository.loadMostRecentTxnByRxNo("RX999") } returns existingTxn
         orderOnFile(existingTxn, orderedDrug)
 
         assertEquals(RxScanOutcome.Resume(existingTxn, orderedDrug, label()), resolver.resolve(RAW_RX_LABEL))
@@ -139,14 +137,14 @@ class RxLabelResolverTest {
         every { parseScanData(any(), any()) } returns label(refillNo = "1")
 
         assertEquals(RxScanOutcome.NotFound, resolver.resolve(RAW_RX_LABEL))
-        coVerify { dispenseTxnDao.getByRxNoAndFillNo("RX999", "1") }
-        coVerify(exactly = 0) { dispenseTxnDao.getMostRecentByRxNo(any()) }
+        coVerify { dispenseFlowRepository.loadTxnByRxNoAndFill("RX999", "1") }
+        coVerify(exactly = 0) { dispenseFlowRepository.loadMostRecentTxnByRxNo(any()) }
     }
 
     @Test
     fun `a label with a refill number is blocked when that fill is completed`() = runTest {
         every { parseScanData(any(), any()) } returns label(refillNo = "0")
-        coEvery { dispenseTxnDao.getByRxNoAndFillNo("RX999", "0") } returns txn(status = CountStatus.COMPLETED)
+        coEvery { dispenseFlowRepository.loadTxnByRxNoAndFill("RX999", "0") } returns txn(status = CountStatus.COMPLETED)
 
         assertEquals(RxScanOutcome.AlreadyCompleted, resolver.resolve(RAW_RX_LABEL))
     }
@@ -241,7 +239,7 @@ class RxLabelResolverTest {
     fun `an order with no drug skips the NDC check`() = runTest {
         // PMS can create an order with no drug. Nothing to compare, so no block.
         val existingTxn = txn(drugId = null)
-        coEvery { dispenseTxnDao.getActiveByRxNo("RX999") } returns existingTxn
+        coEvery { dispenseFlowRepository.loadActiveTxnByRxNo("RX999") } returns existingTxn
 
         assertEquals(RxScanOutcome.Resume(existingTxn, null, label()), resolver.resolve(RAW_RX_LABEL))
     }
@@ -266,5 +264,28 @@ class RxLabelResolverTest {
         orderOnFile(txn(status = CountStatus.COMPLETED), drug())
 
         assertEquals(RxScanOutcome.NotFound, resolver.resolve(RAW_RX_LABEL))
+    }
+
+    // ─────────────────────────── vial Rx ───────────────────────────
+
+    @Test
+    fun `rxNoOf gives the label's Rx, trimmed`() {
+        every { parseScanData(any(), RAW_RX_LABEL) } returns label(rxNo = " RX999 ")
+
+        assertEquals("RX999", resolver.rxNoOf(RAW_RX_LABEL))
+    }
+
+    @Test
+    fun `rxNoOf is null with no label format`() {
+        every { preferenceHelper.getBarcodeRegex() } returns ""
+
+        assertNull(resolver.rxNoOf(RAW_RX_LABEL))
+    }
+
+    @Test
+    fun `rxNoOf is null when the label has no Rx`() {
+        every { parseScanData(any(), any()) } returns label(rxNo = null)
+
+        assertNull(resolver.rxNoOf(RAW_RX_LABEL))
     }
 }

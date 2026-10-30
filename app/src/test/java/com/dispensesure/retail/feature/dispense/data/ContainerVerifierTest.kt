@@ -8,7 +8,6 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertSame
 import org.junit.Test
 
 private const val GTIN = "00368540100014"
@@ -23,11 +22,11 @@ class ContainerVerifierTest {
     private fun drug(ndc: String = "NDC123") = DrugMasterEntity(drugId = 10L, drugName = "Aspirin", ndc = ndc)
 
     private fun resolvesTo(lookup: DrugLookup) {
-        coEvery { drugResolver.resolve(any(), any(), any(), any(), any()) } returns lookup
+        coEvery { drugResolver.resolve(any(), any(), any(), any(), any(), any()) } returns lookup
     }
 
     @Test
-    fun `the scan is looked up with the expected NDC, the unknown-drug name and the trimmed GTIN`() = runTest {
+    fun `the scan is looked up with the expected NDC, no unknown-drug name and the trimmed GTIN`() = runTest {
         resolvesTo(DrugLookup.Found(drug(), fromServer = false))
 
         verifier.verify(" $GTIN ", expectedNdc = "NDC123")
@@ -94,12 +93,9 @@ class ContainerVerifierTest {
     }
 
     @Test
-    fun `a failed lookup is returned with its error, not thrown`() = runTest {
-        val serverDown = IllegalStateException("server down")
-        resolvesTo(DrugLookup.Failed(serverDown))
+    fun `a failed lookup is returned as LookupFailed, not thrown`() = runTest {
+        resolvesTo(DrugLookup.Failed(IllegalStateException("server down")))
 
-        val outcome = verifier.verify(GTIN, "NDC123")
-
-        assertSame(serverDown, (outcome as ContainerOutcome.LookupFailed).error)
+        assertEquals(ContainerOutcome.LookupFailed, verifier.verify(GTIN, "NDC123"))
     }
 }

@@ -35,7 +35,6 @@ import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
-import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraFeed
 import com.dispensesure.retail.core.scanning.presentation.compose.CountOverlay
 import com.dispensesure.retail.core.scanning.presentation.compose.CountingPausedOverlay
@@ -55,6 +54,7 @@ import com.dispensesure.retail.feature.dispense.domain.BackPressOutcome
 import com.dispensesure.retail.feature.dispense.domain.BarcodeRoute
 import com.dispensesure.retail.feature.dispense.domain.DispenseBackPress
 import com.dispensesure.retail.feature.dispense.domain.DispenseBarcodeRouting
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountEffect
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseFlowAction
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseFlowEffect
@@ -90,7 +90,7 @@ import kotlinx.coroutines.withTimeout
  * (not stopped) whenever a verification sheet, error dialog, or loading indicator
  * is visible — this avoids stale detections and saves CPU/GPU while the user is
  * looking at modal UI.
- * component (StepTitleWithSpeech) is only rendered during COUNTING.
+ * The spoken step title (StepTitleWithSpeech) lives in DispenseTopBar and shows only on QUEUE and PRE_RX.
  */
 
 internal const val HAZARDOUS_TAG = "HazardousFlow"
@@ -737,7 +737,7 @@ fun DispenseFlowScreen(
         // cover (which reads as a frozen/blank screen), we keep the live camera
         // visible underneath and lay a light dark scrim + loader over it, so it
         // looks like the session is loading over the camera. The wrong-stage
-        // PRE_RX overlays are suppressed separately (see showPillPanel /
+        // PRE_RX overlays are suppressed separately (see the awaitingResume checks /
         // BtScannerInputBar) so nothing incorrect bleeds through the scrim.
         GlobalLoadingOverlay(
             isVisible = awaitingResume,

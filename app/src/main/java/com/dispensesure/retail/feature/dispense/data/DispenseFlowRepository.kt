@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
-/** Every Room call of the dispense flow: entry loads, the standalone txn, the container check, the queue. */
+/** Every Room call of the dispense flow: entry loads, the Rx label lookups, the standalone txn, the container check, the queue. */
 class DispenseFlowRepository @Inject constructor(
     private val dispenseTxnDao: DispenseTxnDao,
     private val drugMasterDao: DrugMasterDao,
@@ -30,6 +30,14 @@ class DispenseFlowRepository @Inject constructor(
 
     /** The drug the txn's order names; null when the txn or its drug is missing. */
     suspend fun loadOrderedDrug(txnId: Long): DrugMasterEntity? = loadDrug(loadTxn(txnId)?.drugId)
+
+    // Rx label lookups: one fill of the Rx, the Rx's latest txn, its PARTIAL / ON_HOLD order.
+    suspend fun loadTxnByRxNoAndFill(rxNo: String, refillNo: String): DispenseTxnEntity? =
+        dispenseTxnDao.getByRxNoAndFillNo(rxNo, refillNo)
+
+    suspend fun loadMostRecentTxnByRxNo(rxNo: String): DispenseTxnEntity? = dispenseTxnDao.getMostRecentByRxNo(rxNo)
+
+    suspend fun loadActiveTxnByRxNo(rxNo: String): DispenseTxnEntity? = dispenseTxnDao.getActiveByRxNo(rxNo)
 
     // A count picked up again starts with gloves unconfirmed.
     suspend fun clearGlovesPresent(txnId: Long) {

@@ -57,6 +57,8 @@ class DispenseFlowRepositoryTest {
         bottles: List<DispenseBottle> = emptyList(),
         priority: TxnPriority? = null,
         isGlovesPresent: Boolean = false,
+        rxNo: String? = null,
+        refillNo: String? = null,
     ): Long = db.dispenseTxnDao().insertIgnore(
         DispenseTxnEntity(
             userLocalId = userLocalId,
@@ -66,6 +68,8 @@ class DispenseFlowRepositoryTest {
             bottlesJson = bottles.takeIf { it.isNotEmpty() }?.let { DispenseBottleJson.encode(it) },
             priority = priority,
             isGlovesPresent = isGlovesPresent,
+            rxNo = rxNo,
+            refillNo = refillNo,
         )
     )
 
@@ -98,6 +102,34 @@ class DispenseFlowRepositoryTest {
         repository.clearGlovesPresent(txnId)
 
         assertFalse(savedTxn(txnId).isGlovesPresent)
+    }
+
+    // ───────────────────────── Rx label lookups ─────────────────────────
+
+    @Test
+    fun `loadTxnByRxNoAndFill finds that fill only`() = runTest {
+        insertTxn(rxNo = "RX999", refillNo = "0")
+        val secondFillId = insertTxn(rxNo = "RX999", refillNo = "1")
+
+        assertEquals(secondFillId, repository.loadTxnByRxNoAndFill("RX999", "1")?.txnId)
+        assertNull(repository.loadTxnByRxNoAndFill("RX999", "2"))
+    }
+
+    @Test
+    fun `loadMostRecentTxnByRxNo finds the Rx's txn, or null for an unknown Rx`() = runTest {
+        val txnId = insertTxn(status = CountStatus.COMPLETED, rxNo = "RX999")
+
+        assertEquals(txnId, repository.loadMostRecentTxnByRxNo("RX999")?.txnId)
+        assertNull(repository.loadMostRecentTxnByRxNo("RX000"))
+    }
+
+    @Test
+    fun `loadActiveTxnByRxNo skips a completed txn`() = runTest {
+        insertTxn(status = CountStatus.COMPLETED, rxNo = "RX999")
+        assertNull(repository.loadActiveTxnByRxNo("RX999"))
+
+        val partialTxnId = insertTxn(status = CountStatus.PARTIAL, rxNo = "RX999")
+        assertEquals(partialTxnId, repository.loadActiveTxnByRxNo("RX999")?.txnId)
     }
 
     // ───────────────────────── standalone txn ─────────────────────────

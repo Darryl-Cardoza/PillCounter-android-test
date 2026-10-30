@@ -2,6 +2,7 @@ package com.dispensesure.retail.feature.dispense.presentation
 
 import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.res.stringResource
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.scanning.logic.TrayColor
@@ -97,7 +98,9 @@ fun TrayClassificationDialog(
     isHazardousTxn: Boolean,
     onCountAction: (DispenseCountAction) -> Unit,
 ) {
-    Log.i(HAZARDOUS_TAG, "Tray classification popup shown | color=${pendingColor.label} | isHazardousTxn=$isHazardousTxn")
+    LaunchedEffect(pendingColor) {
+        Log.i(HAZARDOUS_TAG, "Tray classification popup shown | color=${pendingColor.label} | isHazardousTxn=$isHazardousTxn")
+    }
     CommonDialog(
         title = stringResource(R.string.tray_classification_title),
         message = stringResource(R.string.tray_classification_message, pendingColor.label),

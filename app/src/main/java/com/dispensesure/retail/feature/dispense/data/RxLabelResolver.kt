@@ -1,7 +1,5 @@
 package com.dispensesure.retail.feature.dispense.data
 
-import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
@@ -47,8 +45,7 @@ sealed interface RxScanOutcome {
 /** Reads an Rx label and finds its order (or, in standalone mode, its drug). */
 class RxLabelResolver @Inject constructor(
     private val preferenceHelper: PreferenceHelper,
-    private val dispenseTxnDao: DispenseTxnDao,
-    private val drugMasterDao: DrugMasterDao,
+    private val dispenseFlowRepository: DispenseFlowRepository,
     private val drugResolver: DrugResolver,
 ) {
 
@@ -62,13 +59,7 @@ class RxLabelResolver @Inject constructor(
     suspend fun resolve(rawValue: String): RxScanOutcome {
         if (rawValue.isBlank()) return RxScanOutcome.Invalid
 
-        val barcodeRegex = preferenceHelper.getBarcodeRegex().orEmpty()
-        if (barcodeRegex.isBlank()) return RxScanOutcome.Invalid
-
-        val parsed = parseScanData(
-            barcodeRegex,
-            rawValue
-        )
+        val parsed = parseLabel(rawValue) ?: return RxScanOutcome.Invalid
         val parsedNdc = parsed.ndcNo
         val qty = parsed.qty
         val rxNo = parsed.rxNo
@@ -88,16 +79,16 @@ class RxLabelResolver @Inject constructor(
         // COMPLETED status — only falls back to the bare rxNo lookup when the label
         // doesn't encode a refill number at all.
         val mostRecentTxn = if (!refillNo.isNullOrBlank()) {
-            dispenseTxnDao.getByRxNoAndFillNo(rxNo, refillNo)
+            dispenseFlowRepository.loadTxnByRxNoAndFill(rxNo, refillNo)
         } else {
-            dispenseTxnDao.getMostRecentByRxNo(rxNo)
+            dispenseFlowRepository.loadMostRecentTxnByRxNo(rxNo)
         }
         if (mostRecentTxn?.status == CountStatus.COMPLETED || mostRecentTxn?.status == CountStatus.FORCE_COMPLETED) {
             return RxScanOutcome.AlreadyCompleted
         }
 
         // Check if this RX has an active local transaction (PARTIAL or ON_HOLD).
-        val existingTxn = dispenseTxnDao.getActiveByRxNo(rxNo)
+        val existingTxn = dispenseFlowRepository.loadActiveTxnByRxNo(rxNo)
         if (existingTxn == null) {
             // No PMS-created transaction found. In standalone mode, no PMS will
             // ever send this txn, so the app is expected to originate the
@@ -114,7 +105,7 @@ class RxLabelResolver @Inject constructor(
                 targetCount = qtyInt,
             )
         }
-        val drug = existingTxn.drugId?.let { drugMasterDao.getDrugById(it) }
+        val drug = dispenseFlowRepository.loadDrug(existingTxn.drugId)
         val gatedStatus = existingTxn.status == CountStatus.PARTIAL ||
                 existingTxn.status == CountStatus.ON_HOLD
         // The label's NDC has to match the drug PMS ordered. No drug on
@@ -128,6 +119,16 @@ class RxLabelResolver @Inject constructor(
             CountStatus.PARTIAL -> RxScanOutcome.Resume(existingTxn, drug, parsed)
             else -> RxScanOutcome.NotFound
         }
+    }
+
+    /** The label's Rx number, trimmed; null with no label format set or no Rx on the label. */
+    fun rxNoOf(rawValue: String): String? = parseLabel(rawValue)?.rxNo?.trim()?.takeIf { it.isNotEmpty() }
+
+    // Null when no label format is configured.
+    private fun parseLabel(rawValue: String): ParsedScanData? {
+        val barcodeRegex = preferenceHelper.getBarcodeRegex().orEmpty()
+        if (barcodeRegex.isBlank()) return null
+        return parseScanData(barcodeRegex, rawValue)
     }
 
     /** Resolves the drug for a standalone Rx label. Writes nothing to dispense_txn. */

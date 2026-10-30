@@ -20,7 +20,7 @@ sealed interface ContainerOutcome {
     data object NotFound : ContainerOutcome
 
     // The lookup failed. DrugResolver already logged it, so callers only show the error.
-    data class LookupFailed(val error: Exception) : ContainerOutcome
+    data object LookupFailed : ContainerOutcome
 }
 
 /** Checks a scanned container against the drug the order expects. */
@@ -36,7 +36,7 @@ class ContainerVerifier @Inject constructor(
      *      the server can flag substitute (generic-equivalent) drugs via
      *      `is_drug_equivalent`.
      *   3. If the server reports a substitute, we show the equivalence
-     *      confirmation dialog instead of the success popup. The user has to
+     *      confirmation dialog first. The user has to
      *      accept the substitute explicitly via the SubstituteConfirmed action.
      */
     suspend fun verify(gtin14: String, expectedNdc: String?): ContainerOutcome {
@@ -49,7 +49,7 @@ class ContainerVerifier @Inject constructor(
         return when (lookup) {
             is DrugLookup.Found -> outcomeOf(lookup, expectedNdc)
             DrugLookup.NoName, DrugLookup.NotFound -> ContainerOutcome.NotFound
-            is DrugLookup.Failed -> ContainerOutcome.LookupFailed(lookup.error)
+            is DrugLookup.Failed -> ContainerOutcome.LookupFailed
         }
     }
 
