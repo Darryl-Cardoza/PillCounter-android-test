@@ -78,6 +78,8 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayScreen
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
+import com.dispensesure.retail.BuildConfig
+import com.dispensesure.retail.core.analytics.AnalyticsService
 import com.dispensesure.retail.navigation.AppNavGraph
 import com.dispensesure.retail.ui.theme.DispenseSureRetailTheme
 import com.dispensesure.retail.ui.theme.ExtendedColors
@@ -136,6 +138,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var deviceIntegrityAuditor: DeviceIntegrityAuditor
+
+    @Inject
+    lateinit var analyticsService: AnalyticsService
 
     private lateinit var navController: NavController
 
@@ -387,6 +392,7 @@ class MainActivity : ComponentActivity() {
                                             navController    = navController as NavHostController,
                                             startDestination = startDestination,
                                             onLogin          = {
+                                                analyticsService.userDidLogin()
                                                 settingsViewModel.onUserLoginOrLogOut()
                                                 // Enrolled operators verify their face before reaching the
                                                 // dashboard, but only after the permission chain finishes.
@@ -522,6 +528,16 @@ class MainActivity : ComponentActivity() {
             sessionHealthController.onForegroundResume()
             // Also sends any closed audit log files.
             auditLogUploader.requestUpload()
+        }
+        analyticsService.applicationDidBecomeActive()
+        // DEBUG: adb shell am broadcast -a com.dispensesure.retail.DEBUG_ANALYTICS_UPLOAD
+        // triggers an immediate force-upload without waiting for midnight. Remove before release.
+        if (BuildConfig.DEBUG) {
+            val prefs = getSharedPreferences("debug_flags", android.content.Context.MODE_PRIVATE)
+            if (prefs.getBoolean("force_analytics_upload", false)) {
+                prefs.edit().remove("force_analytics_upload").apply()
+                analyticsService.debugForceUploadNow()
+            }
         }
     }
 

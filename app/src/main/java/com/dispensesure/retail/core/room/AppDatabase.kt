@@ -3,6 +3,10 @@ package com.dispensesure.retail.core.room
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import com.dispensesure.retail.core.analytics.store.AnalyticsCountedDao
+import com.dispensesure.retail.core.analytics.store.AnalyticsCountedEntity
+import com.dispensesure.retail.core.analytics.store.DailyAnalyticsDao
+import com.dispensesure.retail.core.analytics.store.DailyAnalyticsEntity
 import com.dispensesure.retail.core.room.dao.DekVersionDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
@@ -59,9 +63,11 @@ import com.dispensesure.retail.core.room.models.UserEntity
         StockBottleInfoEntity::class,
         FaceProfileEntity::class,
         FaceEmbeddingEntity::class,
-        DekVersionEntity::class
+        DekVersionEntity::class,
+        DailyAnalyticsEntity::class,
+        AnalyticsCountedEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 @TypeConverters(
@@ -99,4 +105,10 @@ abstract class AppDatabase : RoomDatabase() {
 
     /** DAO for the DB DEK's wrapped values ([DekVersionEntity]). */
     abstract fun dekVersionDao(): DekVersionDao
+
+    /** DAO for the analytics daily row ([DailyAnalyticsEntity]). */
+    abstract fun dailyAnalyticsDao(): DailyAnalyticsDao
+
+    /** DAO for the analytics dedup table ([AnalyticsCountedEntity]). */
+    abstract fun analyticsCountedDao(): AnalyticsCountedDao
 }

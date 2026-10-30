@@ -57,6 +57,7 @@ class StockCountRepositoryTest {
             stockBottleInfoDao = db.stockBottleInfoDao(),
             operatorNameProvider = operatorNameProvider,
             regionProvider = regionProvider,
+            domainEventBus = mockk(relaxed = true),
         )
     }
 

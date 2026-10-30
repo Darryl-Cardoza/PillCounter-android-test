@@ -117,6 +117,20 @@ class AppDatabaseMigrationsTest {
         )
     }
 
+    @Test
+    fun `migrated daily_analytics matches a freshly created v10 daily_analytics`() {
+        val v9Database = openEmptyDatabase(version = 9)
+        AppDatabaseMigrations.MIGRATION_9_10.migrate(v9Database)
+
+        val freshV10Database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries().build()
+        val freshV10Sqlite = freshV10Database.openHelper.writableDatabase
+
+        assertEquals(freshV10Sqlite.columnsOf("daily_analytics"), v9Database.columnsOf("daily_analytics"))
+        assertEquals(freshV10Sqlite.columnsOf("analytics_counted"), v9Database.columnsOf("analytics_counted"))
+        freshV10Database.close()
+    }
+
     private fun openEmptyDatabase(version: Int): SupportSQLiteDatabase {
         val emptyCallback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) = Unit

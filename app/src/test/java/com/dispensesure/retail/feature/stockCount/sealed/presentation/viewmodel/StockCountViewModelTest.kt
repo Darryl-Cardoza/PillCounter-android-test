@@ -141,6 +141,7 @@ class StockCountViewModelTest {
             hl7EventHandler,
             regionProvider,
             auditLogger,
+            mockk(relaxed = true),
         )
     }
 

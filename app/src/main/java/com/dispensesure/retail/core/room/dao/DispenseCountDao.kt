@@ -177,4 +177,18 @@ interface DispenseCountDao {
     """
     )
     suspend fun getLatestStep(txnId: Long): StepState?
+
+    // ─── Analytics read-only queries (additive, no behaviour change) ───────────
+
+    @Query("SELECT COALESCE(SUM(pillCount), 0) FROM dispense_count WHERE txnId = :txnId AND step = :step")
+    suspend fun sumPillCountByStep(txnId: Long, step: String): Int
+
+    @Query("SELECT COUNT(*) FROM dispense_count WHERE txnId = :txnId AND step = :step")
+    suspend fun countRowsByStep(txnId: Long, step: String): Int
+
+    @Query("SELECT COUNT(*) FROM dispense_count WHERE txnId = :txnId AND isManual = 1")
+    suspend fun countManualRows(txnId: Long): Int
+
+    @Query("SELECT COALESCE(SUM(pillCount), 0) FROM dispense_count WHERE txnId = :txnId AND (step IS NULL OR step = '')")
+    suspend fun sumPillCountForUntypedRows(txnId: Long): Int
 }

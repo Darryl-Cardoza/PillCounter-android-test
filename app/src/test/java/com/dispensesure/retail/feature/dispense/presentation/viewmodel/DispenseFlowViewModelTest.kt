@@ -109,6 +109,7 @@ class DispenseFlowViewModelTest {
         dispenseFlowRepository = dispenseFlowRepository,
         auditLogger = auditLogger,
         dispenseStepResolver = dispenseStepResolver,
+        domainEventBus = io.mockk.mockk(relaxed = true),
     )
 
     private fun drug(

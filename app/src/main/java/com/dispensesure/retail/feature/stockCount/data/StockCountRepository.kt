@@ -1,6 +1,9 @@
 package com.dispensesure.retail.feature.stockCount.data
 
 import androidx.room.withTransaction
+import com.dispensesure.retail.core.analytics.AnalyticsService
+import com.dispensesure.retail.core.events.DomainEvent
+import com.dispensesure.retail.core.events.DomainEventBus
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.AppDatabase
@@ -26,6 +29,7 @@ class StockCountRepository @Inject constructor(
     private val stockBottleInfoDao: StockBottleInfoDao,
     private val operatorNameProvider: OperatorNameProvider,
     private val regionProvider: RegionProvider,
+    private val domainEventBus: DomainEventBus,
 ) {
 
     private val logger = AppLogger("StockCountRepository")
@@ -64,7 +68,7 @@ class StockCountRepository @Inject constructor(
             )
         // Each count is its own line holding only loose pills; bottleQty 0 keeps it from
         // counting as a sealed bottle.
-        stockBottleInfoDao.insert(
+        val bottleId = stockBottleInfoDao.insert(
             StockBottleInfoEntity(
                 stockTxnId = stockTxnId,
                 batchId = savedBatchId,
@@ -79,6 +83,9 @@ class StockCountRepository @Inject constructor(
         stockTxnDao.refreshBatchTotalNdcs(savedBatchId)
         stockTxnDao.updateBatchUserName(savedBatchId, operatorNameProvider().display())
         stockTxnDao.updateStatus(stockTxnId, CountStatus.COMPLETED)
+        if (AnalyticsService.isEnabled) {
+            domainEventBus.tryPost(DomainEvent.StockBottleRecorded(stockTxnId, bottleId))
+        }
         logger.i("Saved loose count. loosePills=$loosePills drugId=$drugId batchId=$savedBatchId stockTxnId=$stockTxnId controlledPaths=${controlledImagePaths?.size ?: 0}")
         savedBatchId
     }

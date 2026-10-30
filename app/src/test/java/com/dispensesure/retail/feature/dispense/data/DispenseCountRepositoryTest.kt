@@ -89,6 +89,7 @@ class DispenseCountRepositoryTest {
             dispenseHl7Repository = dispenseHl7Repository,
             regionProvider = regionProvider,
             auditLogger = io.mockk.mockk(relaxed = true),
+            domainEventBus = io.mockk.mockk(relaxed = true),
         )
 
     private suspend fun insertTxn(

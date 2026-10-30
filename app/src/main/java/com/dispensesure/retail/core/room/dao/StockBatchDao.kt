@@ -379,6 +379,37 @@ interface StockBatchDao {
         region: Region,
         completedStatus: BatchStatus = BatchStatus.COMPLETED
     ): Flow<Int>
+
+    // ─── Analytics PMS lifecycle queries (read-only, additive) ───────────────
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM stock_batch
+        WHERE requestIdFromPMS IS NOT NULL AND requestIdFromPMS != '' AND isDeleted = 0
+          AND startDateTime >= :startMs AND startDateTime < :endMs
+        """
+    )
+    suspend fun countPmsInventoryReceived(startMs: Long, endMs: Long): Long
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM stock_batch
+        WHERE requestIdFromPMS IS NOT NULL AND requestIdFromPMS != '' AND isDeleted = 0
+          AND startDateTime >= :startMs AND startDateTime < :endMs
+          AND status = 'COMPLETED'
+        """
+    )
+    suspend fun countPmsInventoryCompleted(startMs: Long, endMs: Long): Long
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM stock_batch
+        WHERE requestIdFromPMS IS NOT NULL AND requestIdFromPMS != '' AND isDeleted = 0
+          AND startDateTime >= :startMs AND startDateTime < :endMs
+          AND isSynced = 1
+        """
+    )
+    suspend fun countPmsInventorySynced(startMs: Long, endMs: Long): Long
 }
 
 /**

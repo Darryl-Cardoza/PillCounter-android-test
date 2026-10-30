@@ -5,7 +5,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.analytics.AnalyticsService
 import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.events.DomainEvent
+import com.dispensesure.retail.core.events.DomainEventBus
 import com.dispensesure.retail.core.audit.model.DispenseResumed
 import com.dispensesure.retail.core.audit.model.DispenseTxnCreated
 import com.dispensesure.retail.core.audit.model.ResumeSource
@@ -77,6 +80,7 @@ class DispenseFlowViewModel @Inject constructor(
     private val dispenseFlowRepository: DispenseFlowRepository,
     private val auditLogger: AuditLogger,
     private val dispenseStepResolver: DispenseStepResolver,
+    private val domainEventBus: DomainEventBus,
 ) : ViewModel() {
 
     private val logger = AppLogger("DispenseFlowVM")
@@ -277,7 +281,12 @@ class DispenseFlowViewModel @Inject constructor(
             RxScanOutcome.AlreadyCompleted -> rejectScan(R.string.rx_already_completed_message, pauseScanning = true)
             RxScanOutcome.NotFound -> rejectScan(R.string.transaction_not_found_toast, pauseScanning = true)
             RxScanOutcome.DrugNotFound -> rejectScan(R.string.rx_label_drug_not_found_toast, pauseScanning = true)
-            RxScanOutcome.NdcMismatch -> rejectScan(R.string.rescan_ndc_does_not_match_toast, pauseScanning = true)
+            RxScanOutcome.NdcMismatch -> {
+                if (AnalyticsService.isEnabled) {
+                    domainEventBus.tryPost(DomainEvent.CountBlocked(DomainEvent.BlockReason.WRONG_DRUG))
+                }
+                rejectScan(R.string.rescan_ndc_does_not_match_toast, pauseScanning = true)
+            }
             RxScanOutcome.OnHold -> _uiState.update { it.copy(isLoading = false, showOnHoldDialog = true) }
             is RxScanOutcome.Resume -> resumeScannedRx(outcome)
             is RxScanOutcome.Standalone -> showStandaloneRxSheet(outcome)
@@ -432,6 +441,9 @@ class DispenseFlowViewModel @Inject constructor(
                             priority = null
                         )
                     )
+                    if (AnalyticsService.isEnabled) {
+                        domainEventBus.tryPost(DomainEvent.RxLabelProceeded)
+                    }
                     _uiState.update { it.copy(stage = DispenseStage.PRE_NDC, txnId = txnId) }
                     logger.i("[HAZARDOUS] Standalone RX confirmed: rx=${draft.rxNo} drugId=${draft.drugId} isHazardous=${state.isHazardous} txn=$txnId → PRE_NDC")
                 } catch (e: CancellationException) {
@@ -563,6 +575,9 @@ class DispenseFlowViewModel @Inject constructor(
                 // rescan — the popup-style dialog was too heavy for this case.
                 val drug = outcome.drug
                 logger.w("[HAZARDOUS] NDC scan → mismatch: serverNdc=${drug.ndc} expectedNdc=$expectedNdc isHazardous=${drug.isHazardous}")
+                if (AnalyticsService.isEnabled) {
+                    domainEventBus.tryPost(DomainEvent.CountBlocked(DomainEvent.BlockReason.WRONG_DRUG))
+                }
                 rejectScan(R.string.rescan_ndc_does_not_match_toast, pauseScanning = true)
             }
             is ContainerOutcome.ServerMatch -> {

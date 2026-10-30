@@ -4,7 +4,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.analytics.AnalyticsService
 import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.events.DomainEvent
+import com.dispensesure.retail.core.events.DomainEventBus
 import com.dispensesure.retail.core.audit.model.BatchCompleted
 import com.dispensesure.retail.core.audit.model.BatchCreated
 import com.dispensesure.retail.core.audit.model.BatchSource
@@ -96,6 +99,7 @@ class StockCountViewModel @Inject constructor(
     private val hl7EventHandler: Hl7EventHandler,
     private val regionProvider: RegionProvider,
     private val auditLogger: AuditLogger,
+    private val domainEventBus: DomainEventBus,
 ) : ViewModel() {
 
     private val logger = AppLogger("StockCountVM")
@@ -727,7 +731,7 @@ class StockCountViewModel @Inject constructor(
                         bucketId = _bucketId.value,
                     )
                 )
-                stockBottleInfoDao.insert(
+                val bottleId = stockBottleInfoDao.insert(
                     StockBottleInfoEntity(
                         stockTxnId = stockTxnId,
                         batchId = batchId,
@@ -737,6 +741,9 @@ class StockCountViewModel @Inject constructor(
                         bottleQty = active.bottles,
                     )
                 )
+                if (AnalyticsService.isEnabled) {
+                    domainEventBus.tryPost(DomainEvent.StockBottleRecorded(stockTxnId, bottleId))
+                }
                 logger.d("INV_SCAN persistActive INSERTED new bottle line stockTxnId=$stockTxnId drugId=$drugId bottles=${active.bottles}")
                 // A new line is always a count, whichever path wrote it.
                 auditLogger.logOutsideTour(
