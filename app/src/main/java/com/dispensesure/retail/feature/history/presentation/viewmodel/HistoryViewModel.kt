@@ -176,11 +176,6 @@ class HistoryViewModel @Inject constructor(
             }
         }
     }
-
-
-    fun selectCurrentTransaction(txnId: Long) {
-        preferenceHelper.saveTxnId(txnId)
-    }
 }
 
 

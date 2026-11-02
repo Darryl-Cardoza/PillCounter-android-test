@@ -1,6 +1,5 @@
 package com.dispensesure.retail
 
-import com.dispensesure.retail.core.room.models.enums.ScanType
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.navigation.Screen
 import org.junit.Assert
@@ -20,7 +19,6 @@ class ScreenTest {
         Assert.assertEquals("dashboard", Screen.Dashboard.route)
         Assert.assertEquals("menu", Screen.Menu.route)
         Assert.assertEquals("settings", Screen.Settings.route)
-        Assert.assertEquals("history_detail", Screen.HistoryDetail.route)
         Assert.assertEquals("profile", Screen.Profile.route)
         Assert.assertEquals("unsynced_transaction_screen", Screen.UnsyncedTransactionScreen.route)
     }
@@ -61,6 +59,16 @@ class ScreenTest {
         Assert.assertEquals(1, Screen.BatchHistoryDetail.navArguments.size)
     }
 
+    // ─────────────────────────── HistoryDetail ───────────────────────────
+
+    @Test
+    fun `HistoryDetail route createRoute and args`() {
+        Assert.assertEquals("history_detail/{txn_id}", Screen.HistoryDetail.route)
+        Assert.assertEquals("txn_id", Screen.HistoryDetail.ARG_TXN_ID)
+        Assert.assertEquals("history_detail/42", Screen.HistoryDetail.createRoute(42L))
+        Assert.assertEquals(1, Screen.HistoryDetail.navArguments.size)
+    }
+
     // ─────────────────────────── History ───────────────────────────
 
     @Test
@@ -93,52 +101,28 @@ class ScreenTest {
         Assert.assertEquals(2, Screen.OtpVerify.navArguments.size)
     }
 
-    // ─────────────────────────── ScanBarcode ───────────────────────────
-
-    @Test
-    fun `ScanBarcode route createRoute and args`() {
-        Assert.assertEquals(
-            "scan_barcode/{type}/{batch_id}?txn_scan_type={txn_scan_type}",
-            Screen.ScanBarcode.route
-        )
-        Assert.assertEquals("type", Screen.ScanBarcode.ARG_TYPE)
-        Assert.assertEquals("batch_id", Screen.ScanBarcode.ARG_BATCH_ID)
-        Assert.assertEquals("txn_scan_type", Screen.ScanBarcode.TXN_SCAN_TYPE)
-        Assert.assertEquals(
-            "scan_barcode/STOCK_COUNT/5?txn_scan_type=BARCODE",
-            Screen.ScanBarcode.createRoute("STOCK_COUNT", ScanType.BARCODE, 5L)
-        )
-        Assert.assertEquals(3, Screen.ScanBarcode.navArguments.size)
-    }
-
-    // ─────────────────────────── PillCount ───────────────────────────
-
-    @Test
-    fun `PillCount route createRoute and args`() {
-        Assert.assertEquals("pill_count/{type}", Screen.PillCount.route)
-        Assert.assertEquals("type", Screen.PillCount.ARG_TYPE)
-        Assert.assertEquals("pill_count/FIXED", Screen.PillCount.createRoute("FIXED"))
-        Assert.assertEquals(1, Screen.PillCount.navArguments.size)
-    }
-
     // ─────────────────────────── DispenseFlow ───────────────────────────
 
     @Test
     fun `DispenseFlow route and arg constants`() {
         Assert.assertEquals(
-            "dispense_flow?from_hl7={from_hl7}&from_resume={from_resume}&from_queue={from_queue}",
+            "dispense_flow?txn_id={txn_id}&from_hl7={from_hl7}&from_queue={from_queue}",
             Screen.DispenseFlow.route
         )
+        Assert.assertEquals("txn_id", Screen.DispenseFlow.ARG_TXN_ID)
         Assert.assertEquals("from_hl7", Screen.DispenseFlow.ARG_FROM_HL7)
-        Assert.assertEquals("from_resume", Screen.DispenseFlow.ARG_FROM_RESUME)
         Assert.assertEquals("from_queue", Screen.DispenseFlow.ARG_FROM_QUEUE)
         Assert.assertEquals(3, Screen.DispenseFlow.navArguments.size)
+        Assert.assertEquals(
+            0L,
+            Screen.DispenseFlow.navArguments.first { it.name == Screen.DispenseFlow.ARG_TXN_ID }.argument.defaultValue
+        )
     }
 
     @Test
     fun `DispenseFlow createRoute with defaults`() {
         Assert.assertEquals(
-            "dispense_flow?from_hl7=false&from_resume=false&from_queue=false",
+            "dispense_flow?txn_id=0&from_hl7=false&from_queue=false",
             Screen.DispenseFlow.createRoute()
         )
     }
@@ -146,10 +130,10 @@ class ScreenTest {
     @Test
     fun `DispenseFlow createRoute with all args`() {
         Assert.assertEquals(
-            "dispense_flow?from_hl7=true&from_resume=true&from_queue=true",
+            "dispense_flow?txn_id=42&from_hl7=true&from_queue=true",
             Screen.DispenseFlow.createRoute(
+                txnId = 42L,
                 fromHl7 = true,
-                fromResume = true,
                 fromQueue = true,
             )
         )

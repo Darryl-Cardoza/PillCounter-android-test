@@ -51,13 +51,12 @@ class DispenseCountViewModelTest : DispenseCountViewModelTestBase() {
 
     @Test
     fun `reaching the container scan publishes the dispense workflow steps`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 7L
         coEvery { dispenseCountRepository.loadTxn(7L) } returns dispenseTxn(txnId = 7L)
         coEvery { dispenseCountRepository.loadDrug(1L) } returns DrugMasterEntity(
             drugId = 1L, ndc = "NDC1", drugName = "Drug", drugType = "REGULAR"
         )
 
-        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.PRE_NDC, isHazardousDrug = false))
+        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.PRE_NDC, txnId = 7L, isHazardousDrug = false))
         advanceUntilIdle()
 
         assertEquals(
@@ -68,7 +67,7 @@ class DispenseCountViewModelTest : DispenseCountViewModelTestBase() {
 
     @Test
     fun `reaching the container scan makes SCAN the current step without waiting on the steps lookup`() = runTest {
-        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.PRE_NDC, isHazardousDrug = false))
+        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.PRE_NDC, txnId = 0L, isHazardousDrug = false))
 
         assertEquals(StepState.SCAN, viewModel.uiState.value.currentStep)
     }
@@ -77,7 +76,7 @@ class DispenseCountViewModelTest : DispenseCountViewModelTestBase() {
     fun `returning to the queue clears the steps`() = runTest {
         setState { it.copy(steps = listOf(StepState.SCAN, StepState.TARGET_VERIFICATION), currentStep = StepState.SCAN) }
 
-        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.QUEUE, isHazardousDrug = false))
+        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.QUEUE, txnId = 0L, isHazardousDrug = false))
 
         assertTrue(viewModel.uiState.value.steps.isEmpty())
         assertEquals(StepState.TARGET_VERIFICATION, viewModel.uiState.value.currentStep)
@@ -95,7 +94,7 @@ class DispenseCountViewModelTest : DispenseCountViewModelTestBase() {
 
     @Test
     fun `resetForRecount resets the txn and lands on SCAN`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 7L
+        selectTxn(7L)
 
         viewModel.resetForRecount()
 
@@ -107,8 +106,6 @@ class DispenseCountViewModelTest : DispenseCountViewModelTestBase() {
 
     @Test
     fun `resetForRecount with no txn deletes nothing`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 0L
-
         viewModel.resetForRecount()
 
         coVerify(exactly = 0) { dispenseCountRepository.reset(any()) }
@@ -497,7 +494,7 @@ class DispenseCountViewModelTest : DispenseCountViewModelTestBase() {
     @Test
     fun `Add on TARGET_VERIFICATION saves the raw crop with the count`() = runTest {
         stubPhotoWrites()
-        every { preferenceHelper.getTxnId() } returns 9L
+        selectTxn(9L)
         engineFactory.engine.putFrameForTest(mockk(relaxed = true))
 
         tapAdd()
@@ -528,7 +525,7 @@ class DispenseCountViewModelTest : DispenseCountViewModelTestBase() {
     @Test
     fun `Add stamps the repository's label on the photo`() = runTest {
         val stampedPhotoInfo = stubPhotoWrites()
-        every { preferenceHelper.getTxnId() } returns 9L
+        selectTxn(9L)
         coEvery { dispenseCountRepository.countPhotoLabel(9L, StepState.TARGET_VERIFICATION) } returns photoLabel(
             lotNumber = "L1", serialNumber = "S1", expirationDate = "04-30-2028", rxRefill = "123-2",
         )
@@ -546,5 +543,50 @@ class DispenseCountViewModelTest : DispenseCountViewModelTestBase() {
             assertEquals(7, count)
             assertFalse(isStockCount)
         }
+    }
+
+    // ─────────────────────────── the txn every write lands on ───────────────────────────
+
+    // These use selectTxn, like the other ADD tests: starting the full count would also
+    // arm the idle watchdog, which the ADD path doesn't need.
+
+    @Test
+    fun `an ADD lands on the txn the flow handed over`() = runTest {
+        // R1: an HL7 order saved mid-count used to pull every later write onto itself.
+        stubPhotoWrites()
+        selectTxn(42L)
+        engineFactory.engine.putFrameForTest(mockk(relaxed = true))
+
+        tapAdd()
+
+        coVerify(timeout = 3000) { dispenseCountRepository.addCount(42L, any(), any(), any()) }
+        coVerify(exactly = 0) { dispenseCountRepository.addCount(neq(42L), any(), any(), any()) }
+    }
+
+    @Test
+    fun `an ADD keeps its txn when the stage moves on straight after the tap`() = runTest {
+        stubPhotoWrites()
+        selectTxn(42L)
+        engineFactory.engine.putFrameForTest(mockk(relaxed = true))
+
+        tapAdd()
+        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.QUEUE, txnId = 0L, isHazardousDrug = false))
+
+        coVerify(timeout = 3000) { dispenseCountRepository.addCount(42L, any(), any(), any()) }
+        coVerify(timeout = 3000) { dispenseCountRepository.countPhotoLabel(42L, any()) }
+    }
+
+    @Test
+    fun `after a queue round trip an ADD lands on the next order`() = runTest {
+        stubPhotoWrites()
+        selectTxn(42L)
+        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.QUEUE, txnId = 0L, isHazardousDrug = false))
+        selectTxn(43L)
+        engineFactory.engine.putFrameForTest(mockk(relaxed = true))
+
+        tapAdd()
+
+        coVerify(timeout = 3000) { dispenseCountRepository.addCount(43L, any(), any(), any()) }
+        coVerify(exactly = 0) { dispenseCountRepository.addCount(42L, any(), any(), any()) }
     }
 }

@@ -124,8 +124,7 @@ fun HistoryScreen(
                     selectedOption = selectedOption,
                     onOptionSelected = { selectedOption = it },
                     onTxnClick = { txnId ->
-                        viewModel.selectCurrentTransaction(txnId)
-                        navController.navigate(Screen.HistoryDetail.route)
+                        navController.navigate(Screen.HistoryDetail.createRoute(txnId))
                     },
                     onBatchClick = { batchId ->
                         navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
@@ -163,8 +162,7 @@ fun HistoryScreen(
                                 showDeleteConfirmationDialog = true
                             },
                             onTxnClick = { txnId ->
-                                viewModel.selectCurrentTransaction(txnId)
-                                navController.navigate(Screen.HistoryDetail.route)
+                                navController.navigate(Screen.HistoryDetail.createRoute(txnId))
                             },
                             onBatchClick = { batchId ->
                                 navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))

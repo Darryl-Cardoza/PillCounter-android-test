@@ -49,33 +49,11 @@ fun AppNavGraph(
             DashboardScreen(navController)
         }
 
-//        composable(
-//            route = Screen.ScanBarcode.route, arguments = Screen.ScanBarcode.navArguments,
-//            deepLinks = listOf(
-//                navDeepLink {
-//                    uriPattern = "pillcounter://scan/{type}/{batch_id}?txn_scan_type={txn_scan_type}"
-//                }
-//            )
-//        ) { backStackEntry ->
-//            val scanType = backStackEntry.arguments?.getString(Screen.ScanBarcode.ARG_TYPE) ?: ""
-//            val txnScanType = runCatching {
-//                ScanType.valueOf(
-//                    backStackEntry.arguments?.getString(Screen.ScanBarcode.TXN_SCAN_TYPE).orEmpty()
-//                )
-//            }.getOrElse {
-//                ScanType.BARCODE
-//            }
-//            val batchId =
-//                backStackEntry.arguments?.getLong(Screen.ScanBarcode.ARG_BATCH_ID) ?: 0
-//
-//            ScanBarCodeScreen(navController, scanType, txnScanType, batchId = batchId)
-//        }
-
         // Merged dispense flow (RX + NDC + pill counting on one screen).
         composable(
             route = Screen.DispenseFlow.route, arguments = Screen.DispenseFlow.navArguments
         ) {
-            // The view model reads the route's flags from its SavedStateHandle.
+            // The view model reads the route's txn id and flags from its SavedStateHandle.
             DispenseFlowScreen(navController = navController)
         }
 
@@ -123,7 +101,10 @@ fun AppNavGraph(
         }
 
 
-        composable(route = Screen.HistoryDetail.route) {
+        composable(
+            route = Screen.HistoryDetail.route,
+            arguments = Screen.HistoryDetail.navArguments
+        ) {
             HistoryDetailScreen(
                 navController = navController,
             )

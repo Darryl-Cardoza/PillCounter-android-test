@@ -68,7 +68,6 @@ class DispenseFlowViewModelTest {
     @Before
     fun setUp() {
         every { preferenceHelper.getLocalId() } returns 1L
-        every { preferenceHelper.getTxnId() } returns 0L
         coEvery { dispenseFlowRepository.loadTxn(any()) } returns null
         coEvery { dispenseFlowRepository.loadDrug(any()) } returns null
         coEvery { dispenseFlowRepository.loadOrderedDrug(any()) } returns null
@@ -84,14 +83,14 @@ class DispenseFlowViewModelTest {
     }
 
     private fun createViewModel(
+        txnId: Long = 0L,
         fromHl7: Boolean = false,
-        fromResume: Boolean = false,
         fromQueue: Boolean = false,
     ) = DispenseFlowViewModel(
         savedStateHandle = SavedStateHandle(
             mapOf(
+                Screen.DispenseFlow.ARG_TXN_ID to txnId,
                 Screen.DispenseFlow.ARG_FROM_HL7 to fromHl7,
-                Screen.DispenseFlow.ARG_FROM_RESUME to fromResume,
                 Screen.DispenseFlow.ARG_FROM_QUEUE to fromQueue,
             )
         ),
@@ -143,20 +142,18 @@ class DispenseFlowViewModelTest {
 
     /** Txn 7 picked up on the container step, as a resumed dispense lands. */
     private fun TestScope.containerStepViewModel(orderedDrug: DrugMasterEntity? = drug()): DispenseFlowViewModel {
-        every { preferenceHelper.getTxnId() } returns 7L
         coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(isNdcVerified = false)
         coEvery { dispenseFlowRepository.loadDrug(10L) } returns orderedDrug
-        val viewModel = createViewModel(fromResume = true)
+        val viewModel = createViewModel(txnId = 7L)
         advanceUntilIdle()
         return viewModel
     }
 
     /** Txn 7 (Rx RX999) counting, as a resumed, container-verified dispense lands. */
     private fun TestScope.countingViewModel(): DispenseFlowViewModel {
-        every { preferenceHelper.getTxnId() } returns 7L
         coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(isNdcVerified = true)
         coEvery { dispenseFlowRepository.loadDrug(10L) } returns drug()
-        val viewModel = createViewModel(fromResume = true)
+        val viewModel = createViewModel(txnId = 7L)
         advanceUntilIdle()
         return viewModel
     }
@@ -188,7 +185,7 @@ class DispenseFlowViewModelTest {
     @Test
     fun `an HL7 or resume entry waits until its stage is known`() = runTest {
         assertTrue(createViewModel(fromHl7 = true).uiState.value.isResolvingEntry)
-        assertTrue(createViewModel(fromResume = true).uiState.value.isResolvingEntry)
+        assertTrue(createViewModel(txnId = 7L).uiState.value.isResolvingEntry)
     }
 
     @Test
@@ -202,9 +199,7 @@ class DispenseFlowViewModelTest {
 
     @Test
     fun `an HL7 entry with a missing txn falls back to the Rx step`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 7L
-
-        val viewModel = createViewModel(fromHl7 = true)
+        val viewModel = createViewModel(txnId = 7L, fromHl7 = true)
         advanceUntilIdle()
 
         assertEquals(DispenseStage.PRE_RX, viewModel.uiState.value.stage)
@@ -213,11 +208,10 @@ class DispenseFlowViewModelTest {
 
     @Test
     fun `an HL7 entry loads the order onto the container step`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 7L
         coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(bucketId = "B9")
         coEvery { dispenseFlowRepository.loadDrug(10L) } returns drug(isHazardous = true, drugImagePath = "/images/aspirin.webp")
 
-        val viewModel = createViewModel(fromHl7 = true)
+        val viewModel = createViewModel(txnId = 7L, fromHl7 = true)
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
@@ -235,10 +229,9 @@ class DispenseFlowViewModelTest {
 
     @Test
     fun `an HL7 entry with no drug keeps the drug fields empty`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 7L
         coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(drugId = null)
 
-        val viewModel = createViewModel(fromHl7 = true)
+        val viewModel = createViewModel(txnId = 7L, fromHl7 = true)
         advanceUntilIdle()
 
         assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
@@ -247,17 +240,12 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
-    fun `a resume entry with no txn id or a missing txn falls back to the Rx step`() = runTest {
-        val noTxnIdViewModel = createViewModel(fromResume = true)
+    fun `a resume entry with a missing txn falls back to the Rx step`() = runTest {
+        val viewModel = createViewModel(txnId = 7L)
         advanceUntilIdle()
-        assertEquals(0L, noTxnIdViewModel.uiState.value.txnId)
-        assertFalse(noTxnIdViewModel.uiState.value.isResolvingEntry)
 
-        every { preferenceHelper.getTxnId() } returns 7L
-        val missingTxnViewModel = createViewModel(fromResume = true)
-        advanceUntilIdle()
-        assertEquals(DispenseStage.PRE_RX, missingTxnViewModel.uiState.value.stage)
-        assertFalse(missingTxnViewModel.uiState.value.isResolvingEntry)
+        assertEquals(DispenseStage.PRE_RX, viewModel.uiState.value.stage)
+        assertFalse(viewModel.uiState.value.isResolvingEntry)
     }
 
     @Test
@@ -271,12 +259,11 @@ class DispenseFlowViewModelTest {
 
     @Test
     fun `a resume entry straight to counting loads the order's NDC, bucket and details`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 7L
         coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(isNdcVerified = true, bucketId = "B7")
         coEvery { dispenseFlowRepository.loadDrug(10L) } returns
             drug(strength = "10 mg", dosageForm = "Tablet", drugImagePath = "/images/aspirin.webp")
 
-        val viewModel = createViewModel(fromResume = true)
+        val viewModel = createViewModel(txnId = 7L)
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
@@ -310,14 +297,22 @@ class DispenseFlowViewModelTest {
 
     @Test
     fun `a queue entry that resumes a txn skips the queue`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 7L
         coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(isNdcVerified = false)
 
-        val viewModel = createViewModel(fromResume = true, fromQueue = true)
+        val viewModel = createViewModel(txnId = 7L, fromQueue = true)
         advanceUntilIdle()
 
         assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
         assertTrue(viewModel.uiState.value.isFromQueue)
+    }
+
+    @Test
+    fun `an HL7 entry with no txn id loads nothing`() = runTest {
+        val viewModel = createViewModel(fromHl7 = true)
+        advanceUntilIdle()
+
+        assertEquals(0L, viewModel.uiState.value.txnId)
+        coVerify(exactly = 0) { dispenseFlowRepository.loadTxn(any()) }
     }
 
     // ───────────────────────────── Rx label ─────────────────────────────
@@ -386,7 +381,7 @@ class DispenseFlowViewModelTest {
             assertEquals(DispenseStage.PRE_RX, viewModel.uiState.value.stage)
         }
         // A rejected label must not prep any txn.
-        verify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
+        coVerify(exactly = 0) { dispenseFlowRepository.clearGlovesPresent(any()) }
     }
 
     @Test
@@ -417,7 +412,6 @@ class DispenseFlowViewModelTest {
         assertEquals("10", state.qty)
         assertFalse(state.isLoading)
         coVerify { dispenseFlowRepository.clearGlovesPresent(1L) }
-        verify { preferenceHelper.saveTxnId(1L) }
     }
 
     @Test
@@ -499,7 +493,6 @@ class DispenseFlowViewModelTest {
         assertEquals("B1", state.selectedBucketId)
         coVerify(exactly = 0) { dispenseFlowRepository.createStandaloneTxn(any(), any()) }
         coVerify(exactly = 0) { dispenseFlowRepository.clearGlovesPresent(any()) }
-        verify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
     }
 
     @Test
@@ -589,7 +582,6 @@ class DispenseFlowViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) { dispenseFlowRepository.createStandaloneTxn(draft, 1L) }
-        verify { preferenceHelper.saveTxnId(200L) }
         assertEquals(200L, viewModel.uiState.value.txnId)
         assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
         assertFalse(viewModel.uiState.value.showRxDetails)
@@ -652,7 +644,6 @@ class DispenseFlowViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 0) { dispenseFlowRepository.createStandaloneTxn(any(), any()) }
-        verify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
         assertEquals(0L, viewModel.uiState.value.txnId)
     }
 
@@ -1052,7 +1043,7 @@ class DispenseFlowViewModelTest {
         advanceUntilIdle()
 
         assertEquals(DispenseStage.QUEUE, viewModel.uiState.value.stage)
-        verify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
+        assertEquals(0L, viewModel.uiState.value.txnId)
     }
 
     @Test
@@ -1065,7 +1056,6 @@ class DispenseFlowViewModelTest {
 
         assertEquals(DispenseStage.COUNTING, viewModel.uiState.value.stage)
         assertEquals(5L, viewModel.uiState.value.txnId)
-        verify { preferenceHelper.saveTxnId(5L) }
         coVerify { dispenseFlowRepository.clearGlovesPresent(5L) }
     }
 
@@ -1140,10 +1130,9 @@ class DispenseFlowViewModelTest {
     fun `a reset takes the drug row's image, strength and form back`() = runTest {
         // The container scan leaves the server's image URL in state; the details
         // bar loads a local file, so reset has to take the drug row's path back.
-        every { preferenceHelper.getTxnId() } returns 7L
+        val viewModel = countingViewModel()
         coEvery { dispenseFlowRepository.loadOrderedDrug(7L) } returns
             drug(drugImagePath = "/local/drug.webp", strength = "20mg", dosageForm = "CAPSULE")
-        val viewModel = createViewModel()
 
         viewModel.onAction(DispenseFlowAction.ResetConfirmed { true })
         advanceUntilIdle()

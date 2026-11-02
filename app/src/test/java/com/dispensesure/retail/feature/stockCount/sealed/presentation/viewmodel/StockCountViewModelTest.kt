@@ -979,7 +979,6 @@ class StockCountViewModelTest {
         // any valid NDC — not just the one on the active card.
         assertEquals(7L, readyBatch)
         assertTrue(readyNdcs.isEmpty())
-        coVerify { preferenceHelper.saveTxnId(0) }
         job.cancel()
     }
 
@@ -1072,11 +1071,10 @@ class StockCountViewModelTest {
 
     @Test
     fun `onScanPillsForActive catches exception emits scan_failed`() = runTest(testDispatcher) {
-        coEvery { preferenceHelper.saveTxnId(any()) } throws RuntimeException("pref")
         val vm = createViewModel(batchId = 7L)
         advanceUntilIdle()
 
-        vm.onScanPillsForActive { _, _, _ -> }
+        vm.onScanPillsForActive { _, _, _ -> throw RuntimeException("navigation") }
         advanceUntilIdle()
 
         assertEquals(R.string.batch_stock_count_scan_failed, vm.errorMessage.value?.messageResId)

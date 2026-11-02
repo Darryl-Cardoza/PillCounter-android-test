@@ -263,8 +263,13 @@ fun DispenseFlowScreen(
         if (dispenseState.stage == DispenseStage.COUNTING) {
             Log.i(HAZARDOUS_TAG, "Stage → COUNTING | txnId=${dispenseState.txnId} | drug=${dispenseState.drugName} | isHazardous=${dispenseState.isHazardous}")
         }
+        // The txn id only changes with the stage, or on the Rx step where nothing is saved.
         dispenseCountViewModel.onAction(
-            DispenseCountAction.StageChanged(dispenseState.stage, isHazardousDrug = dispenseState.isHazardous)
+            DispenseCountAction.StageChanged(
+                dispenseState.stage,
+                txnId = dispenseState.txnId,
+                isHazardousDrug = dispenseState.isHazardous,
+            )
         )
     }
 

@@ -3,7 +3,6 @@ package com.dispensesure.retail.navigation
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
-import com.dispensesure.retail.core.room.models.enums.ScanType
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 
 /**
@@ -99,7 +98,16 @@ sealed interface Screen {
     }
 
     data object HistoryDetail : Screen {
-        override val route: String = "history_detail"
+        private const val ROUTE_PREFIX = "history_detail"
+        const val ARG_TXN_ID = "txn_id"
+
+        override val route: String = "$ROUTE_PREFIX/{$ARG_TXN_ID}"
+
+        val navArguments: List<NamedNavArgument> = listOf(
+            navArgument(ARG_TXN_ID) { type = NavType.LongType }
+        )
+
+        fun createRoute(txnId: Long): String = "$ROUTE_PREFIX/$txnId"
     }
 
     data object BatchHistoryDetail : Screen {
@@ -165,51 +173,6 @@ sealed interface Screen {
     }
 
 
-    data object ScanBarcode : Screen {
-        private const val ROUTE_PREFIX = "scan_barcode"
-
-        const val ARG_TYPE = "type"
-        const val ARG_BATCH_ID = "batch_id"
-        const val TXN_SCAN_TYPE = "txn_scan_type"
-
-        override val route: String =
-            "$ROUTE_PREFIX/{$ARG_TYPE}/{$ARG_BATCH_ID}?$TXN_SCAN_TYPE={$TXN_SCAN_TYPE}"
-
-        val navArguments: List<NamedNavArgument> = listOf(
-            navArgument(ARG_TYPE) {
-                type = NavType.StringType
-            },
-            navArgument(ARG_BATCH_ID) {
-                type = NavType.LongType
-            },
-            navArgument(TXN_SCAN_TYPE) {
-                type = NavType.StringType
-                defaultValue = ScanType.BARCODE.name
-            }
-        )
-
-        fun createRoute(
-            scanType: String,
-            txnScanType: ScanType,
-            batchId: Long
-        ): String {
-            return "$ROUTE_PREFIX/$scanType/$batchId?$TXN_SCAN_TYPE=${txnScanType.name}"
-        }
-    }
-
-    data object PillCount : Screen {
-        private const val ROUTE_PREFIX = "pill_count"
-        const val ARG_TYPE = "type"
-
-        override val route: String = "$ROUTE_PREFIX/{$ARG_TYPE}"
-
-        val navArguments: List<NamedNavArgument> = listOf(
-            navArgument(ARG_TYPE) { type = NavType.StringType }
-        )
-
-        fun createRoute(scanType: String) = "$ROUTE_PREFIX/$scanType"
-    }
-
     // Merged single-screen flow for the dispense use case.
     // Combines RX scan, NDC scan, and pill counting on one screen.
     //
@@ -217,21 +180,22 @@ sealed interface Screen {
     // and hydrate from the existing PMS-created transaction (drugName,
     // hl7-expected NDC, targetCount, rxNo are all pre-populated, RX scan is
     // skipped entirely).
+    // `txn_id` names that transaction. Without `from_hl7`, a non-zero id resumes it.
     data object DispenseFlow : Screen {
         private const val ROUTE_PREFIX = "dispense_flow"
+        const val ARG_TXN_ID = "txn_id"
         const val ARG_FROM_HL7 = "from_hl7"
-        const val ARG_FROM_RESUME = "from_resume"
         const val ARG_FROM_QUEUE = "from_queue"
 
         override val route: String =
-            "$ROUTE_PREFIX?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_FROM_QUEUE={$ARG_FROM_QUEUE}"
+            "$ROUTE_PREFIX?$ARG_TXN_ID={$ARG_TXN_ID}&$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_QUEUE={$ARG_FROM_QUEUE}"
 
         val navArguments: List<NamedNavArgument> = listOf(
-            navArgument(ARG_FROM_HL7) {
-                type = NavType.BoolType
-                defaultValue = false
+            navArgument(ARG_TXN_ID) {
+                type = NavType.LongType
+                defaultValue = 0L
             },
-            navArgument(ARG_FROM_RESUME) {
+            navArgument(ARG_FROM_HL7) {
                 type = NavType.BoolType
                 defaultValue = false
             },
@@ -242,10 +206,10 @@ sealed interface Screen {
         )
 
         fun createRoute(
+            txnId: Long = 0L,
             fromHl7: Boolean = false,
-            fromResume: Boolean = false,
             fromQueue: Boolean = false,
-        ) = "$ROUTE_PREFIX?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_FROM_QUEUE=$fromQueue"
+        ) = "$ROUTE_PREFIX?$ARG_TXN_ID=$txnId&$ARG_FROM_HL7=$fromHl7&$ARG_FROM_QUEUE=$fromQueue"
     }
 
     data object FaceIntro : Screen {

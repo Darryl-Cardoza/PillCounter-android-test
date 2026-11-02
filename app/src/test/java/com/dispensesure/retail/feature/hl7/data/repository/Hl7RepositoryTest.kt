@@ -3,19 +3,18 @@ package com.dispensesure.retail.feature.hl7.data.repository
 import android.content.Context
 import android.util.Log
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.room.models.StockBatchEntity
-import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
-import com.dispensesure.retail.core.room.models.enums.CountStatus
+import com.dispensesure.retail.core.room.models.DrugMasterEntity
+import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
-import com.dispensesure.retail.core.room.models.enums.TxnPriority
+import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.core.scanning.data.DrugRepository
 import com.dispensesure.retail.core.scanning.data.DrugResolver
@@ -40,13 +39,13 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import org.junit.Assert.assertEquals
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.rite.hl7.model.HL7Message
-import org.rite.hl7.parser.HL7Parser
 import org.rite.hl7.parser.HL7ParseResult
+import org.rite.hl7.parser.HL7Parser
 
 /**
  * The SUT creates its own `CoroutineScope(Dispatchers.IO)` at construction and launches its
@@ -208,6 +207,14 @@ class Hl7RepositoryTest {
 
     private fun zprSegment(priority: String) = "ZPR|1|PRIORITY|$priority"
     private fun zinSegment(quantity: String) = "ZIN|1|EXPECTED_ON_HAND|$quantity"
+
+    // ZNI-2 NDC, ZNI-4 drug name, ZNI-11 filler order, ZNI-13 amount, ZNI-14 Rx, ZNI-15 fill.
+    private fun zniOrderMessage(): HL7Message =
+        parse(listOf(msh("RDE", "O11", "MSG1"), "ZNI|1|12345||Aspirin|||||||ORD1||10|RX1|0").joinToString("\r"))
+
+    // ZUI-1 NDC, ZUI-2 drug name, ZUI-4 order id, ZUI-5 quantity, ZUI-6 Rx, ZUI-7 fill.
+    private fun zuiOrderMessage(): HL7Message =
+        parse(listOf(msh("RDE", "O11", "MSG1"), "ZUI|12345|Aspirin||ORD1|10|RX1|0").joinToString("\r"))
 
     private fun drugInfo(
         ndc: String = "12345",
@@ -837,7 +844,7 @@ class Hl7RepositoryTest {
         )
 
         coVerify(timeout = 3000) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
-        verify(timeout = 3000) { notifier.show(any(), any()) }
+        verify(timeout = 3000) { notifier.show(any(), any(), 1L) }
     }
 
     @Test
@@ -853,6 +860,7 @@ class Hl7RepositoryTest {
 
         coVerify(timeout = 3000) { dispenseTxnDao.restoreDeletedTxn(8L, any()) }
         coVerify(timeout = 3000) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
+        verify(timeout = 3000) { notifier.show(any(), any(), 8L) }
     }
 
     @Test
@@ -970,6 +978,21 @@ class Hl7RepositoryTest {
     }
 
     @Test
+    fun `handleOrderEdit to a held or completed order opens no order`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
+        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+            DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
+        coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
+
+        repo.handleOrderEdit(editMessage(orderStatus = "HD"))
+        repo.handleOrderEdit(editMessage(orderStatus = "CM"))
+
+        verify(exactly = 2, timeout = 3000) { notifier.show(any(), any(), null) }
+        verify(exactly = 0) { notifier.show(any(), any(), 1L) }
+    }
+
+    @Test
     fun `handleOrderEdit unknown status maps null`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
@@ -980,6 +1003,30 @@ class Hl7RepositoryTest {
         repo.handleOrderEdit(editMessage(orderStatus = "ZZ"))
 
         coVerify(timeout = 3000) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), isNull(), any()) }
-        verify(timeout = 3000) { notifier.show(any(), any()) }
+        verify(timeout = 3000) { notifier.show(any(), any(), 1L) }
+    }
+
+    @Test
+    fun `handleOrderPacketDispenseRequest notification opens the saved order`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+            DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
+        coEvery { dispenseTxnDao.upsertPreservingId(any()) } returns 42L
+
+        repo.handleOrderPacketDispenseRequest(zniOrderMessage())
+
+        verify(timeout = 3000) { notifier.show(any(), any(), 42L) }
+    }
+
+    @Test
+    fun `handleZuiOrderPacketDispenseRequest notification opens the saved order`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+            DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
+        coEvery { dispenseTxnDao.upsertPreservingId(any()) } returns 42L
+
+        repo.handleZuiOrderPacketDispenseRequest(zuiOrderMessage())
+
+        verify(timeout = 3000) { notifier.show(any(), any(), 42L) }
     }
 }

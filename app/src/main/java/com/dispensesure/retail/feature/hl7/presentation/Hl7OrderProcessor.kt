@@ -8,7 +8,6 @@ import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
-import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
@@ -128,13 +127,12 @@ class Hl7OrderProcessor @Inject constructor(
             txnId = dispenseTxnDao.upsertPreservingId(txn)
         }
 
-        // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
-        FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         hl7Repository.insertZinContainerDetails(txnId, message)
 
         notifier.show(
             title = context.getString(R.string.hl7_notification_new_rx_title),
             message = context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), hl7DrugName, targetCount),
+            dispenseTxnId = txnId,
         )
     }
 
@@ -224,13 +222,12 @@ class Hl7OrderProcessor @Inject constructor(
             txnId = dispenseTxnDao.upsertPreservingId(txn)
         }
 
-        // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
-        FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         hl7Repository.insertZinContainerDetails(txnId, message)
 
         notifier.show(
             title = context.getString(R.string.hl7_notification_new_rx_title),
             message = context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), hl7DrugName, targetCount),
+            dispenseTxnId = txnId,
         )
     }
 

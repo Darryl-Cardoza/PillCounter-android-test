@@ -144,10 +144,14 @@ abstract class DispenseCountViewModelTestBase {
 
     /** Starts counting on [txn], as the screen does when the stage becomes COUNTING. */
     protected fun TestScope.startCounting(txn: DispenseTxnDetail = dispenseTxn()) {
-        every { preferenceHelper.getTxnId() } returns txn.txnId
         coEvery { dispenseCountRepository.loadTxn(txn.txnId) } returns txn
-        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.COUNTING, isHazardousDrug = false))
+        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.COUNTING, txnId = txn.txnId, isHazardousDrug = false))
         advanceUntilIdle()
+    }
+
+    /** Hands the view model [txnId] the way a stage change does, without starting the count. */
+    protected fun selectTxn(txnId: Long) {
+        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.PRE_RX, txnId = txnId, isHazardousDrug = false))
     }
 
     /** Sets the view model's state directly; steps and the current step have no other way in. */

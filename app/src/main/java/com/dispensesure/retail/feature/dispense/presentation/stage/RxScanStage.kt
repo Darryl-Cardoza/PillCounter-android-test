@@ -44,8 +44,8 @@ fun BoxScope.RxScanStage(
     isTablet: Boolean,
     onFlowAction: (DispenseFlowAction) -> Unit,
 ) {
-    // Landscape inline-panel width. Matches the legacy ScanBarCodeScreen
-    // formula: 30% of screen width clamped to a sensible min/max per device
+    // Landscape inline-panel width:
+    // 30% of screen width clamped to a sensible min/max per device
     // class. Without the clamp the panel becomes uselessly narrow on small
     // phones and excessively wide on large tablets.
     val inlinePanelWidth = (LocalConfiguration.current.screenWidthDp.dp * 0.3f).coerceIn(

@@ -29,7 +29,7 @@ class ContainerVerifier @Inject constructor(
 ) {
 
     /**
-     * Validation order, matching the legacy ScanBarcodeViewModel for parity:
+     * Validation order:
      *   1. Local DB lookup. If [expectedNdc] is set and
      *      the scanned NDC matches it, we use the local entry directly.
      *   2. Server fallback. The request carries `target_drug = expectedNdc` so

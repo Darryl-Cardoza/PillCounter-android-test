@@ -358,7 +358,6 @@
     <string name="enable_hl7_from_portal_toast">Activer HL7 depuis le Portail</string>
     <string name="scan_correct_label">Scannez la bonne étiquette</string>
 <!--    StockCount-->
-    <string name="scan_stock_bottle">Scanner le flacon de stock</string>
     <string name="scan_open_pills">Scanner les pilules en vrac</string>
     <string name="camera_permission_required">L\'autorisation de la caméra est requise pour scanner. Veuillez autoriser l\'accès à la caméra.</string>
     <string name="scan_ndc_to_count">Scannez le NDC pour compter les pilules</string>

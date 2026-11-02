@@ -5,14 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.models.StockBatchEntity
-import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.menu.domain.model.MenuUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,7 +23,7 @@ import javax.inject.Inject
  * ViewModel for the Menu screen.
  *
  * ### Responsibilities
- * - Listen for unsynced dispense and stock batch counts via [DispenseTxnDao] and [StockBatchDao].
+ * - Count unsynced dispenses and batches via [DispenseTxnDao] and [StockBatchDao].
  * - Expose reactive [StateFlow] for UI consumption.
  *
  * Threading:
@@ -71,28 +68,6 @@ class MenuViewModel @Inject constructor(
      * @return true if the lock engaged, false if there's no enabled face profile to verify against.
      */
     fun lockSessionNow(): Boolean = sessionLockController.lockNow()
-
-    suspend fun getLastInProgressBatch() = stockBatchDao.getLatest()
-
-    suspend fun createBatch(bucketId: String): Long? {
-        return try {
-            val batch = StockBatchEntity(
-                batchId = System.currentTimeMillis(),
-                startDateTime = System.currentTimeMillis(),
-                endDateTime = null,
-                status = BatchStatus.INPROGRESS,
-                isDeleted = false,
-                note = null,
-                bucketId = bucketId
-            )
-            stockBatchDao.insert(batch)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            logger.e("Failed to create batch", e, event = LogEvent.BATCH_CREATE_FAILED)
-            null
-        }
-    }
 
     private fun observeUnsyncedTransactionCount() {
         viewModelScope.launch {

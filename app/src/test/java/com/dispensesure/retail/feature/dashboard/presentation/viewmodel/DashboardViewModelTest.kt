@@ -1105,26 +1105,6 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun `saveTxnId saves zero`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.saveTxnId()
-
-        verify { preferenceHelper.saveTxnId(0) }
-    }
-
-    @Test
-    fun `selectCurrentTransaction saves provided id`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.selectCurrentTransaction(42L)
-
-        verify { preferenceHelper.saveTxnId(42L) }
-    }
-
-    @Test
     fun `createBatch stages pending bucket id`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()
