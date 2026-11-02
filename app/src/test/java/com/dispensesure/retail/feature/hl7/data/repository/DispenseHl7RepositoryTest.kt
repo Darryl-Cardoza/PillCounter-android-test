@@ -578,7 +578,7 @@ class DispenseHl7RepositoryTest {
     @Test
     fun `handleOrderPacketDispenseRequest notification opens the saved order`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { dispenseTxnDao.upsertPreservingId(any()) } returns 42L
 
@@ -590,7 +590,7 @@ class DispenseHl7RepositoryTest {
     @Test
     fun `handleZuiOrderPacketDispenseRequest notification opens the saved order`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { dispenseTxnDao.upsertPreservingId(any()) } returns 42L
 

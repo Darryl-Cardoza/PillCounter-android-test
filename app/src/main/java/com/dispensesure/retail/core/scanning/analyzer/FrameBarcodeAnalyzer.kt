@@ -4,22 +4,24 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.camera.core.ImageProxy
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer.Companion.FOCUS_CHANGE_WINDOW_MS
+import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer.Companion.MLKIT_TIMEOUT_MS
+import com.dispensesure.retail.core.utils.common.HelperFunctions.saveBitmapToFile
+import com.dispensesure.retail.core.utils.common.SoundUtils
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
-import com.dispensesure.retail.core.region.Region
-import com.dispensesure.retail.core.utils.common.HelperFunctions.saveBitmapToFile
-import com.dispensesure.retail.core.utils.common.SoundUtils
-import com.dispensesure.retail.core.utils.logger.AppLogger
-import com.dispensesure.retail.core.utils.logger.LogEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -77,7 +79,7 @@ class FrameBarcodeAnalyzer(
     /** Read at each barcode-image save, so a settings change applies straight away. */
     private val isGrayscale: () -> Boolean = { false },
     /** Logged-in region; decides which plain barcode lengths count as a product. */
-    private val region: Region = Region.US,
+    private val region: Region,
 ) {
     private val logger = AppLogger("FrameBarcodeAnalyzer")
     private val scannerDelegate = lazy {
@@ -422,7 +424,7 @@ class FrameBarcodeAnalyzer(
  * start with the "01" AI followed by a 14-digit GTIN, so they pass too.
  * Lot/serial codes like "YL006IDAM02" mix letters and digits and never qualify.
  */
-internal fun String.isGtinLike(plainProductCodeLengths: IntRange): Boolean {
+internal fun String.isGtinLike(plainProductCodeLengths: Set<Int>): Boolean {
     if (startsWith("01") && length >= 16 && substring(2, 16).all { it.isDigit() }) return true
     return length in plainProductCodeLengths && all { it.isDigit() }
 }

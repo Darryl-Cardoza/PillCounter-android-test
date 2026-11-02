@@ -43,7 +43,6 @@ import com.dispensesure.retail.core.health.logic.ConnectivityCallback
 import com.dispensesure.retail.core.health.logic.ExpiryWatcher
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.region.LocalRegion
-import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.security.RuntimeUnit
 import com.dispensesure.retail.core.tourguide.FtueController
@@ -361,7 +360,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                     val loggedInRegion by regionProvider.region.collectAsStateWithLifecycle()
-                                    CompositionLocalProvider(LocalRegion provides (loggedInRegion ?: Region.US)) {
+                                    CompositionLocalProvider(LocalRegion provides (loggedInRegion ?: regionProvider.current)) {
                                         AppNavGraph(
                                             navController    = navController as NavHostController,
                                             startDestination = startDestination,

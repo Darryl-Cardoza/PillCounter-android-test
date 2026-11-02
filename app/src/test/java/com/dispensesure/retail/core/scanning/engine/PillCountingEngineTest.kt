@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.camera.core.ImageProxy
 import androidx.core.content.ContextCompat
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.engine.CountConfirmer.Companion.COUNT_CONFIRM_FRAMES
@@ -83,6 +84,7 @@ class PillCountingEngineTest {
         expirationDate = "04-30-2028",
         rxRefill = "123-2",
         stepLabel = "TARGET_VERIFICATION",
+        region = Region.US,
     )
 
     @Before

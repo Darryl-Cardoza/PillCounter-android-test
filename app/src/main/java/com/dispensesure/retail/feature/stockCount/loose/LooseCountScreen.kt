@@ -37,6 +37,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.bucketLabelForLoggedInRegion
 import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
@@ -231,7 +232,7 @@ fun LooseCountScreen(
         drugName = countedDrug?.drugName.orEmpty(),
         ndc = countedDrug?.ndc.orEmpty(),
         strength = countedDrug?.strength.orEmpty(),
-        bucket = if (LocalRegion.current.showsBucket) uiState.bucketId ?: stringResource(R.string.default_bucket) else "",
+        bucket = bucketLabelForLoggedInRegion(uiState.bucketId),
         dosageForm = countedDrug?.dosageForm.orEmpty(),
         drugImage = countedDrug?.drugImagePath.orEmpty(),
         totalCount = uiState.totalCount,

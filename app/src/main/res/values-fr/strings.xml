@@ -361,7 +361,6 @@
 <!--    StockCount-->
     <string name="scan_open_pills">Scanner les pilules en vrac</string>
     <string name="camera_permission_required">L\'autorisation de la caméra est requise pour scanner. Veuillez autoriser l\'accès à la caméra.</string>
-    <string name="scan_ndc_to_count">Scannez le NDC pour compter les pilules</string>
 
 
 <!--    partial count screen -->
@@ -691,6 +690,7 @@
     <string name="hl7_notification_edit_rx_drug_not_found_ca">Échec de la mise à jour de la Rx %1$s : DIN %2$s du médicament introuvable.</string>
     <string name="hl7_notification_new_rx_ndc_missing_ca">Nouvelle commande pour la Rx %1$s ignorée — DIN manquant dans RXE-2</string>
     <string name="hl7_notification_refill_ndc_or_qty_missing_ca">Renouvellement de la Rx %1$s ignoré — DIN ou quantité manquants ou non valides</string>
+    <string name="setting_group_controlled_drug_ca">DISTRIBUTION DE SUBSTANCES CONTRÔLÉES / CIBLÉES</string>
     <string name="setting_group_hazardous_ca">COMPTAGE DE PILULES CYTOTOXIQUES</string>
     <string name="setting_hazardous_drug_ca">Médicament cytotoxique</string>
     <string name="tray_classification_message_ca">Le plateau de couleur %s n\'est pas classifié. Le marquer comme plateau cytotoxique ?</string>

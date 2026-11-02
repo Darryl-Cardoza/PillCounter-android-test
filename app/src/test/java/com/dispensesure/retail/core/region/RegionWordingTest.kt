@@ -32,6 +32,12 @@ class RegionWordingTest {
     }
 
     @Test
+    fun `canada controlled drug settings heading says targeted substance`() {
+        assertEquals(R.string.setting_group_controlled_drug_ca, Region.CA.wording(R.string.setting_group_controlled_drug))
+        assertEquals(R.string.setting_group_controlled_drug, Region.US.wording(R.string.setting_group_controlled_drug))
+    }
+
+    @Test
     fun `canada HL7 notifications say DIN`() {
         assertEquals(R.string.hl7_notification_drug_not_found_no_drug_ca, Region.CA.wording(R.string.hl7_notification_drug_not_found_no_drug))
         assertEquals(R.string.hl7_notification_drug_not_found_no_drug, Region.US.wording(R.string.hl7_notification_drug_not_found_no_drug))

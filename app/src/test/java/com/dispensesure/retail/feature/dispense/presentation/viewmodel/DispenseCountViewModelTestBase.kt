@@ -144,6 +144,7 @@ abstract class DispenseCountViewModelTestBase {
         expirationDate = expirationDate,
         rxRefill = rxRefill,
         stepLabel = "TARGET_VERIFICATION",
+        region = Region.US,
     )
 
     /** Starts counting on [txn], as the screen does when the stage becomes COUNTING. */

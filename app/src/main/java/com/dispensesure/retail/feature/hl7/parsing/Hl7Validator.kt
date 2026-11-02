@@ -1,6 +1,7 @@
 package com.dispensesure.retail.feature.hl7.parsing
 
 import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.region.isDin
 import com.dispensesure.retail.feature.hl7.parsing.model.OrderGroup
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.segment.RXESegment
@@ -55,11 +56,10 @@ class Hl7Validator @Inject constructor(
 }
 
 private val INVALID_NDC_IN_RXE = Regex("""^Invalid NDC in RXE (\d+)""")
-private val DIN_PATTERN = Regex("""^\d{8}$""")
 
 // The library's "Invalid NDC in RXE n" (n counts from 1) raised for an RXE-2 that is a DIN.
 private fun ValidationIssue.isInvalidNdcForDin(rxeSegments: List<RXESegment>): Boolean {
     val rxeNumber = INVALID_NDC_IN_RXE.find(errorText)?.groupValues?.get(1)?.toIntOrNull() ?: return false
     val giveCode = rxeSegments.getOrNull(rxeNumber - 1)?.giveCode?.trim() ?: return false
-    return DIN_PATTERN.matches(giveCode)
+    return giveCode.isDin()
 }

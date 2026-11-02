@@ -89,6 +89,7 @@ class OverlayUtilsTest {
         lotNumber = lot, serialNumber = serial, expirationDate = expiry,
         count = count, rxRefill = rxRefill, stepLabel = step,
         userName = user, location = location, timestamp = 1_700_000_000_000L,
+        region = Region.US,
     )
 
     /** First row whose left-edge pixel is [color]: where the photo starts. */

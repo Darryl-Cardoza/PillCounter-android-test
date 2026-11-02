@@ -38,6 +38,7 @@ private val canadaWording: Map<Int, Int> = mapOf(
     R.string.hl7_notification_edit_rx_drug_not_found to R.string.hl7_notification_edit_rx_drug_not_found_ca,
     R.string.hl7_notification_new_rx_ndc_missing to R.string.hl7_notification_new_rx_ndc_missing_ca,
     R.string.hl7_notification_refill_ndc_or_qty_missing to R.string.hl7_notification_refill_ndc_or_qty_missing_ca,
+    R.string.setting_group_controlled_drug to R.string.setting_group_controlled_drug_ca,
     R.string.setting_group_hazardous to R.string.setting_group_hazardous_ca,
     R.string.setting_hazardous_drug to R.string.setting_hazardous_drug_ca,
     R.string.tray_classification_message to R.string.tray_classification_message_ca,

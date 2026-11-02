@@ -14,6 +14,7 @@ import android.text.TextPaint
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.formatExpiry
 import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.TrayClass
@@ -42,7 +43,7 @@ data class PhotoInfo(
     val userName: String?,
     val location: String?,
     val timestamp: Long,
-    val region: Region = Region.US,
+    val region: Region,
 )
 
 /** One label/value cell of an info strip. */
@@ -117,7 +118,7 @@ object OverlayUtils {
         }
         add(InfoField(res.getString(R.string.lotNo), info.lotNumber.orDash()))
         add(InfoField(res.getString(R.string.serial_no), info.serialNumber.orDash()))
-        add(InfoField(res.getString(R.string.expiry), info.expirationDate?.let { storedExpiry -> formatDisplayDate(storedExpiry, info.region.numericDatePattern) }.orDash()))
+        add(InfoField(res.getString(R.string.expiry), info.expirationDate?.let { storedExpiry -> info.region.formatExpiry(storedExpiry) }.orDash()))
     }
 
     /**

@@ -133,7 +133,7 @@ fun SettingsScreen(
             ) {
 
                 SettingsGroupCard(
-                    titleRes = R.string.setting_group_controlled_drug,
+                    titleRes = LocalRegion.current.wording(R.string.setting_group_controlled_drug),
                     expanded = openCard == SettingsCard.CONTROLLED_DRUG,
                     onHeaderClick = { onCardClick(SettingsCard.CONTROLLED_DRUG) }
                 ) {

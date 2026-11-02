@@ -33,6 +33,7 @@ class FrameBarcodeAnalyzerTest {
         appContext = appContext,
         enableFocusChangeDebounce = enableFocusChangeDebounce,
         minIntervalMs = minIntervalMs,
+        region = Region.US,
     )
 
     private fun mockImageProxy(): ImageProxy {
@@ -177,5 +178,12 @@ class FrameBarcodeAnalyzerTest {
         assertFalse("00013285".isGtinLike(Region.US.plainProductCodeLengths))
         assertTrue("368540100014".isGtinLike(Region.US.plainProductCodeLengths))
         assertFalse("YL006IDA".isGtinLike(Region.CA.plainProductCodeLengths))
+    }
+
+    @Test
+    fun `a 9 to 11 digit code is never a product barcode in canada`() {
+        assertFalse("123456789".isGtinLike(Region.CA.plainProductCodeLengths))
+        assertFalse("1234567890".isGtinLike(Region.CA.plainProductCodeLengths))
+        assertFalse("12345678901".isGtinLike(Region.CA.plainProductCodeLengths))
     }
 }

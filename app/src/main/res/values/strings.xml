@@ -476,7 +476,6 @@
 <!--    StockCount-->
     <string name="scan_open_pills">Scan Open Pills</string>
     <string name="camera_permission_required">Camera permission is required to scan. Please allow camera access.</string>
-    <string name="scan_ndc_to_count">Scan NDC to count pills</string>
 
 
 <!--    partial count screen -->
@@ -703,6 +702,7 @@
     <string name="hl7_notification_edit_rx_drug_not_found_ca">Rx %1$s update failed: drug DIN %2$s not found.</string>
     <string name="hl7_notification_new_rx_ndc_missing_ca">New order for Rx %1$s ignored — DIN missing in RXE-2</string>
     <string name="hl7_notification_refill_ndc_or_qty_missing_ca">Refill for Rx %1$s ignored — DIN or quantity missing/invalid</string>
+    <string name="setting_group_controlled_drug_ca">DISPENSE CONTROLLED / TARGETED SUBSTANCE</string>
     <string name="setting_group_hazardous_ca">CYTOTOXIC PILL COUNTING</string>
     <string name="setting_hazardous_drug_ca">Cytotoxic Drug</string>
     <string name="tray_classification_message_ca">The %s colored tray is not classified. Mark it as a cytotoxic tray?</string>

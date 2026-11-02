@@ -29,13 +29,27 @@ class RegionTest {
     @Test
     fun `US has no DINs and accepts 12 to 14 digit plain codes`() {
         assertFalse(Region.US.eightDigitCodesAreDins)
-        assertEquals(12..14, Region.US.plainProductCodeLengths)
+        assertEquals(setOf(12, 13, 14), Region.US.plainProductCodeLengths)
     }
 
     @Test
-    fun `canada treats 8-digit codes as DINs and accepts 8 to 14 digit plain codes`() {
+    fun `canada treats 8-digit codes as DINs and accepts 8, 12, 13 and 14 digit plain codes`() {
         assertTrue(Region.CA.eightDigitCodesAreDins)
-        assertEquals(8..14, Region.CA.plainProductCodeLengths)
+        assertEquals(setOf(8, 12, 13, 14), Region.CA.plainProductCodeLengths)
+    }
+
+    @Test
+    fun `only exactly 8 digits is a DIN`() {
+        assertTrue("02230714".isDin())
+        assertFalse("0223071".isDin())
+        assertFalse("022307140".isDin())
+        assertFalse("0223071A".isDin())
+    }
+
+    @Test
+    fun `expiry is shown month first in the US and ISO in canada`() {
+        assertEquals("07/31/28", Region.US.formatExpiry("07-31-2028"))
+        assertEquals("2028-07-31", Region.CA.formatExpiry("07-31-2028"))
     }
 
     @Test

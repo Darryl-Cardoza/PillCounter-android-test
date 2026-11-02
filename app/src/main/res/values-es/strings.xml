@@ -361,7 +361,6 @@
 <!--    StockCount-->
     <string name="scan_open_pills">Escanear pastillas sueltas</string>
     <string name="camera_permission_required">Se requiere permiso de cámara para escanear. Permita el acceso a la cámara.</string>
-    <string name="scan_ndc_to_count">Escanee el NDC para contar pastillas</string>
 
 
 <!--    partial count screen -->
@@ -691,6 +690,7 @@
     <string name="hl7_notification_edit_rx_drug_not_found_ca">Falló la actualización de Rx %1$s: DIN %2$s del medicamento no encontrado.</string>
     <string name="hl7_notification_new_rx_ndc_missing_ca">Nuevo pedido para Rx %1$s ignorado — falta el DIN en RXE-2</string>
     <string name="hl7_notification_refill_ndc_or_qty_missing_ca">Resurtido de Rx %1$s ignorado — DIN o cantidad faltantes o no válidos</string>
+    <string name="setting_group_controlled_drug_ca">DISPENSACIÓN DE SUSTANCIAS CONTROLADAS / ESPECÍFICAS</string>
     <string name="setting_group_hazardous_ca">CONTEO DE PÍLDORAS CITOTÓXICAS</string>
     <string name="setting_hazardous_drug_ca">Medicamento citotóxico</string>
     <string name="tray_classification_message_ca">La bandeja de color %s no está clasificada. ¿Marcarla como bandeja citotóxica?</string>

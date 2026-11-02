@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.formatExpiry
 import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.tourTarget
@@ -47,7 +48,6 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.drugDisplayName
-import com.dispensesure.retail.core.utils.common.formatDisplayDate
 import com.dispensesure.retail.core.utils.compose.repeatWhileHeld
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditDrugDetails
@@ -333,7 +333,7 @@ private fun EditBatchRowItem(
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = formatDisplayDate(row.expiry, LocalRegion.current.numericDatePattern).ifBlank { "—" },
+            text = LocalRegion.current.formatExpiry(row.expiry).ifBlank { "—" },
             color = AppTheme.extendedColors.textColor,
             fontSize = responsiveSp(6.sp),
             maxLines = 1,

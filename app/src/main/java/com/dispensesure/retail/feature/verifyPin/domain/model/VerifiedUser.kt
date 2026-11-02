@@ -51,9 +51,5 @@ data class VerifiedUser(
 
     /** ISO country code of the user's pharmacy, e.g. "US", "CA" */
     @Json(name = "country")
-    val country: String? = null,
-
-    /** State / province code, e.g. "NY", "ON" */
-    @Json(name = "state")
-    val state: String? = null
+    val country: String? = null
 )

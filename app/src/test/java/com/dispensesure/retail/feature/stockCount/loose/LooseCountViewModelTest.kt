@@ -509,7 +509,7 @@ class LooseCountViewModelTest {
         val viewModel = countingViewModel(batchId = 0L)
         addPills(viewModel, pillCount = 5, photoPath = "/photos/1.jpg")
         viewModel.onAction(LooseCountAction.DoneTapped)
-        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false)
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, bucketsEnabled = true)
 
         try {
             viewModel.onAction(LooseCountAction.EndCountConfirmed)

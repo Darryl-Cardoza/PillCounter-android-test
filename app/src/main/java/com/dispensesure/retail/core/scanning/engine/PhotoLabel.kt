@@ -15,5 +15,5 @@ data class PhotoLabel(
     val rxRefill: String?,
     val stepLabel: String,
     /** Decides the date format drawn on the strip. */
-    val region: Region = Region.US,
+    val region: Region,
 )

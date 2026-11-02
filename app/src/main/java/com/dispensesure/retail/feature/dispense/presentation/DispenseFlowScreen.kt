@@ -33,6 +33,7 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.bucketLabelForLoggedInRegion
 import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
@@ -387,7 +388,7 @@ fun DispenseFlowScreen(
         drugName = dispenseCountState.drugName,
         ndc = dispenseCountState.ndc,
         strength = dispenseCountState.strength,
-        bucket = if (LocalRegion.current.showsBucket) dispenseCountState.bucketId ?: stringResource(R.string.default_bucket) else "",
+        bucket = bucketLabelForLoggedInRegion(dispenseCountState.bucketId),
         dosageForm = dispenseCountState.dosageForm,
         drugImage = dispenseCountState.drugImage,
         totalCount = dispenseCountState.totalCount,
