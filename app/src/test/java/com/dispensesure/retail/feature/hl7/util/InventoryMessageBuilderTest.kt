@@ -12,6 +12,12 @@ import org.junit.Test
  */
 class InventoryMessageBuilderTest {
 
+    // These batches fit in one chunk; production only sends chunks.
+    private fun buildSingleChunkInventoryMessage(
+        batch: StockBatchEntity,
+        bottles: List<StockBottleInfoDto>,
+    ): String = InventoryMessageBuilder.buildInventoryMessageChunks(batch, bottles).single().message
+
     // ============================ INVENTORY ============================
 
     @Test
@@ -33,7 +39,7 @@ class InventoryMessageBuilderTest {
             StockBottleInfoDto(4L, 4L, "DrugD", "NDC-D", "LOTD", "EXPD", bottleQty = null, looseQty = null, packageQty = null),
         )
 
-        val raw = InventoryMessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
+        val raw = buildSingleChunkInventoryMessage(batch = batch, bottles = bottles)
 
         assertTrue(raw.isNotEmpty())
         assertTrue("should contain MSH", raw.contains("MSH"))
@@ -57,7 +63,7 @@ class InventoryMessageBuilderTest {
             requestIdFromPMS = null,
             bucketId = null,
         )
-        val rawNull = InventoryMessageBuilder.buildInventoryMessage(
+        val rawNull = buildSingleChunkInventoryMessage(
             batch = batchNull,
             bottles = listOf(
                 StockBottleInfoDto(1L, 1L, "DrugX", "NDC-X", "LOTX", "EXPX", bottleQty = 1, looseQty = 0, packageQty = 2),
@@ -72,7 +78,7 @@ class InventoryMessageBuilderTest {
             requestIdFromPMS = "   ",
             bucketId = null,
         )
-        val rawBlank = InventoryMessageBuilder.buildInventoryMessage(
+        val rawBlank = buildSingleChunkInventoryMessage(
             batch = batchBlank,
             bottles = emptyList(),
         )
@@ -127,7 +133,7 @@ class InventoryMessageBuilderTest {
             ),
         )
 
-        val raw = InventoryMessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
+        val raw = buildSingleChunkInventoryMessage(batch = batch, bottles = bottles)
 
         assertTrue("IMG001 present for first image", raw.contains("IMG001"))
         assertTrue("IMG002 present for second image", raw.contains("IMG002"))
@@ -156,7 +162,7 @@ class InventoryMessageBuilderTest {
             StockBottleInfoDto(2L, 2L, "DrugB", "NDC-B", "LOTB", "EXPB", bottleQty = 0, looseQty = 5, packageQty = 1),
         )
 
-        val raw = InventoryMessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
+        val raw = buildSingleChunkInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         val invLines = lines.filter { it.startsWith("INV|") }
@@ -178,7 +184,7 @@ class InventoryMessageBuilderTest {
             StockBottleInfoDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 365, packageQty = 1000),
         )
 
-        val raw = InventoryMessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
+        val raw = buildSingleChunkInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         val sealedRow = lines.first { it.startsWith("OBX|") && it.contains("SEALED_QTY") }
@@ -198,7 +204,7 @@ class InventoryMessageBuilderTest {
             StockBottleInfoDto(1L, 1L, "DrugD", "NDC-D", "LOTD", "EXPD", bottleQty = null, looseQty = null, packageQty = null),
         )
 
-        val raw = InventoryMessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
+        val raw = buildSingleChunkInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         val sealedRow = lines.first { it.startsWith("OBX|") && it.contains("SEALED_QTY") }
@@ -218,7 +224,7 @@ class InventoryMessageBuilderTest {
             StockBottleInfoDto(3L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 0, packageQty = 100),
         )
 
-        val raw = InventoryMessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
+        val raw = buildSingleChunkInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         assertEquals(1, lines.count { it.startsWith("INV|") })
@@ -240,7 +246,7 @@ class InventoryMessageBuilderTest {
             StockBottleInfoDto(4L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 65, packageQty = 1000),
         )
 
-        val raw = InventoryMessageBuilder.buildInventoryMessage(batch = batch, bottles = bottles)
+        val raw = buildSingleChunkInventoryMessage(batch = batch, bottles = bottles)
         val lines = raw.split("\r")
 
         assertEquals(1, lines.count { it.startsWith("INV|") })

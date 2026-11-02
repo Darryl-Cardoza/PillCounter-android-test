@@ -13,6 +13,11 @@ import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.core.scanning.data.DrugRepository
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogDestination
+import com.dispensesure.retail.core.utils.logger.LogEntry
+import com.dispensesure.retail.core.utils.logger.LogLevel
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7MessageSender
 import com.dispensesure.retail.feature.hl7.data.Hl7ConfigProvider
@@ -24,17 +29,21 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import org.junit.Assert.assertEquals
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.rite.hl7.model.HL7Message
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * The SUT creates its own `CoroutineScope(Dispatchers.IO)` at construction and launches its
@@ -192,6 +201,16 @@ class StockHl7RepositoryTest {
         repo.sendInventory(100L)
 
         coVerify(exactly = 0) { hl7MessageSender.sendRaw(any()) }
+    }
+
+    @Test
+    fun `sendInventory rethrows cancellation instead of logging it as a send failure`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { stockBatchDao.getById(100L) } throws CancellationException("resend cancelled")
+
+        val thrownBySendInventory = runCatching { repo.sendInventory(100L) }.exceptionOrNull()
+
+        assertTrue(thrownBySendInventory is CancellationException)
     }
 
     // ─────────────────────────────── large batch (chunked) sync ───────────────────────────────
@@ -359,6 +378,55 @@ class StockHl7RepositoryTest {
         repo.resendPendingBatches()
 
         coVerify(timeout = 3000) { stockBatchDao.markBatchSynced(100L) }
+    }
+
+    @Test
+    fun `resendPendingBatches skips a second pass while the first is still sending`() = runTest(testDispatcher) {
+        // The skip leaves no DAO trace, so the test waits on its log line instead.
+        val secondPassSkipped = CountDownLatch(1)
+        val minimumLogLevelBeforeTest = LoggerConfig.minimumLogLevel
+        LoggerConfig.minimumLogLevel = LogLevel.INFO
+        AppLogger.setDestinationForTest(object : LogDestination {
+            override fun write(entry: LogEntry) {
+                if (entry.message.contains("already in progress")) secondPassSkipped.countDown()
+            }
+        })
+        try {
+            val repo = createRepo()
+            coEvery { stockBatchDao.getUnsyncedCompletedBatchesOnce() } returns
+                listOf(
+                    com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto(
+                        batchId = 100L,
+                        createdAt = 0L,
+                        uniqueNdcCount = 0,
+                        status = "COMPLETED",
+                        bucketId = null,
+                        requestIdFromPMS = "REQ",
+                    )
+                )
+            coEvery { stockBatchDao.getById(100L) } returns StockBatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
+            coEvery { stockBottleInfoDao.getByBatchId(100L) } returns emptyList()
+            val firstPassSending = CountDownLatch(1)
+            val releaseFirstPass = CountDownLatch(1)
+            coEvery { hl7MessageSender.sendRaw(any()) } answers {
+                firstPassSending.countDown()
+                releaseFirstPass.await(3, TimeUnit.SECONDS)
+                Result.success(SUCCESS_ACK)
+            }
+
+            repo.resendPendingBatches()
+            assertTrue(firstPassSending.await(3, TimeUnit.SECONDS))
+            repo.resendPendingBatches()
+            assertTrue(secondPassSkipped.await(3, TimeUnit.SECONDS))
+            releaseFirstPass.countDown()
+
+            coVerify(timeout = 3000) { stockBatchDao.markBatchSynced(100L) }
+            coVerify(exactly = 1) { hl7MessageSender.sendRaw(any()) }
+            coVerify(exactly = 1) { stockBatchDao.getUnsyncedCompletedBatchesOnce() }
+        } finally {
+            AppLogger.setDestinationForTest(null)
+            LoggerConfig.minimumLogLevel = minimumLogLevelBeforeTest
+        }
     }
 
     // ─────────────────────────────── handleInrInventoryRequest ───────────────────────────────

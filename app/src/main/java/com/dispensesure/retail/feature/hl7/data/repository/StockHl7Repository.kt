@@ -23,7 +23,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.segment.INVSegment
 import org.rite.hl7.model.segment.RXESegment
@@ -48,7 +50,11 @@ class StockHl7Repository @Inject constructor(
 ) {
 
     private val logger = AppLogger.create<StockHl7Repository>()
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    // Reconnect, the Unsynced screen, END COUNT and the offline drain can all start a resend;
+    // without this, two passes send the same chunk twice.
+    private val resendMutex = Mutex()
 
     /**
      * Builds and sends the inventory response for a batch, splitting it into
@@ -128,6 +134,8 @@ class StockHl7Repository @Inject constructor(
             stockBatchDao.markBatchSynced(batchId)
             logger.i("All chunks sent — inventory HL7 sync complete for batchId=$batchId")
 
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger.e("sendInventory failed for batchId=$batchId", e, event = LogEvent.HL7_SEND_FAILED)
         }
@@ -135,6 +143,10 @@ class StockHl7Repository @Inject constructor(
 
     fun resendPendingBatches() {
         scope.launch {
+            if (!resendMutex.tryLock()) {
+                logger.i("resendPendingBatches already in progress — skipping duplicate trigger")
+                return@launch
+            }
             try {
                 val pendingBatches = stockBatchDao.getUnsyncedCompletedBatchesOnce()
                 if (pendingBatches.isEmpty()) {
@@ -149,6 +161,8 @@ class StockHl7Repository @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 logger.e("resendPendingBatches failed", e, event = LogEvent.HL7_RESEND_FAILED)
+            } finally {
+                resendMutex.unlock()
             }
         }
     }
@@ -156,10 +170,6 @@ class StockHl7Repository @Inject constructor(
     private data class ResolvedInventoryItem(
         val ndc: String,
         val drugId: Long,
-        val resolvedName: String,
-        val lot: String,
-        val expiry: String,
-        val targetCount: Int
     )
 
     // ─────────────────────────── INBOUND HANDLER: INR^U04/U06 (INVENTORY REQUEST) ───────────────────────────
@@ -175,9 +185,6 @@ class StockHl7Repository @Inject constructor(
         if (invSegments.isNotEmpty()) {
             for (inv in invSegments) {
                 val ndc = inv.deviceItemCode.trim()
-                val lot = inv.deviceLotNumber.trim()
-                val expiry = inv.deviceExpirationDate.trim()
-                val targetCount = inv.deviceQuantityOnHand.toIntOrNull() ?: 0
 
                 if (ndc.isBlank()) {
                     logger.w("Skipping INV segment — NDC is blank")
@@ -187,9 +194,6 @@ class StockHl7Repository @Inject constructor(
                 resolveInventoryItem(
                     ndc = ndc,
                     fallbackName = inv.deviceItemName,
-                    lot = lot,
-                    expiry = expiry,
-                    targetCount = targetCount
                 )?.let { resolvedItems.add(it) }
             }
         } else {
@@ -201,16 +205,10 @@ class StockHl7Repository @Inject constructor(
                 logger.w("No INV or usable RXE segment found in HL7 message — ignoring")
                 return
             }
-            val targetCount = (rxe.dispenseAmount.trim().takeIf { it.isNotBlank() }
-                ?: rxe.giveAmountMinimum.trim())
-                .toDoubleOrNull()?.toInt() ?: 0
 
             resolveInventoryItem(
                 ndc = ndc,
                 fallbackName = rxe.giveName,
-                lot = "",
-                expiry = "",
-                targetCount = targetCount
             )?.let { resolvedItems.add(it) }
         }
 
@@ -246,7 +244,7 @@ class StockHl7Repository @Inject constructor(
             val txnId = stockTxnDao.upsertPreservingId(txn)
 
             logger.i(
-                "Inserted stock txn for NDC: ${item.ndc}, drugId: ${item.drugId}, txnId: $txnId, lotNo: ${item.lot}, expiry: ${item.expiry}, targetCount: ${item.targetCount}"
+                "Inserted stock txn for NDC: ${item.ndc}, drugId: ${item.drugId}, txnId: $txnId"
             )
         }
 
@@ -270,9 +268,6 @@ class StockHl7Repository @Inject constructor(
     private suspend fun resolveInventoryItem(
         ndc: String,
         fallbackName: String,
-        lot: String,
-        expiry: String,
-        targetCount: Int
     ): ResolvedInventoryItem? {
         val name = fallbackName.takeIf { it.isNotBlank() }
         // A local DB error skips this item instead of failing the whole inventory message.
@@ -291,10 +286,6 @@ class StockHl7Repository @Inject constructor(
         return ResolvedInventoryItem(
             ndc = ndc,
             drugId = lookup.drug.drugId,
-            resolvedName = lookup.drug.drugName.orEmpty(),
-            lot = lot,
-            expiry = expiry,
-            targetCount = targetCount
         )
     }
 }

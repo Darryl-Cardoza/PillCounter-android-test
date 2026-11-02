@@ -10,6 +10,7 @@ import com.dispensesure.retail.feature.hl7.parsing.Hl7OrderHandler
 import com.dispensesure.retail.feature.hl7.parsing.Hl7Parser
 import com.dispensesure.retail.feature.hl7.parsing.Hl7Validator
 import com.dispensesure.retail.feature.hl7.presentation.Hl7OrderProcessor
+import io.mockk.Called
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -179,6 +180,7 @@ class Hl7EventHandlerTest {
         handler.onMessageReceived(inventoryRequest, "key-4")
 
         coVerify(timeout = 3000) { stockHl7Repository.handleInrInventoryRequest(inventoryRequest) }
+        verify { dispenseHl7Repository wasNot Called }
     }
 
     @Test
@@ -192,6 +194,35 @@ class Hl7EventHandlerTest {
         handler.onMessageReceived(orderEdit, "key-5")
 
         coVerify(timeout = 3000) { dispenseHl7Repository.handleOrderEdit(orderEdit) }
+        verify { stockHl7Repository wasNot Called }
+    }
+
+    @Test
+    fun `a ZNI order packet goes to the dispense repository`() {
+        val zniOrderPacket = message(
+            "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||RDE^O11|MSG-6|P|2.5\r" +
+                "ZNI|1|12345||Aspirin|||||||ORD1||10|RX1|0"
+        )
+
+        handler.onMessageReceived(zniOrderPacket, "key-6")
+
+        coVerify(timeout = 3000) { dispenseHl7Repository.handleOrderPacketDispenseRequest(zniOrderPacket) }
+        coVerify(exactly = 0) { dispenseHl7Repository.handleZuiOrderPacketDispenseRequest(any()) }
+        verify { stockHl7Repository wasNot Called }
+    }
+
+    @Test
+    fun `a ZUI order packet goes to the dispense repository`() {
+        val zuiOrderPacket = message(
+            "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||RDE^O11|MSG-7|P|2.5\r" +
+                "ZUI|12345|Aspirin||ORD1|10|RX1|0"
+        )
+
+        handler.onMessageReceived(zuiOrderPacket, "key-7")
+
+        coVerify(timeout = 3000) { dispenseHl7Repository.handleZuiOrderPacketDispenseRequest(zuiOrderPacket) }
+        coVerify(exactly = 0) { dispenseHl7Repository.handleOrderPacketDispenseRequest(any()) }
+        verify { stockHl7Repository wasNot Called }
     }
 
     @Test

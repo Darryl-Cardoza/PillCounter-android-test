@@ -1,6 +1,5 @@
 package com.dispensesure.retail.feature.hl7.data.repository
 
-import android.annotation.SuppressLint
 import android.content.Context
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
@@ -29,6 +28,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
@@ -63,7 +63,7 @@ class DispenseHl7Repository @Inject constructor(
 ) {
 
     private val logger = AppLogger.create<DispenseHl7Repository>()
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // Guards resendPendingDispenses() so the Room-flow observer and the
     // onClientConnected trigger can never run concurrently and double-send the
@@ -86,20 +86,9 @@ class DispenseHl7Repository @Inject constructor(
     }
 
     init {
-        scope.launch {
-            try {
-                if (preferenceHelper.isHl7Enabled()) {
-                    observePendingHl7Transactions()
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("Failed to check HL7-enabled preference on startup — pending-txn observer not started", e, event = LogEvent.HL7_RESEND_FAILED)
-            }
-        }
+        observePendingHl7Transactions()
     }
 
-    @SuppressLint("SimpleDateFormat")
     suspend fun sendDispense(
         txnId: Long
     ) {
@@ -661,7 +650,10 @@ class DispenseHl7Repository @Inject constructor(
                 .catch { e -> logger.e("Pending HL7 txn observer flow failed", e, event = LogEvent.HL7_RESEND_FAILED) }
                 .collect { pendingTxn ->
                     logger.i("HL7 observer fired, pending=${pendingTxn.size}")
-                    resendPendingDispenses()
+                    // Checked per emission, not once at start: HL7 can be turned on after a cold start.
+                    if (preferenceHelper.isHl7Enabled()) {
+                        resendPendingDispenses()
+                    }
                 }
         }
     }

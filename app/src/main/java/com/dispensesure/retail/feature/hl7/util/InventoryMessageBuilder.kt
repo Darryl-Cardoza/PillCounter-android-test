@@ -15,14 +15,6 @@ object InventoryMessageBuilder {
     // INVENTORY RESPONSE (INU^U05, INV + ZAD)
     // =========================================================
 
-    fun buildInventoryMessage(
-        batch: StockBatchEntity,
-        bottles: List<StockBottleInfoDto>,
-        config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS")
-    ): String {
-        return buildInventoryMessageChunks(batch, bottles, config).single().message
-    }
-
     /** One chunk of a (possibly split) inventory sync — see [buildInventoryMessageChunks]. */
     data class InventoryChunk(
         val chunkIndex: Int,

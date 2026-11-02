@@ -26,6 +26,7 @@ import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -96,7 +97,7 @@ class DispenseHl7RepositoryTest {
         every { context.getString(any()) } returns "x"
         every { context.getString(any(), *anyVararg()) } returns "x"
 
-        // By default HL7 is disabled so init's observePendingHl7Transactions does not interfere.
+        // By default HL7 is disabled so init's observePendingHl7Transactions never resends.
         every { preferenceHelper.isHl7Enabled() } returns false
         every { preferenceHelper.getLocalId() } returns 1L
         // send() must be stubbed, not left relaxed: the dispense path logs the returned ACK, and
@@ -187,15 +188,30 @@ class DispenseHl7RepositoryTest {
     }
 
     @Test
-    fun `init with hl7 disabled does not observe`() = runTest(testDispatcher) {
+    fun `observer does not resend while hl7 is disabled`() = runTest(testDispatcher) {
         every { preferenceHelper.isHl7Enabled() } returns false
+        every { dispenseTxnDao.observePendingHl7Txn() } returns flowOf(listOf(txnEntity()))
 
         createRepo()
 
-        // Synchronize on the init coroutine actually running (it reads isHl7Enabled) before
-        // asserting the observer was never collected; this avoids racing the background launch.
+        // Sync on the observer reading the flag before asserting no resend ran.
         verify(timeout = 3000) { preferenceHelper.isHl7Enabled() }
-        verify(exactly = 0) { dispenseTxnDao.observePendingHl7Txn() }
+        coVerify(exactly = 0) { dispenseTxnDao.getPendingHl7TxnOnce() }
+    }
+
+    @Test
+    fun `observer resends once hl7 is turned on after start`() = runTest(testDispatcher) {
+        every { preferenceHelper.isHl7Enabled() } returns false
+        val pendingDispenses = MutableStateFlow<List<DispenseTxnEntity>>(emptyList())
+        every { dispenseTxnDao.observePendingHl7Txn() } returns pendingDispenses
+        coEvery { dispenseTxnDao.getPendingHl7TxnOnce() } returns emptyList()
+
+        createRepo()
+        verify(timeout = 3000) { preferenceHelper.isHl7Enabled() }
+        every { preferenceHelper.isHl7Enabled() } returns true
+        pendingDispenses.value = listOf(txnEntity())
+
+        coVerify(timeout = 3000) { dispenseTxnDao.getPendingHl7TxnOnce() }
     }
 
     @Test

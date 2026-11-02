@@ -5,11 +5,11 @@ import android.util.Base64
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isDispensedQuantityStep
 import com.dispensesure.retail.core.models.toImageLabel
-import com.dispensesure.retail.core.security.ImageCrypto
-import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
-import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
+import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -19,7 +19,6 @@ import org.rite.hl7.builder.ZsnTransactionType
 import org.rite.hl7.builder.ZsvMatchStrength
 import org.rite.hl7.builder.ZsvValidationResult
 import org.rite.hl7.builder.ZuiTransactionStatus
-
 import java.io.File
 
 /**
@@ -603,11 +602,9 @@ object DispenseMessageBuilder {
         txnId: String,
         note: String?,
         totalCount: Int,
-        isBatch: Boolean = false,
         expectedCount: Int? = null
     ): List<NoteRow> {
-        val label = if (isBatch) "Batch Id" else "Transaction Id"
-        var comment = "$label: $txnId | Status: Completed | Total Count: $totalCount"
+        var comment = "Transaction Id: $txnId | Status: Completed | Total Count: $totalCount"
 
         if (expectedCount != null && expectedCount != totalCount) {
             val diff = totalCount - expectedCount

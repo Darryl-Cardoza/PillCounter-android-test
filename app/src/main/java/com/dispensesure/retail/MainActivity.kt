@@ -7,14 +7,9 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
 import android.view.MotionEvent
 import android.view.WindowManager
-import com.dispensesure.retail.core.utils.permission.isLocationServicesEnabled
-import com.dispensesure.retail.core.utils.permission.isPermanentlyDenied
-import com.dispensesure.retail.core.utils.permission.markPermissionRequested
-import com.dispensesure.retail.core.utils.permission.openAppSettings
-import com.dispensesure.retail.core.utils.permission.openLocationSettings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,18 +25,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.dispensesure.retail.core.tourguide.FtueController
-import com.dispensesure.retail.core.tourguide.TourEvent
-import com.dispensesure.retail.core.tourguide.TourSectionPrompt
-import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.NavDestination.Companion.hierarchy
 import com.dispensesure.retail.core.auth.AuthEvent
 import com.dispensesure.retail.core.auth.AuthEventBus
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
@@ -50,34 +42,42 @@ import com.dispensesure.retail.core.health.logic.ConnectivityCallback
 import com.dispensesure.retail.core.health.logic.ExpiryWatcher
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.security.RuntimeUnit
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
-import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayScreen
-import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
-import com.dispensesure.retail.core.utils.logger.AppLogger
-import com.dispensesure.retail.core.utils.logger.LogEvent
-import com.dispensesure.retail.core.utils.logger.LoggerConfig
-import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersiveFullscreen
-import com.dispensesure.retail.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourEvent
+import com.dispensesure.retail.core.tourguide.TourSectionPrompt
 import com.dispensesure.retail.core.utils.common.HelperFunctions.clearSessionIfNotRemembered
+import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.dispensesure.retail.core.utils.common.HelperFunctions.openPlayStore
-import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
+import com.dispensesure.retail.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.SecurityErrorDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toColor
+import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
+import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.core.utils.compose.MaintenanceScreen
 import com.dispensesure.retail.core.utils.compose.OfflineOverlay
 import com.dispensesure.retail.core.utils.compose.UpdateScreen
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.notification.FCMService
+import com.dispensesure.retail.core.utils.permission.isLocationServicesEnabled
+import com.dispensesure.retail.core.utils.permission.isPermanentlyDenied
+import com.dispensesure.retail.core.utils.permission.markPermissionRequested
+import com.dispensesure.retail.core.utils.permission.openAppSettings
+import com.dispensesure.retail.core.utils.permission.openLocationSettings
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayScreen
+import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.navigation.AppNavGraph
 import com.dispensesure.retail.ui.theme.DispenseSureRetailTheme
 import com.dispensesure.retail.ui.theme.ExtendedColors
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 /**
@@ -332,8 +332,8 @@ class MainActivity : ComponentActivity() {
                                         ExpiryWatcher.start(lifecycleScope, sessionHealthController)
                                     }
                                     // OFFLINE -> HEALTHY drain lives inside SessionHealthController
-                                    // itself — see its init block. MainActivity no longer holds an
-                                    // Hl7Repository reference.
+                                    // itself — see its init block. MainActivity no longer holds the
+                                    // HL7 repositories.
 
                                     // Bump on every HEALTHY -> OFFLINE transition so the
                                     // OfflineOverlay re-expands its message pill on each
