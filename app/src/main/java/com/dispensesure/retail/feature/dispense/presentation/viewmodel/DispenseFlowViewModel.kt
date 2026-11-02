@@ -1,41 +1,40 @@
 package com.dispensesure.retail.feature.dispense.presentation.viewmodel
 
-import android.content.Context
+import androidx.annotation.StringRes
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.models.isControlledDrugType
-import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
-import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.room.models.enums.TxnPriority
-import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
-import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
-import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TutorialData
-import com.dispensesure.retail.core.utils.common.parseScanData
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
-import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
+import com.dispensesure.retail.feature.dispense.data.ContainerOutcome
+import com.dispensesure.retail.feature.dispense.data.ContainerVerifier
+import com.dispensesure.retail.feature.dispense.data.DispenseFlowRepository
+import com.dispensesure.retail.feature.dispense.data.RxLabelResolver
+import com.dispensesure.retail.feature.dispense.data.RxScanOutcome
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseFlowAction
+import com.dispensesure.retail.feature.dispense.domain.model.DispenseFlowEffect
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseFlowUiState
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseStage
 import com.dispensesure.retail.feature.dispense.domain.model.StandaloneRxDraft
+import com.dispensesure.retail.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -64,17 +63,29 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class DispenseFlowViewModel @Inject constructor(
-    @ApplicationContext private val appContext: Context,
-    private val drugResolver: DrugResolver,
-    private val drugMasterDao: DrugMasterDao,
+    savedStateHandle: SavedStateHandle,
     private val preferenceHelper: PreferenceHelper,
-    private val dispenseTxnDao: DispenseTxnDao,
+    private val rxLabelResolver: RxLabelResolver,
+    private val containerVerifier: ContainerVerifier,
+    private val dispenseFlowRepository: DispenseFlowRepository,
 ) : ViewModel() {
 
     private val logger = AppLogger("DispenseFlowVM")
 
-    private val _uiState = MutableStateFlow(DispenseFlowUiState())
+    // How the screen was opened: the route's flags.
+    private val isFromHl7: Boolean = savedStateHandle.get<Boolean>(Screen.DispenseFlow.ARG_FROM_HL7) ?: false
+    private val isFromResume: Boolean = savedStateHandle.get<Boolean>(Screen.DispenseFlow.ARG_FROM_RESUME) ?: false
+
+    private val _uiState = MutableStateFlow(
+        DispenseFlowUiState(
+            isResolvingEntry = isFromResume || isFromHl7,
+            isFromQueue = savedStateHandle.get<Boolean>(Screen.DispenseFlow.ARG_FROM_QUEUE) ?: false,
+        )
+    )
     val uiState: StateFlow<DispenseFlowUiState> = _uiState.asStateFlow()
+
+    private val _effects = Channel<DispenseFlowEffect>(Channel.BUFFERED)
+    val effects: Flow<DispenseFlowEffect> = _effects.receiveAsFlow()
 
     private var queueObserverJob: Job? = null
 
@@ -82,12 +93,42 @@ class DispenseFlowViewModel @Inject constructor(
     // misses on the same wrong vial.
     private var lastVialMismatchToastAt: Long = 0L
 
-    /**
-     * HL7 toggle from the portal (cached in prefs). When disabled, the dispense
-     * flow runs in a count-only mode: no RX/NDC barcode scanning, only the live
-     * pill-count circle is shown.
-     */
-    fun isHl7Enabled(): Boolean = preferenceHelper.isHl7Enabled()
+    init {
+        // Queue mode: initialize the QUEUE stage and start observing dispense transactions.
+        // Skip when resuming a specific transaction to avoid the QUEUE stage flash
+        // before initializeFromResumedTxn() advances the stage.
+        if (_uiState.value.isFromQueue && !isFromResume) enterQueueMode()
+        // PMS/HL7 entry: hydrate from the pre-existing transaction and skip RX.
+        // Only runs once — the VM internally early-outs if no txn is found, so we
+        // safely fall back to the manual PRE_RX flow.
+        if (isFromHl7) initializeFromHl7Txn()
+        // Resume entry: partial transaction already exists, NDC not yet verified.
+        // Skip RX scan and go straight to PRE_NDC so the user only scans the container.
+        if (isFromResume) initializeFromResumedTxn()
+    }
+
+    fun onAction(action: DispenseFlowAction) {
+        when (action) {
+            is DispenseFlowAction.RxLabelScanned -> onRxBarcodeRead(action.rawValue)
+            is DispenseFlowAction.ContainerScanned -> onNdcBarcodeRead(action.gtin14, action.firstBottle)
+            DispenseFlowAction.RxLabelScannedOnContainerStep -> onRxScannedInNdcStage()
+            is DispenseFlowAction.VialLabelScanned -> onVialBarcodeRead(action.rawValue)
+            DispenseFlowAction.RxProceedTapped -> onRxConfirmed()
+            DispenseFlowAction.RxCancelled -> onRxCancelled()
+            DispenseFlowAction.SubstituteConfirmed -> confirmSubstitute()
+            DispenseFlowAction.SubstituteDismissed -> dismissNdcEquivalenceDialog()
+            DispenseFlowAction.OnHoldDismissed -> dismissOnHoldDialog()
+            is DispenseFlowAction.QueueFilterSelected -> setQueueFilter(action.filter)
+            is DispenseFlowAction.QueueItemTapped -> resumeFromQueue(action.txnId)
+            DispenseFlowAction.LeavingForQueue -> enterQueueMode()
+            DispenseFlowAction.CountFinished -> resetToQueueOrNavigateDashboard()
+            is DispenseFlowAction.ResetConfirmed -> returnToContainerScan(action.resetCount)
+            is DispenseFlowAction.TourRxNextTapped -> useDummyRxData(action.demoDrugName)
+            DispenseFlowAction.TourContainerNextTapped -> useDummyNdcData()
+        }
+    }
+
+    // ─────────────────────────── Entry ───────────────────────────
 
     /**
      * Hydrate the screen for an HL7/PMS-initiated dispense. Reads the
@@ -95,53 +136,35 @@ class DispenseFlowViewModel @Inject constructor(
      * and jumps straight to [DispenseStage.PRE_NDC], with:
      *  - `hl7ExpectedNdc` populated so NDC scan can validate / detect substitutes
      *  - `drugName` / `rxNo` / `targetCount` from the HL7 record
-     *  - `isFromHl7 = true` so the substitute path is offered on mismatch
      *
      * If the txn isn't found (e.g. it was cleared between notification post and
      * tap), the screen falls back to the manual PRE_RX flow.
      */
-    fun initializeFromHl7Txn() {
+    private fun initializeFromHl7Txn() {
         viewModelScope.launch {
             try {
                 val txnId = preferenceHelper.getTxnId()
                 if (txnId == 0L) {
                     logger.w("HL7 init requested but no txnId in preferences — falling back to PRE_RX")
-                    _uiState.update { it.copy(initResolved = true) }
+                    _uiState.update { it.copy(isResolvingEntry = false) }
                     return@launch
                 }
-                val txn = dispenseTxnDao.getById(txnId)
+                val txn = dispenseFlowRepository.loadTxn(txnId)
                 if (txn == null) {
                     logger.w("HL7 init: txn $txnId not found in DB — falling back to PRE_RX")
-                    _uiState.update { it.copy(initResolved = true) }
+                    _uiState.update { it.copy(isResolvingEntry = false) }
                     return@launch
                 }
-                val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
+                val drug = dispenseFlowRepository.loadDrug(txn.drugId)
                 _uiState.update {
-                    it.copy(
-                        stage = DispenseStage.PRE_NDC,
-                        initResolved = true,
-                        isFromHl7 = true,
-                        txnId = txnId,
-                        drugName = drug?.drugName.orEmpty(),
-                        ndc = drug?.ndc.orEmpty(),
-                        hl7ExpectedNdc = drug?.ndc,
-                        rxNo = txn.rxNo,
-                        refillNo = txn.refillNo,
-                        qty = txn.targetCount?.toString(),
-                        isHazardous = drug?.isHazardous ?: false,
-                        // Shown on the container-scan step's details bar.
-                        drugImage = drug?.drugImagePath.orEmpty(),
-                        ndcStrength = drug?.strength,
-                        ndcDosageForm = drug?.dosageForm,
-                        selectedBucketId = txn.bucketId.orEmpty(),
-                    )
+                    it.withOrder(txn, drug).copy(stage = DispenseStage.PRE_NDC, isResolvingEntry = false)
                 }
                 logger.i("[HAZARDOUS] HL7 init: txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 logger.e("HL7 init failed — falling back to PRE_RX", e, event = LogEvent.DISPENSE_FAILED)
-                _uiState.update { it.copy(initResolved = true) }
+                _uiState.update { it.copy(isResolvingEntry = false) }
             }
         }
     }
@@ -152,82 +175,72 @@ class DispenseFlowViewModel @Inject constructor(
      * the drug info, and jumps straight to [DispenseStage.PRE_NDC] so the user
      * only needs to scan the container — the RX stage is skipped entirely.
      */
-    fun initializeFromResumedTxn() {
+    private fun initializeFromResumedTxn() {
         viewModelScope.launch {
             try {
-                initializeFromResumedTxnInternal()
+                val txnId = preferenceHelper.getTxnId()
+                if (txnId == 0L) {
+                    logger.w("Resume init requested but no txnId in preferences — falling back to PRE_RX")
+                    _uiState.update { it.copy(isResolvingEntry = false) }
+                    return@launch
+                }
+                val txn = dispenseFlowRepository.loadTxn(txnId)
+                if (txn == null) {
+                    logger.w("Resume init: txn $txnId not found in DB — falling back to PRE_RX")
+                    _uiState.update { it.copy(isResolvingEntry = false) }
+                    return@launch
+                }
+                dispenseFlowRepository.clearGlovesPresent(txnId)
+                val drug = dispenseFlowRepository.loadDrug(txn.drugId)
+
+                if (txn.isNdcVerified == true) {
+                    // RX + container both confirmed — skip straight to pill counting.
+                    // The order's NDC and bucket too: Reset returns to the container scan.
+                    _uiState.update {
+                        it.withOrder(txn, drug).copy(stage = DispenseStage.COUNTING, isResolvingEntry = false)
+                    }
+                    logger.i("[HAZARDOUS] Resume init (NDC verified): txn=$txnId drug=${drug?.drugName} isHazardous=${drug?.isHazardous ?: false} — jumping to COUNTING")
+                } else {
+                    // Container not yet scanned — land in PRE_NDC so the user only scans the container.
+                    _uiState.update {
+                        it.withOrder(txn, drug).copy(stage = DispenseStage.PRE_NDC, isResolvingEntry = false)
+                    }
+                    logger.i("[HAZARDOUS] Resume init (NDC pending): txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 logger.e("Resume init failed — falling back to PRE_RX", e, event = LogEvent.DISPENSE_FAILED)
-                _uiState.update { it.copy(initResolved = true) }
+                _uiState.update { it.copy(isResolvingEntry = false) }
             }
         }
     }
 
-    private suspend fun initializeFromResumedTxnInternal() {
-        val txnId = preferenceHelper.getTxnId()
-        if (txnId == 0L) {
-            logger.w("Resume init requested but no txnId in preferences — falling back to PRE_RX")
-            _uiState.update { it.copy(initResolved = true) }
-            return
-        }
-        val txn = dispenseTxnDao.getById(txnId)
-        if (txn == null) {
-            logger.w("Resume init: txn $txnId not found in DB — falling back to PRE_RX")
-            _uiState.update { it.copy(initResolved = true) }
-            return
-        }
-        dispenseTxnDao.updateGlovesPresent(txnId, false)
-        val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
+    // The order's fields every entry shows; callers set the stage and their own fallbacks.
+    private fun DispenseFlowUiState.withOrder(txn: DispenseTxnEntity, drug: DrugMasterEntity?) = copy(
+        txnId = txn.txnId,
+        drugName = drug?.drugName.orEmpty(),
+        ndc = drug?.ndc.orEmpty(),
+        hl7ExpectedNdc = drug?.ndc,
+        rxNo = txn.rxNo,
+        refillNo = txn.refillNo,
+        qty = txn.targetCount?.toString(),
+        isHazardous = drug?.isHazardous ?: false,
+        // Shown on the container-scan step's details bar.
+        drugImage = drug?.drugImagePath.orEmpty(),
+        // Overwritten with the API value once the NDC is scanned in PRE_NDC.
+        ndcStrength = drug?.strength,
+        ndcDosageForm = drug?.dosageForm,
+        selectedBucketId = txn.bucketId.orEmpty(),
+    )
 
-        if (txn.isNdcVerified == true) {
-            // RX + container both confirmed — skip straight to pill counting.
-            _uiState.update {
-                it.copy(
-                    stage = DispenseStage.COUNTING,
-                    initResolved = true,
-                    txnId = txnId,
-                    drugName = drug?.drugName.orEmpty(),
-                    ndc = drug?.ndc.orEmpty(),
-                    rxNo = txn.rxNo,
-                    refillNo = txn.refillNo,
-                    qty = txn.targetCount?.toString(),
-                    isHazardous = drug?.isHazardous ?: false,
-                )
-            }
-            logger.i("[HAZARDOUS] Resume init (NDC verified): txn=$txnId drug=${drug?.drugName} isHazardous=${drug?.isHazardous ?: false} — jumping to COUNTING")
-        } else {
-            // Container not yet scanned — land in PRE_NDC so the user only scans the container.
-            _uiState.update {
-                it.copy(
-                    stage = DispenseStage.PRE_NDC,
-                    initResolved = true,
-                    txnId = txnId,
-                    drugName = drug?.drugName.orEmpty(),
-                    ndc = drug?.ndc.orEmpty(),
-                    hl7ExpectedNdc = drug?.ndc,
-                    rxNo = txn.rxNo,
-                    refillNo = txn.refillNo,
-                    qty = txn.targetCount?.toString(),
-                    isHazardous = drug?.isHazardous ?: false,
-                    // Shown on the container-scan step's details bar.
-                    drugImage = drug?.drugImagePath.orEmpty(),
-                    ndcStrength = drug?.strength,
-                    ndcDosageForm = drug?.dosageForm,
-                    selectedBucketId = txn.bucketId.orEmpty(),
-                )
-            }
-            logger.i("[HAZARDOUS] Resume init (NDC pending): txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
-        }
-    }
+    // ─────────────────────────── Rx label ───────────────────────────
 
     /**
-     * Process a raw barcode read while the user is in PRE_RX. Parses out NDC / RX /
-     * qty using the configured regex, validates, then looks up the drug locally
-     * first and falls back to the server. On success surfaces the RX bottomsheet.
+     * Process a raw barcode read while the user is in PRE_RX. [RxLabelResolver]
+     * parses and checks it. On success surfaces the RX bottomsheet.
      */
-    fun onRxBarcodeRead(gtin14: String, imagePath: String?) {
+    private fun onRxBarcodeRead(rawValue: String) {
         if (_uiState.value.stage != DispenseStage.PRE_RX &&
             _uiState.value.stage != DispenseStage.QUEUE) return
         // Advance from QUEUE to PRE_RX so the rest of the RX logic works normally.
@@ -235,214 +248,103 @@ class DispenseFlowViewModel @Inject constructor(
             _uiState.update { it.copy(stage = DispenseStage.PRE_RX) }
         }
         if (_uiState.value.isLoading) return
-        if (gtin14.isBlank()) {
-            _uiState.update { it.copy(showInvalidScanDialog = true) }
-            return
-        }
 
         _uiState.update { it.copy(isLoading = true) }
 
-        val barcodeRegex = preferenceHelper.getBarcodeRegex().orEmpty()
-        if (barcodeRegex.isBlank()) {
-            _uiState.update { it.copy(isLoading = false, showInvalidScanDialog = true) }
-            return
-        }
-
         viewModelScope.launch {
             try {
-                val parsed = parseScanData(
-                    barcodeRegex,
-                    gtin14
-                )
-                val parsedNdc = parsed.ndcNo
-                val qty = parsed.qty
-                val rxNo = parsed.rxNo
-                val refillNo = parsed.refillNo
-                val bucket = parsed.bucket
-
-                val qtyInt = qty?.toIntOrNull()
-                if (parsedNdc.isNullOrBlank() || qty.isNullOrBlank() || rxNo.isNullOrBlank() || qtyInt == null) {
-                    _uiState.update { it.copy(isLoading = false, showInvalidScanDialog = true) }
-                    return@launch
-                }
-
-                // Block re-dispensing a fill that's already gone out. getActiveByRxNo (below)
-                // only matches PARTIAL/ON_HOLD, so without this check a COMPLETED Rx would
-                // silently fall through to "no active txn" and spawn a brand new PARTIAL txn
-                // on every rescan. Keyed by (rxNo, refillNo) when the label carries a fill
-                // number, so a genuinely new refill isn't blocked by the prior fill's
-                // COMPLETED status — only falls back to the bare rxNo lookup when the label
-                // doesn't encode a refill number at all.
-                val mostRecentTxn = if (!refillNo.isNullOrBlank()) {
-                    dispenseTxnDao.getByRxNoAndFillNo(rxNo, refillNo)
-                } else {
-                    dispenseTxnDao.getMostRecentByRxNo(rxNo)
-                }
-                if (mostRecentTxn?.status == CountStatus.COMPLETED || mostRecentTxn?.status == CountStatus.FORCE_COMPLETED) {
-                    _uiState.update {
-                        it.copy(isLoading = false, rxAlreadyCompletedToastTick = it.rxAlreadyCompletedToastTick + 1)
-                    }
-                    return@launch
-                }
-
-                // Check if this RX has an active local transaction (PARTIAL or ON_HOLD).
-                val existingTxn = dispenseTxnDao.getActiveByRxNo(rxNo)
-                if (existingTxn == null) {
-                    // No PMS-created transaction found. In standalone mode, no PMS will
-                    // ever send this txn, so the app is expected to originate the
-                    // dispense itself off the scanned Rx label, rather than wait on an
-                    // HL7 order that will never arrive.
-                    if (!preferenceHelper.isStandaloneMode()) {
-                        _uiState.update { it.copy(isLoading = false, txnNotFoundToastTick = it.txnNotFoundToastTick + 1) }
-                        return@launch
-                    }
-                    // Only stage the label here. The txn is created on Proceed, so
-                    // cancelling or backing out leaves nothing in the DB.
-                    showStandaloneRxSheet(
-                        parsedNdc = parsedNdc,
-                        rxNo = rxNo,
-                        refillNo = refillNo,
-                        bucket = bucket,
-                        targetCount = qtyInt,
-                    )
-                    return@launch
-                }
-                val drug = existingTxn.drugId?.let { drugMasterDao.getDrugById(it) }
-                val gatedStatus = existingTxn.status == CountStatus.PARTIAL ||
-                        existingTxn.status == CountStatus.ON_HOLD
-                // The label's NDC has to match the drug PMS ordered. No drug on
-                // the txn means nothing to compare, so the check is skipped.
-                if (gatedStatus && drug != null && !ndcDigitsMatch(parsedNdc, drug.ndc)) {
-                    logger.w("Rx label NDC does not match the txn drug: label=$parsedNdc txnNdc=${drug.ndc} rxNo=$rxNo txn=${existingTxn.txnId}")
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            ndcMismatchToastTick = it.ndcMismatchToastTick + 1,
-                        )
-                    }
-                    return@launch
-                }
-                when (existingTxn.status) {
-                    CountStatus.ON_HOLD -> {
-                        _uiState.update { it.copy(isLoading = false, showOnHoldDialog = true) }
-                        return@launch
-                    }
-                    CountStatus.PARTIAL -> {
-                        // RX found in local DB. The transaction already exists, so
-                        // we only prep it here (gloves reset, save txnId).
-                        //
-                        // If the container/NDC scan is already done
-                        // (isNdcVerified), skip the RX verification sheet and land
-                        // the user directly on the transaction's current step
-                        // (COUNTING). Otherwise show the sheet and defer the
-                        // advance to PRE_NDC until the user taps Proceed.
-                        val txnId = existingTxn.txnId
-                        dispenseTxnDao.updateGlovesPresent(txnId, false)
-                        preferenceHelper.saveTxnId(txnId)
-                        val ndcAlreadyVerified = existingTxn.isNdcVerified == true
-                        val targetStage = if (ndcAlreadyVerified) DispenseStage.COUNTING else DispenseStage.PRE_NDC
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                // NDC already scanned → go straight to COUNTING.
-                                // NDC pending → show the sheet, advance on Proceed.
-                                stage = if (ndcAlreadyVerified) targetStage else it.stage,
-                                showRxDetails = !ndcAlreadyVerified,
-                                pendingRxResumeStage = if (ndcAlreadyVerified) null else targetStage,
-                                txnId = txnId,
-                                drugName = drug?.drugName.orEmpty(),
-                                ndc = drug?.ndc.orEmpty(),
-                                hl7ExpectedNdc = drug?.ndc,
-                                rxNo = existingTxn.rxNo ?: rxNo,
-                                refillNo = existingTxn.refillNo ?: refillNo,
-                                qty = existingTxn.targetCount?.toString() ?: qty,
-                                isHazardous = drug?.isHazardous ?: false,
-                                // Surface the drug's strength on the RX verification
-                                // sheet. Overwritten with the API value once the NDC
-                                // is scanned in PRE_NDC.
-                                ndcStrength = drug?.strength,
-                                ndcDosageForm = drug?.dosageForm,
-                                drugImage = drug?.drugImagePath.orEmpty(),
-                                // PMS may send no bucket — fall back to the label's.
-                                selectedBucketId = existingTxn.bucketId ?: bucket.orEmpty(),
-                            )
-                        }
-                        return@launch
-                    }
-                    else -> {
-                        _uiState.update { it.copy(isLoading = false, txnNotFoundToastTick = it.txnNotFoundToastTick + 1) }
-                        return@launch
-                    }
-                }
+                applyRxScanOutcome(rxLabelResolver.resolve(rawValue))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logger.e("RX barcode processing failed", e, event = LogEvent.RX_SCAN_FAILED)
-                _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
+                showGenericError()
             }
         }
     }
 
+    private suspend fun applyRxScanOutcome(outcome: RxScanOutcome) {
+        when (outcome) {
+            RxScanOutcome.Invalid -> rejectScan(R.string.scan_correct_label, pauseScanning = false)
+            RxScanOutcome.AlreadyCompleted -> rejectScan(R.string.rx_already_completed_message, pauseScanning = true)
+            RxScanOutcome.NotFound -> rejectScan(R.string.transaction_not_found_toast, pauseScanning = true)
+            RxScanOutcome.DrugNotFound -> rejectScan(R.string.rx_label_drug_not_found_toast, pauseScanning = true)
+            RxScanOutcome.NdcMismatch -> rejectScan(R.string.rescan_ndc_does_not_match_toast, pauseScanning = true)
+            RxScanOutcome.OnHold -> _uiState.update { it.copy(isLoading = false, showOnHoldDialog = true) }
+            is RxScanOutcome.Resume -> resumeScannedRx(outcome)
+            is RxScanOutcome.Standalone -> showStandaloneRxSheet(outcome)
+        }
+    }
+
+    private suspend fun resumeScannedRx(outcome: RxScanOutcome.Resume) {
+        val existingTxn = outcome.txn
+        val drug = outcome.drug
+        val scannedLabel = outcome.scannedLabel
+        // RX found in local DB. The transaction already exists, so
+        // we only prep it here (gloves reset, save txnId).
+        //
+        // If the container/NDC scan is already done
+        // (isNdcVerified), skip the RX verification sheet and land
+        // the user directly on the transaction's current step
+        // (COUNTING). Otherwise show the sheet and defer the
+        // advance to PRE_NDC until the user taps Proceed.
+        val txnId = existingTxn.txnId
+        dispenseFlowRepository.clearGlovesPresent(txnId)
+        preferenceHelper.saveTxnId(txnId)
+        val ndcAlreadyVerified = existingTxn.isNdcVerified == true
+        val targetStage = if (ndcAlreadyVerified) DispenseStage.COUNTING else DispenseStage.PRE_NDC
+        _uiState.update {
+            it.withOrder(existingTxn, drug).copy(
+                isLoading = false,
+                // NDC already scanned → go straight to COUNTING.
+                // NDC pending → show the sheet, advance on Proceed.
+                stage = if (ndcAlreadyVerified) targetStage else it.stage,
+                showRxDetails = !ndcAlreadyVerified,
+                pendingRxResumeStage = if (ndcAlreadyVerified) null else targetStage,
+                rxNo = existingTxn.rxNo ?: scannedLabel.rxNo,
+                refillNo = existingTxn.refillNo ?: scannedLabel.refillNo,
+                qty = existingTxn.targetCount?.toString() ?: scannedLabel.qty,
+                // PMS may send no bucket — fall back to the label's.
+                selectedBucketId = existingTxn.bucketId ?: scannedLabel.bucket.orEmpty(),
+            )
+        }
+    }
+
     /**
-     * Resolves the drug for a standalone Rx label and shows the verify-Rx sheet.
+     * Shows the verify-Rx sheet for a standalone Rx label.
      * Writes nothing to dispense_txn — [onRxConfirmed] creates the txn on Proceed.
      */
-    private suspend fun showStandaloneRxSheet(
-        parsedNdc: String,
-        rxNo: String,
-        refillNo: String?,
-        bucket: String?,
-        targetCount: Int,
-    ) {
-        val drug = (drugResolver.resolve(
-            parsedNdc,
-            allowNoName = true,
-        ) as? DrugLookup.Found)?.drug
-        // No drug to verify the label against, so reject the scan instead of
-        // staging a blank Rx.
-        if (drug == null) {
-            logger.w("Standalone dispense: drug could not be resolved for ndc=$parsedNdc rxNo=$rxNo — rejecting the scan")
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    rxDrugNotFoundToastTick = it.rxDrugNotFoundToastTick + 1,
-                )
-            }
-            return
-        }
+    private fun showStandaloneRxSheet(outcome: RxScanOutcome.Standalone) {
+        val draft = outcome.draft
+        val drug = outcome.drug
         // Every field is assigned outright, never falling back to the last scan's value.
         _uiState.update {
             it.copy(
                 isLoading = false,
                 showRxDetails = true,
-                pendingStandaloneRx = StandaloneRxDraft(
-                    drugId = drug.drugId,
-                    rxNo = rxNo,
-                    refillNo = refillNo,
-                    bucket = bucket,
-                    targetCount = targetCount,
-                ),
+                pendingStandaloneRx = draft,
                 pendingRxResumeStage = null,
                 txnId = 0L,
                 drugName = drug.drugName.orEmpty(),
                 ndc = drug.ndc,
                 hl7ExpectedNdc = drug.ndc,
-                rxNo = rxNo,
-                refillNo = refillNo,
-                qty = targetCount.toString(),
+                rxNo = draft.rxNo,
+                refillNo = draft.refillNo,
+                qty = draft.targetCount.toString(),
                 isHazardous = drug.isHazardous,
                 ndcStrength = drug.strength,
                 ndcDosageForm = drug.dosageForm,
                 drugImage = drug.drugImagePath.orEmpty(),
-                selectedBucketId = bucket.orEmpty(),
+                selectedBucketId = draft.bucket.orEmpty(),
             )
         }
-        logger.i("[HAZARDOUS] Standalone RX staged: ndc=$parsedNdc rx=$rxNo drug=${drug.drugName} isHazardous=${drug.isHazardous} — awaiting Proceed")
     }
 
     /**
      * Tour-only escape hatch for the scan-Rx dummy "Next" button. The RX number is
      * timestamped so repeat tutorial runs never collide with a prior demo dispense.
      */
-    fun useDummyRxData() {
+    private fun useDummyRxData(demoDrugName: String) {
         if (!FtueController.state.isActive) return
         if (_uiState.value.stage != DispenseStage.PRE_RX && _uiState.value.stage != DispenseStage.QUEUE) return
         if (_uiState.value.isLoading) return
@@ -452,13 +354,22 @@ class DispenseFlowViewModel @Inject constructor(
                 if (_uiState.value.stage == DispenseStage.QUEUE) {
                     _uiState.update { it.copy(stage = DispenseStage.PRE_RX) }
                 }
-                TutorialData.upsertDemoDrug(drugMasterDao, appContext.getString(R.string.tour_demo_drug_name))
+                val demoDrug = dispenseFlowRepository.upsertDemoDrug(demoDrugName)
+                if (demoDrug == null) {
+                    rejectScan(R.string.rx_label_drug_not_found_toast, pauseScanning = true)
+                    return@launch
+                }
                 showStandaloneRxSheet(
-                    parsedNdc = TutorialData.DEMO_NDC,
-                    rxNo = "${TutorialData.RX_PREFIX}${System.currentTimeMillis()}",
-                    refillNo = null,
-                    bucket = null,
-                    targetCount = TUTORIAL_DUMMY_TARGET_COUNT,
+                    RxScanOutcome.Standalone(
+                        draft = StandaloneRxDraft(
+                            drugId = demoDrug.drugId,
+                            rxNo = "${TutorialData.RX_PREFIX}${System.currentTimeMillis()}",
+                            refillNo = null,
+                            bucket = null,
+                            targetCount = TUTORIAL_DUMMY_TARGET_COUNT,
+                        ),
+                        drug = demoDrug,
+                    )
                 )
             } catch (e: CancellationException) {
                 // The tour ended mid-write: drop the loader this call raised.
@@ -469,186 +380,10 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /**
-     * Tour-only escape hatch for the scan-container dummy "Next" button: feeds the
-     * demo NDC through the real [onNdcBarcodeRead], which resolves locally with no
-     * server round-trip.
-     */
-    fun useDummyNdcData() {
-        if (!FtueController.state.isActive) return
-        onNdcBarcodeRead(TutorialData.DEMO_NDC, imagePath = null)
-    }
-
-    /**
-     * Inserts the PARTIAL dispense txn for a staged standalone Rx label.
-     * Called from [onRxConfirmed] only, never from the scan itself.
-     *
-     * @return the new txn's id.
-     */
-    private suspend fun createStandaloneDispenseTxn(draft: StandaloneRxDraft): Long {
-        val newTxn = DispenseTxnEntity(
-            userLocalId = preferenceHelper.getLocalId(),
-            drugId = draft.drugId,
-            targetCount = draft.targetCount,
-            status = CountStatus.PARTIAL,
-            isComingFromHL7 = false,
-            isSynced = false,
-            isNdcVerified = false,
-            rxNo = draft.rxNo,
-            refillNo = draft.refillNo,
-            // Same RxNo-RefillNo composite HL7MessageBuilder sends as the order identifier
-            // (Vivid ZUI-4 rxNumber / EyeCon ZUI-11 transactionOrderId) — PMS pulls dispense
-            // images via getByTransactionOrderId keyed on that value. Without it, a
-            // locally-scanned dispense's images 404 on that pull and, with local storage
-            // off, are deleted after ACK with no way to re-fetch them.
-            transactionOrderId = draft.refillNo?.takeIf { it.isNotBlank() }?.let { "${draft.rxNo}-$it" } ?: draft.rxNo,
-            bucketId = draft.bucket,
-        )
-        return dispenseTxnDao.upsertPreservingId(newTxn)
-    }
-
-    /**
-     * Compares two NDCs on digits only, because labels print them dashed and the
-     * server does not. Null or digit-free input never matches.
-     */
-    private fun ndcDigitsMatch(labelNdc: String, txnNdc: String?): Boolean {
-        val label = labelNdc.filter { it.isDigit() }
-        val txn = txnNdc?.filter { it.isDigit() }
-        return label.isNotEmpty() && label == txn
-    }
-
-    /**
-     * Process a raw barcode read while the user is in PRE_NDC.
-     *
-     * Validation order, matching the legacy ScanBarcodeViewModel for parity:
-     *   1. Local DB lookup. If [DispenseFlowUiState.hl7ExpectedNdc] is set and
-     *      the scanned NDC matches it, we use the local entry directly.
-     *   2. Server fallback. The request carries `target_drug = hl7ExpectedNdc` so
-     *      the server can flag substitute (generic-equivalent) drugs via
-     *      `is_drug_equivalent`.
-     *   3. If the server reports a substitute, we show the equivalence
-     *      confirmation dialog instead of the success popup. The user has to
-     *      accept the substitute explicitly via [confirmSubstitute].
-     */
-    fun onNdcBarcodeRead(gtin14: String, imagePath: String?, firstBottle: DispenseBottle? = null) {
-        if (_uiState.value.stage != DispenseStage.PRE_NDC) return
-        if (_uiState.value.isLoading) return
-        if (gtin14.isBlank()) {
-            _uiState.update { it.copy(showInvalidScanDialog = true) }
-            return
-        }
-
-        _uiState.update { it.copy(isLoading = true, pendingFirstBottle = firstBottle) }
-
-        FtueController.track(viewModelScope.launch {
-            try {
-                // Expected NDC comes from HL7 in the PMS flow, and from the RX
-                // label the user just scanned in the manual flow. Either way,
-                // the container scan has to match it (or be a server-flagged
-                // substitute) before we'll show the success sheet.
-                val expectedNdc = _uiState.value.hl7ExpectedNdc
-                    ?.takeIf { it.isNotBlank() }
-                    ?: _uiState.value.ndc.takeIf { it.isNotBlank() }
-
-                val lookup = drugResolver.resolve(
-                    code = gtin14,
-                    expectedNdc = expectedNdc,
-                    allowNoName = true,
-                    scannedGtin = gtin14.trim(),
-                )
-                when (lookup) {
-                    is DrugLookup.Found -> applyContainerDrug(lookup, expectedNdc)
-                    DrugLookup.NoName, DrugLookup.NotFound ->
-                        _uiState.update { it.copy(isLoading = false, showNdcNotFoundDialog = true) }
-                    // DrugResolver already logged the failure, so don't rethrow into the catch below.
-                    is DrugLookup.Failed ->
-                        _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
-                }
-            } catch (e: CancellationException) {
-                _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
-                throw e
-            } catch (e: Exception) {
-                logger.e("NDC barcode processing failed", e, event = LogEvent.NDC_SCAN_FAILED)
-                _uiState.update { it.copy(isLoading = false, error = appContext.getString(R.string.error_generic)) }
-            }
-        })
-    }
-
-    /** Applies a resolved container drug: saved match, server match, substitute or mismatch. */
-    private suspend fun applyContainerDrug(lookup: DrugLookup.Found, expectedNdc: String?) {
-        val drug = lookup.drug
-        if (!lookup.fromServer) {
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    ndcScannedValue = drug.ndc,
-                    ndcDrugName = drug.drugName.orEmpty(),
-                    ndcPackageQty = drug.packageQty,
-                    showNdcDetails = false,
-                    isHazardous = drug.isHazardous,
-                )
-            }
-            logger.i("[HAZARDOUS] NDC scan → local DB: ndc=${drug.ndc} drug=${drug.drugName} isHazardous=${drug.isHazardous}")
-            advanceToCountingStage()
-            return
-        }
-
-        val displayName = drug.drugName.orEmpty()
-        if (lookup.isEquivalent) {
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    ndcScannedValue = drug.ndc,
-                    ndcDrugName = displayName,
-                    ndcPackageQty = drug.packageQty,
-                    ndcDrugType = drug.drugType,
-                    ndcStrength = drug.strength,
-                    drugImage = lookup.imageUrl ?: it.drugImage,
-                    ndcDosageForm = drug.dosageForm,
-                    showNdcEquivalenceDialog = true,
-                    isHazardous = drug.isHazardous,
-                )
-            }
-            logger.i("[HAZARDOUS] NDC scan → substitute: serverNdc=${drug.ndc} drug=$displayName isHazardous=${drug.isHazardous}")
-            return
-        }
-
-        // Hard mismatch: an expected NDC is set (from HL7 or from the
-        // RX label) and the server didn't flag the scan as a
-        // substitute. Surface a non-blocking toast and let the user
-        // rescan — the popup-style dialog was too heavy for this case.
-        if (!expectedNdc.isNullOrBlank() && drug.ndc != expectedNdc) {
-            logger.w("[HAZARDOUS] NDC scan → mismatch: serverNdc=${drug.ndc} expectedNdc=$expectedNdc isHazardous=${drug.isHazardous}")
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    ndcMismatchToastTick = it.ndcMismatchToastTick + 1,
-                )
-            }
-            return
-        }
-
-        _uiState.update {
-            it.copy(
-                isLoading = false,
-                ndcScannedValue = drug.ndc,
-                ndcDrugName = displayName,
-                ndcPackageQty = drug.packageQty,
-                ndcStrength = drug.strength,
-                drugImage = lookup.imageUrl ?: it.drugImage,
-                ndcDosageForm = drug.dosageForm,
-                showNdcDetails = false,
-                isHazardous = drug.isHazardous,
-            )
-        }
-        logger.i("[HAZARDOUS] NDC scan → server match: ndc=${drug.ndc} drug=$displayName isHazardous=${drug.isHazardous}")
-        advanceToCountingStage()
-    }
-
-    /**
      * Called when the user confirms the RX bottomsheet.
      * Resumes the existing txn, or creates the standalone one, then advances to PRE_NDC.
      */
-    fun onRxConfirmed() {
+    private fun onRxConfirmed() {
         val state = _uiState.value
 
         // Scanned-RX resume path: the transaction already exists (resolved in
@@ -671,14 +406,16 @@ class DispenseFlowViewModel @Inject constructor(
             _uiState.update { it.copy(showRxDetails = false, pendingStandaloneRx = null) }
             FtueController.track(viewModelScope.launch {
                 try {
-                    val txnId = createStandaloneDispenseTxn(draft)
+                    val txnId = dispenseFlowRepository.createStandaloneTxn(draft, preferenceHelper.getLocalId())
                     preferenceHelper.saveTxnId(txnId)
                     _uiState.update { it.copy(stage = DispenseStage.PRE_NDC, txnId = txnId) }
                     logger.i("[HAZARDOUS] Standalone RX confirmed: rx=${draft.rxNo} drugId=${draft.drugId} isHazardous=${state.isHazardous} txn=$txnId → PRE_NDC")
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     // Surface the failure the way the scan-time path used to.
                     logger.e("Standalone dispense txn creation failed", e, event = LogEvent.DISPENSE_FAILED)
-                    _uiState.update { it.copy(error = appContext.getString(R.string.error_generic)) }
+                    showGenericError()
                 }
             })
             return
@@ -686,7 +423,7 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /** Dismiss the RX bottomsheet without creating a transaction. */
-    fun onRxCancelled() {
+    private fun onRxCancelled() {
         // Clear every field the sheet renders — leftovers showed the previous Rx's
         // details on the next scan.
         _uiState.update {
@@ -709,18 +446,134 @@ class DispenseFlowViewModel @Inject constructor(
         }
     }
 
+    /** Dismiss the ON_HOLD blocking dialog; user stays on scan screen to try a different RX. */
+    private fun dismissOnHoldDialog() {
+        _uiState.update { it.copy(showOnHoldDialog = false) }
+    }
+
+    // ─────────────────────────── Container ───────────────────────────
+
+    /**
+     * Process a raw barcode read while the user is in PRE_NDC.
+     * [ContainerVerifier] checks it against the expected NDC.
+     */
+    private fun onNdcBarcodeRead(gtin14: String, firstBottle: DispenseBottle?) {
+        if (_uiState.value.stage != DispenseStage.PRE_NDC) return
+        if (_uiState.value.isLoading) return
+        if (gtin14.isBlank()) {
+            rejectScan(R.string.scan_correct_label, pauseScanning = false)
+            return
+        }
+
+        _uiState.update { it.copy(isLoading = true, pendingFirstBottle = firstBottle) }
+
+        FtueController.track(viewModelScope.launch {
+            try {
+                // Expected NDC comes from HL7 in the PMS flow, and from the RX
+                // label the user just scanned in the manual flow. Either way,
+                // the container scan has to match it (or be a server-flagged
+                // substitute) before counting starts.
+                val expectedNdc = _uiState.value.hl7ExpectedNdc
+                    ?.takeIf { it.isNotBlank() }
+                    ?: _uiState.value.ndc.takeIf { it.isNotBlank() }
+
+                applyContainerOutcome(containerVerifier.verify(gtin14, expectedNdc), expectedNdc)
+            } catch (e: CancellationException) {
+                _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
+                throw e
+            } catch (e: Exception) {
+                logger.e("NDC barcode processing failed", e, event = LogEvent.NDC_SCAN_FAILED)
+                showGenericError()
+            }
+        })
+    }
+
+    /**
+     * Tour-only escape hatch for the scan-container dummy "Next" button: feeds the
+     * demo NDC through the real [onNdcBarcodeRead], which resolves locally with no
+     * server round-trip. No first bottle: there is no real label to record.
+     */
+    private fun useDummyNdcData() {
+        if (!FtueController.state.isActive) return
+        onNdcBarcodeRead(TutorialData.DEMO_NDC, firstBottle = null)
+    }
+
+    /** Applies a container check: saved match, server match, substitute, mismatch or not found. */
+    private suspend fun applyContainerOutcome(outcome: ContainerOutcome, expectedNdc: String?) {
+        when (outcome) {
+            is ContainerOutcome.SavedMatch -> {
+                val drug = outcome.drug
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        ndcScannedValue = drug.ndc,
+                        ndcDrugName = drug.drugName.orEmpty(),
+                        ndcPackageQty = drug.packageQty,
+                        isHazardous = drug.isHazardous,
+                    )
+                }
+                logger.i("[HAZARDOUS] NDC scan → local DB: ndc=${drug.ndc} drug=${drug.drugName} isHazardous=${drug.isHazardous}")
+                advanceToCountingStage()
+            }
+            is ContainerOutcome.Substitute -> {
+                val drug = outcome.drug
+                val displayName = drug.drugName.orEmpty()
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        ndcScannedValue = drug.ndc,
+                        ndcDrugName = displayName,
+                        ndcPackageQty = drug.packageQty,
+                        ndcDrugType = drug.drugType,
+                        ndcStrength = drug.strength,
+                        drugImage = outcome.imageUrl ?: it.drugImage,
+                        ndcDosageForm = drug.dosageForm,
+                        showNdcEquivalenceDialog = true,
+                        isHazardous = drug.isHazardous,
+                    )
+                }
+                logger.i("[HAZARDOUS] NDC scan → substitute: serverNdc=${drug.ndc} drug=$displayName isHazardous=${drug.isHazardous}")
+            }
+            is ContainerOutcome.Mismatch -> {
+                // Surface a non-blocking toast and let the user
+                // rescan — the popup-style dialog was too heavy for this case.
+                val drug = outcome.drug
+                logger.w("[HAZARDOUS] NDC scan → mismatch: serverNdc=${drug.ndc} expectedNdc=$expectedNdc isHazardous=${drug.isHazardous}")
+                rejectScan(R.string.rescan_ndc_does_not_match_toast, pauseScanning = true)
+            }
+            is ContainerOutcome.ServerMatch -> {
+                val drug = outcome.drug
+                val displayName = drug.drugName.orEmpty()
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        ndcScannedValue = drug.ndc,
+                        ndcDrugName = displayName,
+                        ndcPackageQty = drug.packageQty,
+                        ndcStrength = drug.strength,
+                        drugImage = outcome.imageUrl ?: it.drugImage,
+                        ndcDosageForm = drug.dosageForm,
+                        isHazardous = drug.isHazardous,
+                    )
+                }
+                logger.i("[HAZARDOUS] NDC scan → server match: ndc=${drug.ndc} drug=$displayName isHazardous=${drug.isHazardous}")
+                advanceToCountingStage()
+            }
+            ContainerOutcome.NotFound -> rejectScan(R.string.the_scanned_ndc_does_not_match, pauseScanning = false)
+            ContainerOutcome.LookupFailed -> showGenericError()
+        }
+    }
+
     /**
      * Confirm a substitute (generic-equivalent) drug. Closes the equivalence
-     * dialog, marks the substitute flag, and proceeds to the standard NDC
-     * confirmation popup so the user sees the same fields they'd see for a
-     * straight match.
+     * dialog, marks the substitute flag, and moves on to counting the way a
+     * straight match does.
      */
-    fun confirmSubstitute() {
+    private fun confirmSubstitute() {
         _uiState.update {
             it.copy(
                 showNdcEquivalenceDialog = false,
                 isSubstituteConfirmed = true,
-                showNdcDetails = false,
             )
         }
         viewModelScope.launch {
@@ -730,8 +583,23 @@ class DispenseFlowViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 logger.e("Advance to counting stage failed after substitute confirm", e, event = LogEvent.NDC_SCAN_FAILED)
-                _uiState.update { it.copy(error = appContext.getString(R.string.error_generic)) }
+                _effects.trySend(DispenseFlowEffect.GenericError)
             }
+        }
+    }
+
+    private fun dismissNdcEquivalenceDialog() {
+        _uiState.update {
+            it.copy(
+                showNdcEquivalenceDialog = false,
+                ndcScannedValue = "",
+                ndcDrugName = "",
+                ndcPackageQty = null,
+                ndcDrugType = null,
+                ndcStrength = null,
+                drugImage = "",
+                ndcDosageForm = null,
+            )
         }
     }
 
@@ -742,43 +610,42 @@ class DispenseFlowViewModel @Inject constructor(
         // No dispense txn to mark as verified.
         if (txnId == 0L) return
 
-        val txn = dispenseTxnDao.getById(txnId) ?: return
         val isSubstitute = state.isSubstituteConfirmed
-        val substitutedDrugId = if (isSubstitute && state.ndcScannedValue.isNotBlank()) {
-            // The image was already downloaded during the NDC scan step (onNdcBarcodeRead).
-            // Carry that path forward so the upsert doesn't overwrite it with null.
-            val existingImagePath = drugMasterDao.getDrugByNdc(state.ndcScannedValue)?.drugImagePath
-            drugMasterDao.upsertPreservingId(
-                DrugMasterEntity(
-                    ndc = state.ndcScannedValue,
-                    drugName = state.ndcDrugName.ifBlank { null },
-                    drugType = state.ndcDrugType,
-                    packageQty = state.ndcPackageQty,
-                    isHazardous = state.isHazardous,
-                    strength = state.ndcStrength,
-                    dosageForm = state.ndcDosageForm,
-                    drugImagePath = existingImagePath,
-                )
+        val substituteDrug = if (isSubstitute && state.ndcScannedValue.isNotBlank()) {
+            DrugMasterEntity(
+                ndc = state.ndcScannedValue,
+                drugName = state.ndcDrugName.ifBlank { null },
+                drugType = state.ndcDrugType,
+                packageQty = state.ndcPackageQty,
+                isHazardous = state.isHazardous,
+                strength = state.ndcStrength,
+                dosageForm = state.ndcDosageForm,
             )
         } else null
-        // Stamp the first bottle scanned against this txn — only when the txn has no
-        // bottle entries yet, so resuming an already-in-progress dispense (e.g. after
-        // process death) doesn't clobber bottles already tracked via a rescan mid-count.
-        val existingBottles = DispenseBottleJson.decode(txn.bottlesJson)
-        val bottlesJson = if (existingBottles.isEmpty() && state.pendingFirstBottle != null) {
-            DispenseBottleJson.encode(listOf(state.pendingFirstBottle.copy(txnId = txnId)))
-        } else txn.bottlesJson
-        dispenseTxnDao.update(
-            txn.copy(
-                isNdcVerified = true,
-                isSubstitute = isSubstitute,
-                substitutedDrugId = substitutedDrugId,
-                bottlesJson = bottlesJson,
-            )
+        val isVerified = dispenseFlowRepository.markContainerVerified(
+            txnId = txnId,
+            isSubstitute = isSubstitute,
+            substituteDrug = substituteDrug,
+            firstBottle = state.pendingFirstBottle,
         )
-        _uiState.update { it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, pendingFirstBottle = null) }
+        if (!isVerified) return
+        _uiState.update { it.copy(stage = DispenseStage.COUNTING, pendingFirstBottle = null) }
         logger.i("[HAZARDOUS] NDC auto-confirmed: txn=$txnId substitute=$isSubstitute isHazardous=${state.isHazardous} → COUNTING")
     }
+
+    /**
+     * Called from the screen when, during PRE_NDC, the user scans something
+     * that looks like an RX label (pipe-delimited template, not a GTIN-14).
+     * The legacy single-screen flow had no way to surface this; the merged
+     * dispense flow now nudges the user with a toast instead of silently
+     * dropping the read.
+     */
+    private fun onRxScannedInNdcStage() {
+        if (_uiState.value.stage != DispenseStage.PRE_NDC) return
+        rejectScan(R.string.scan_ndc_toast, pauseScanning = true)
+    }
+
+    // ─────────────────────────── Reset ───────────────────────────
 
     /**
      * Sends the flow back to the container scan after a reset. The Rx details stay —
@@ -788,7 +655,7 @@ class DispenseFlowViewModel @Inject constructor(
      * strand a wiped transaction with the stage still on COUNTING. If it returns false the
      * reset failed, so the stage is left where it is.
      */
-    fun returnToContainerScan(resetCount: suspend () -> Boolean = { true }) {
+    private fun returnToContainerScan(resetCount: suspend () -> Boolean) {
         viewModelScope.launch {
             try {
                 if (!resetCount()) return@launch
@@ -800,9 +667,7 @@ class DispenseFlowViewModel @Inject constructor(
                 val txnId = _uiState.value.txnId.takeIf { it != 0L } ?: preferenceHelper.getTxnId()
                 // The count is already wiped: a failed lookup only loses the display fallbacks, so still move the stage.
                 val drug = try {
-                    txnId.takeIf { it != 0L }
-                        ?.let { dispenseTxnDao.getById(it) }
-                        ?.drugId?.let { drugMasterDao.getDrugById(it) }
+                    txnId.takeIf { it != 0L }?.let { dispenseFlowRepository.loadOrderedDrug(it) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -819,7 +684,6 @@ class DispenseFlowViewModel @Inject constructor(
                         ndcDrugType = null,
                         pendingFirstBottle = null,
                         isSubstituteConfirmed = false,
-                        showNdcDetails = false,
                         showNdcEquivalenceDialog = false,
                         drugImage = drug?.drugImagePath ?: it.drugImage,
                         ndcStrength = drug?.strength ?: it.ndcStrength,
@@ -831,258 +695,87 @@ class DispenseFlowViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 logger.e("Return to container scan failed", e, event = LogEvent.NDC_SCAN_FAILED)
-                _uiState.update { it.copy(error = appContext.getString(R.string.error_generic)) }
+                _effects.trySend(DispenseFlowEffect.GenericError)
             }
         }
     }
 
-    /** User confirmed they want to continue the existing PARTIAL transaction. */
-    fun confirmContinueRx() {
-        val txnId = _uiState.value.txnId
-        viewModelScope.launch {
-            try {
-                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
-                val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
-                dispenseTxnDao.updateGlovesPresent(txnId, false)
-                // Persist so the count view model's start of counting picks up the correct txn and restores
-                // the saved workflow step (workflowStep column) from the DB.
-                preferenceHelper.saveTxnId(txnId)
-                // If NDC was already verified the user was mid-count: jump to COUNTING so
-                // the pill-scanning VM can restore the exact workflow step from the DB.
-                // If NDC was never verified: go to PRE_NDC so the user scans the container.
-                val targetStage = if (txn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC
-                _uiState.update {
-                    it.copy(
-                        showContinueRxDialog = false,
-                        stage = targetStage,
-                        txnId = txnId,
-                        drugName = if (drug != null) drug.drugName.orEmpty() else it.drugName,
-                        ndc = drug?.ndc ?: it.ndc,
-                        hl7ExpectedNdc = drug?.ndc,
-                        rxNo = txn.rxNo,
-                        refillNo = txn.refillNo,
-                        qty = txn.targetCount?.toString(),
-                        isHazardous = drug?.isHazardous ?: false,
-                        // Shown on the container-scan step's details bar.
-                        drugImage = drug?.drugImagePath ?: it.drugImage,
-                        ndcStrength = drug?.strength ?: it.ndcStrength,
-                        ndcDosageForm = drug?.dosageForm ?: it.ndcDosageForm,
-                        selectedBucketId = txn.bucketId ?: it.selectedBucketId,
-                    )
-                }
-                logger.i("[HAZARDOUS] Continue RX: txn=$txnId isNdcVerified=${txn.isNdcVerified} isHazardous=${drug?.isHazardous ?: false} → $targetStage")
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("Continue RX failed for txn=$txnId", e, event = LogEvent.DISPENSE_RESUME_FAILED)
-                _uiState.update { it.copy(showContinueRxDialog = false) }
-            }
-        }
-    }
-
-    /** User declined to continue the existing transaction; screen navigates to Dashboard. */
-    fun dismissContinueRxDialog() {
-        _uiState.update { it.copy(showContinueRxDialog = false, txnId = 0L) }
-    }
-
-    /** Dismiss the ON_HOLD blocking dialog; user stays on scan screen to try a different RX. */
-    fun dismissOnHoldDialog() {
-        _uiState.update { it.copy(showOnHoldDialog = false) }
-    }
-
-    fun dismissNdcEquivalenceDialog() {
-        _uiState.update {
-            it.copy(
-                showNdcEquivalenceDialog = false,
-                ndcScannedValue = "",
-                ndcDrugName = "",
-                ndcPackageQty = null,
-                ndcDrugType = null,
-                ndcStrength = null,
-                drugImage = "",
-                ndcDosageForm = null,
-            )
-        }
-    }
-
-    /**
-     * Called when the user confirms the NDC popup for the dispense flow.
-     * Updates the existing txn with `isNdcVerified = true`, captures
-     * substitute drug info if applicable (the original drugId stays as the
-     * expected drug; substitutedDrugId points at the actual scanned drug),
-     * and advances to COUNTING.
-     */
-    fun onNdcConfirmed() {
-        val state = _uiState.value
-        val txnId = state.txnId
-
-        if (txnId == 0L) return
-
-        viewModelScope.launch {
-            try {
-                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
-
-                val isSubstitute = state.isSubstituteConfirmed
-                val substitutedDrugId = if (isSubstitute && state.ndcScannedValue.isNotBlank()) {
-                    // Persist the substitute drug record so the existing
-                    // DispenseCountViewModel start-of-counting load can resolve it.
-                    drugMasterDao.upsertPreservingId(
-                        DrugMasterEntity(
-                            ndc = state.ndcScannedValue,
-                            drugName = state.ndcDrugName.ifBlank { null },
-                            drugType = state.ndcDrugType,
-                            packageQty = state.ndcPackageQty,
-                            isHazardous = state.isHazardous,
-                            strength = state.ndcStrength,
-                            drugImagePath = state.drugImage,
-                            dosageForm = state.ndcDosageForm,
-                        )
-                    )
-                } else null
-
-                val existingBottles = DispenseBottleJson.decode(txn.bottlesJson)
-                val bottlesJson = if (existingBottles.isEmpty() && state.pendingFirstBottle != null) {
-                    DispenseBottleJson.encode(listOf(state.pendingFirstBottle.copy(txnId = txnId)))
-                } else txn.bottlesJson
-                dispenseTxnDao.update(
-                    txn.copy(
-                        isNdcVerified = true,
-                        isSubstitute = isSubstitute,
-                        substitutedDrugId = substitutedDrugId,
-                        bottlesJson = bottlesJson,
-                    )
-                )
-                _uiState.update {
-                    it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, pendingFirstBottle = null)
-                }
-                logger.i("[HAZARDOUS] NDC confirmed (sheet): txn=$txnId substitute=$isSubstitute isHazardous=${state.isHazardous} → COUNTING")
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("NDC confirm (sheet) failed for txn=$txnId", e, event = LogEvent.NDC_SCAN_FAILED)
-                _uiState.update { it.copy(error = appContext.getString(R.string.error_generic)) }
-            }
-        }
-    }
-
-    /** Dismiss the NDC popup; stays in PRE_NDC so the user can rescan. */
-    fun onNdcCancelled() {
-        _uiState.update {
-            it.copy(
-                showNdcDetails = false,
-                ndcScannedValue = "",
-                ndcDrugName = "",
-                ndcPackageQty = null,
-                ndcDrugType = null,
-                ndcStrength = null,
-                drugImage = "",
-                ndcDosageForm = null,
-                isSubstituteConfirmed = false,
-            )
-        }
-    }
-
-    fun dismissInvalidScanDialog() {
-        _uiState.update { it.copy(showInvalidScanDialog = false) }
-    }
-
-    fun dismissNdcNotFoundDialog() {
-        _uiState.update { it.copy(showNdcNotFoundDialog = false) }
-    }
+    // ─────────────────────────── Vial ───────────────────────────
 
     /**
      * Process a vial barcode read during the VIAL step. The vial label carries
      * the same RX-label barcode the user scanned at PRE_RX, so we extract the RX
      * number and compare it to the active transaction's [DispenseFlowUiState.rxNo].
      *
-     * Returns `true` when the RX matches — the caller then triggers the automatic
-     * photo capture (mirroring a tap on the camera button) and should NOT resume
-     * the analyzer. Returns `false` when the barcode can't be parsed or the RX
-     * doesn't match; on a mismatch a debounced toast is surfaced and the caller
-     * resumes the analyzer to keep scanning. Manual capture stays available
-     * regardless.
+     * Sends [DispenseFlowEffect.VialLabelMatched] when the RX matches — the screen
+     * then triggers the automatic photo capture (mirroring a tap on the camera button)
+     * and does NOT resume the analyzer. Sends [DispenseFlowEffect.ScanRejected] when
+     * the barcode can't be parsed or the RX doesn't match; on a mismatch a debounced
+     * toast is surfaced and the screen resumes the analyzer to keep scanning. Manual
+     * capture stays available regardless.
      */
-    fun onVialBarcodeRead(rawValue: String): Boolean {
-        if (rawValue.isBlank()) return false
+    private fun onVialBarcodeRead(rawValue: String) {
+        if (rawValue.isBlank()) {
+            readVialLabelAgain()
+            return
+        }
         val expectedRx = _uiState.value.rxNo?.trim().orEmpty()
-        if (expectedRx.isEmpty()) return false
+        if (expectedRx.isEmpty()) {
+            readVialLabelAgain()
+            return
+        }
 
         // Pipe-delimited payloads are the RX-label template; otherwise the raw
         // value may already be the bare RX number.
         val scannedRx = if (rawValue.contains('|')) {
-            val barcodeRegex = preferenceHelper.getBarcodeRegex().orEmpty()
-            if (barcodeRegex.isBlank()) return false
-            parseScanData(barcodeRegex, rawValue).rxNo?.trim().orEmpty()
+            rxLabelResolver.rxNoOf(rawValue).orEmpty()
         } else {
             rawValue.trim()
         }
-        if (scannedRx.isEmpty()) return false
-
-        val matched = scannedRx.equals(expectedRx, ignoreCase = true)
-        if (!matched) {
-            // The analyzer self-pauses then resumes on every miss, so the same
-            // wrong vial would otherwise spam toasts — debounce them.
-            val now = System.currentTimeMillis()
-            if (now - lastVialMismatchToastAt > VIAL_MISMATCH_TOAST_COOLDOWN_MS) {
-                lastVialMismatchToastAt = now
-                _uiState.update { it.copy(vialRxMismatchToastTick = it.vialRxMismatchToastTick + 1) }
-            }
-            logger.w("VIAL barcode RX mismatch: scanned=$scannedRx expected=$expectedRx")
+        if (scannedRx.isEmpty()) {
+            readVialLabelAgain()
+            return
         }
-        return matched
+
+        if (scannedRx.equals(expectedRx, ignoreCase = true)) {
+            _effects.trySend(DispenseFlowEffect.VialLabelMatched)
+            return
+        }
+        // The analyzer self-pauses then resumes on every miss, so the same
+        // wrong vial would otherwise spam toasts — debounce them.
+        val now = System.currentTimeMillis()
+        if (now - lastVialMismatchToastAt > VIAL_MISMATCH_TOAST_COOLDOWN_MS) {
+            lastVialMismatchToastAt = now
+            rejectScan(R.string.vial_rx_mismatch_toast, pauseScanning = true)
+        } else {
+            readVialLabelAgain()
+        }
+        logger.w("VIAL barcode RX mismatch: scanned=$scannedRx expected=$expectedRx")
     }
 
-    /**
-     * Called from the screen when, during PRE_NDC, the user scans something
-     * that looks like an RX label (pipe-delimited template, not a GTIN-14).
-     * The legacy single-screen flow had no way to surface this; the merged
-     * dispense flow now nudges the user with a toast instead of silently
-     * dropping the read.
-     */
-    fun onRxScannedInNdcStage() {
-        if (_uiState.value.stage != DispenseStage.PRE_NDC) return
-        _uiState.update { it.copy(scanNdcToastTick = it.scanNdcToastTick + 1) }
-    }
-
-    fun clearError() {
-        _uiState.update { it.copy(error = null) }
+    // Not a match and no toast: the screen reads the next frame at once.
+    private fun readVialLabelAgain() {
+        rejectScan(toastText = null, pauseScanning = false)
     }
 
     // ─────────────────────────── Queue mode ───────────────────────────
 
-    fun enterQueueMode() {
+    private fun enterQueueMode() {
         observeDispenseQueue()
         _uiState.update {
             DispenseFlowUiState(
                 stage = DispenseStage.QUEUE,
+                isFromQueue = it.isFromQueue,
                 queueItems = it.queueItems,
                 selectedQueueFilter = it.selectedQueueFilter ?: KpiFilter.DISP_PENDING,
-                initResolved = true,
             )
         }
     }
 
-    fun resetToQueue() {
-        observeDispenseQueue()
-        _uiState.update {
-            DispenseFlowUiState(
-                stage = DispenseStage.QUEUE,
-                queueItems = it.queueItems,
-                selectedQueueFilter = it.selectedQueueFilter ?: KpiFilter.DISP_PENDING,
-                initResolved = true,
-            )
-        }
-    }
+    private suspend fun hasPendingDispenseItems(): Boolean =
+        dispenseFlowRepository.hasPendingDispenses(preferenceHelper.getLocalId())
 
-    private suspend fun hasPendingDispenseItems(): Boolean {
-        val localId = preferenceHelper.getLocalId()
-        return dispenseTxnDao.countPartialDispenses(
-            partialStatus = CountStatus.PARTIAL,
-            userLocalId = localId,
-        ) > 0
-    }
-
-    fun resetToQueueOrNavigateDashboard() {
+    private fun resetToQueueOrNavigateDashboard() {
         viewModelScope.launch {
             // Tutorial: the tour's next step lives on the Dashboard (tap Stock
             // Count), never the Queue — a pending item (real, or a leftover from
@@ -1091,91 +784,70 @@ class DispenseFlowViewModel @Inject constructor(
             // forward. Always go to the Dashboard while the tour is active.
             try {
                 if (!FtueController.state.isActive && hasPendingDispenseItems()) {
-                    resetToQueue()
+                    enterQueueMode()
                 } else {
-                    _uiState.update { it.copy(navigateToDashboard = true) }
+                    _effects.trySend(DispenseFlowEffect.LeaveToDashboard)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 logger.e("Queue/dashboard routing check failed — defaulting to Dashboard", e, event = LogEvent.DISPENSE_FAILED)
-                _uiState.update { it.copy(navigateToDashboard = true) }
+                _effects.trySend(DispenseFlowEffect.LeaveToDashboard)
             }
         }
     }
 
-    fun clearNavigateToDashboard() {
-        _uiState.update { it.copy(navigateToDashboard = false) }
-    }
-
-    fun setQueueFilter(filter: KpiFilter?) {
+    private fun setQueueFilter(filter: KpiFilter?) {
         // Tabs always have one selection — clicking the active tab keeps it selected.
         if (filter != null) {
             _uiState.update { it.copy(selectedQueueFilter = filter) }
         }
     }
 
-    fun resumeFromQueue(txnId: Long) {
+    private fun resumeFromQueue(txnId: Long) {
         viewModelScope.launch {
             try {
-                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
+                val txn = dispenseFlowRepository.loadTxn(txnId) ?: return@launch
                 preferenceHelper.saveTxnId(txnId)
-                dispenseTxnDao.updateGlovesPresent(txnId, false)
-                val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
+                dispenseFlowRepository.clearGlovesPresent(txnId)
+                val drug = dispenseFlowRepository.loadDrug(txn.drugId)
                 val targetStage = if (txn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC
-                _uiState.update {
-                    it.copy(
-                        stage = targetStage,
-                        txnId = txnId,
-                        drugName = if (drug != null) drug.drugName.orEmpty() else it.drugName,
-                        ndc = drug?.ndc ?: it.ndc,
-                        hl7ExpectedNdc = drug?.ndc,
-                        rxNo = txn.rxNo,
-                        refillNo = txn.refillNo,
-                        qty = txn.targetCount?.toString(),
-                        isHazardous = drug?.isHazardous ?: false,
-                        // Shown on the container-scan step's details bar.
-                        drugImage = drug?.drugImagePath ?: it.drugImage,
-                        ndcStrength = drug?.strength ?: it.ndcStrength,
-                        ndcDosageForm = drug?.dosageForm ?: it.ndcDosageForm,
-                        selectedBucketId = txn.bucketId ?: it.selectedBucketId,
-                    )
-                }
+                _uiState.update { it.withOrder(txn, drug).copy(stage = targetStage) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 logger.e("Resume from queue failed for txn=$txnId", e, event = LogEvent.DISPENSE_RESUME_FAILED)
-                _uiState.update { it.copy(errorToastTick = it.errorToastTick + 1) }
+                _effects.trySend(DispenseFlowEffect.GenericError)
             }
         }
     }
 
     private fun observeDispenseQueue() {
         queueObserverJob?.cancel()
-        queueObserverJob = viewModelScope.launch(Dispatchers.IO) {
-            val localId = preferenceHelper.getLocalId()
-            dispenseTxnDao.observePartialDispenses(
-                partialStatus = CountStatus.PARTIAL,
-                userLocalId = localId,
-                step = StepState.TARGET_VERIFICATION,
-            ).catch { e ->
-                logger.e("Dispense queue observation failed", e, event = LogEvent.DISPENSE_FAILED)
-            }.collect { txns ->
-                val items = txns.map { txn ->
-                    QueueItem.Dispense(
-                        txn = txn,
-                        isHazardous = txn.isHazardous,
-                        isHighPriority = txn.priority == TxnPriority.High,
-                        isControlled = isControlledDrugType(txn.drugType),
-                    )
+        queueObserverJob = viewModelScope.launch {
+            dispenseFlowRepository.observeQueue(preferenceHelper.getLocalId())
+                .catch { e -> logger.e("Dispense queue observation failed", e, event = LogEvent.DISPENSE_FAILED) }
+                .collect { queueItems ->
+                    _uiState.update { it.copy(queueItems = queueItems) }
                 }
-                _uiState.update { it.copy(queueItems = items) }
-            }
         }
+    }
+
+    // ─────────────────────────── Effects ───────────────────────────
+
+    // Turns a scan away: loading ends, and the screen toasts (if any) and reads again.
+    private fun rejectScan(@StringRes toastText: Int?, pauseScanning: Boolean) {
+        _uiState.update { it.copy(isLoading = false) }
+        _effects.trySend(DispenseFlowEffect.ScanRejected(toastText, pauseScanning))
+    }
+
+    // A failed scan or save: loading ends and the generic error shows. The cause is logged, not shown.
+    private fun showGenericError() {
+        _uiState.update { it.copy(isLoading = false) }
+        _effects.trySend(DispenseFlowEffect.GenericError)
     }
 }
 
 private const val VIAL_MISMATCH_TOAST_COOLDOWN_MS = 2000L
 
 private const val TUTORIAL_DUMMY_TARGET_COUNT = 5
-

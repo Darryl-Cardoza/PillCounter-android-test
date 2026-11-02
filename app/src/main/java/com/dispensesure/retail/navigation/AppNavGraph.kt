@@ -74,16 +74,9 @@ fun AppNavGraph(
         // Merged dispense flow (RX + NDC + pill counting on one screen).
         composable(
             route = Screen.DispenseFlow.route, arguments = Screen.DispenseFlow.navArguments
-        ) { backStackEntry ->
-            val fromHl7 = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_HL7) ?: false
-            val fromResume = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_RESUME) ?: false
-            val fromQueue = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_QUEUE) ?: false
-            DispenseFlowScreen(
-                navController = navController,
-                fromHl7 = fromHl7,
-                fromResume = fromResume,
-                fromQueue = fromQueue,
-            )
+        ) {
+            // The view model reads the route's flags from its SavedStateHandle.
+            DispenseFlowScreen(navController = navController)
         }
 
 
