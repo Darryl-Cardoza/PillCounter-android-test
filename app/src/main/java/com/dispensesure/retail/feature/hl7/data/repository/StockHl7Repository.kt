@@ -24,8 +24,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.segment.INVSegment
 import org.rite.hl7.model.segment.RXESegment
@@ -54,7 +54,14 @@ class StockHl7Repository @Inject constructor(
 
     // Reconnect, the Unsynced screen, END COUNT and the offline drain can all start a resend;
     // without this, two passes send the same chunk twice.
-    private val resendMutex = Mutex()
+    // One worker runs passes in turn; triggers during a pass collapse into one more pass.
+    private val resendRequests = Channel<Unit>(Channel.CONFLATED)
+
+    init {
+        scope.launch {
+            for (resendRequest in resendRequests) sendAllPendingBatches()
+        }
+    }
 
     /**
      * Builds and sends the inventory response for a batch, splitting it into
@@ -142,28 +149,24 @@ class StockHl7Repository @Inject constructor(
     }
 
     fun resendPendingBatches() {
-        scope.launch {
-            if (!resendMutex.tryLock()) {
-                logger.i("resendPendingBatches already in progress — skipping duplicate trigger")
-                return@launch
+        resendRequests.trySend(Unit)
+    }
+
+    private suspend fun sendAllPendingBatches() {
+        try {
+            val pendingBatches = stockBatchDao.getUnsyncedCompletedBatchesOnce()
+            if (pendingBatches.isEmpty()) {
+                logger.i("No pending HL7 batch transactions to sync")
+                return
             }
-            try {
-                val pendingBatches = stockBatchDao.getUnsyncedCompletedBatchesOnce()
-                if (pendingBatches.isEmpty()) {
-                    logger.i("No pending HL7 batch transactions to sync")
-                    return@launch
-                }
-                logger.i("Resending ${pendingBatches.size} pending HL7 batch transactions")
-                for (batch in pendingBatches) {
-                    sendInventory(batchId = batch.batchId)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("resendPendingBatches failed", e, event = LogEvent.HL7_RESEND_FAILED)
-            } finally {
-                resendMutex.unlock()
+            logger.i("Resending ${pendingBatches.size} pending HL7 batch transactions")
+            for (batch in pendingBatches) {
+                sendInventory(batchId = batch.batchId)
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("resendPendingBatches failed", e, event = LogEvent.HL7_RESEND_FAILED)
         }
     }
 

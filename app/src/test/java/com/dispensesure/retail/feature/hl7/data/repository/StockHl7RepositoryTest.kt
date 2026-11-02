@@ -13,11 +13,6 @@ import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.core.scanning.data.DrugRepository
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
-import com.dispensesure.retail.core.utils.logger.AppLogger
-import com.dispensesure.retail.core.utils.logger.LogDestination
-import com.dispensesure.retail.core.utils.logger.LogEntry
-import com.dispensesure.retail.core.utils.logger.LogLevel
-import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7MessageSender
 import com.dispensesure.retail.feature.hl7.data.Hl7ConfigProvider
@@ -42,6 +37,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.rite.hl7.model.HL7Message
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -56,7 +52,7 @@ import java.util.concurrent.TimeUnit
  * methods exist:
  *  - `suspend` methods called directly inside runTest (sendInventory) run inline and are
  *    verified with a plain `coVerify { }` immediately after the call.
- *  - methods that do `scope.launch { ... }` (resendPendingBatches)
+ *  - methods that hand work to a coroutine on the SUT's scope (resendPendingBatches)
  *    run asynchronously on background threads; they are verified with MockK's
  *    polling form `coVerify(timeout = 3000) { }` / `verify(timeout = 3000) { }`. Absence
  *    ("not called") is only asserted AFTER synchronizing on a positive signal that proves the
@@ -380,53 +376,74 @@ class StockHl7RepositoryTest {
         coVerify(timeout = 3000) { stockBatchDao.markBatchSynced(100L) }
     }
 
-    @Test
-    fun `resendPendingBatches skips a second pass while the first is still sending`() = runTest(testDispatcher) {
-        // The skip leaves no DAO trace, so the test waits on its log line instead.
-        val secondPassSkipped = CountDownLatch(1)
-        val minimumLogLevelBeforeTest = LoggerConfig.minimumLogLevel
-        LoggerConfig.minimumLogLevel = LogLevel.INFO
-        AppLogger.setDestinationForTest(object : LogDestination {
-            override fun write(entry: LogEntry) {
-                if (entry.message.contains("already in progress")) secondPassSkipped.countDown()
-            }
-        })
-        try {
-            val repo = createRepo()
-            coEvery { stockBatchDao.getUnsyncedCompletedBatchesOnce() } returns
-                listOf(
-                    com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto(
-                        batchId = 100L,
-                        createdAt = 0L,
-                        uniqueNdcCount = 0,
-                        status = "COMPLETED",
-                        bucketId = null,
-                        requestIdFromPMS = "REQ",
-                    )
+    // Fake unsynced-batch table: the resend reads it, markBatchSynced removes from it.
+    private fun stubUnsyncedCompletedBatches(vararg initialBatchIds: Long): MutableSet<Long> {
+        val unsyncedBatchIds = ConcurrentHashMap.newKeySet<Long>().apply { addAll(initialBatchIds.toList()) }
+        coEvery { stockBatchDao.getUnsyncedCompletedBatchesOnce() } answers {
+            unsyncedBatchIds.sorted().map { unsyncedBatchId ->
+                com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto(
+                    batchId = unsyncedBatchId,
+                    createdAt = 0L,
+                    uniqueNdcCount = 0,
+                    status = "COMPLETED",
+                    bucketId = null,
+                    requestIdFromPMS = "REQ",
                 )
-            coEvery { stockBatchDao.getById(100L) } returns StockBatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
-            coEvery { stockBottleInfoDao.getByBatchId(100L) } returns emptyList()
-            val firstPassSending = CountDownLatch(1)
-            val releaseFirstPass = CountDownLatch(1)
-            coEvery { hl7MessageSender.sendRaw(any()) } answers {
-                firstPassSending.countDown()
-                releaseFirstPass.await(3, TimeUnit.SECONDS)
-                Result.success(SUCCESS_ACK)
             }
-
-            repo.resendPendingBatches()
-            assertTrue(firstPassSending.await(3, TimeUnit.SECONDS))
-            repo.resendPendingBatches()
-            assertTrue(secondPassSkipped.await(3, TimeUnit.SECONDS))
-            releaseFirstPass.countDown()
-
-            coVerify(timeout = 3000) { stockBatchDao.markBatchSynced(100L) }
-            coVerify(exactly = 1) { hl7MessageSender.sendRaw(any()) }
-            coVerify(exactly = 1) { stockBatchDao.getUnsyncedCompletedBatchesOnce() }
-        } finally {
-            AppLogger.setDestinationForTest(null)
-            LoggerConfig.minimumLogLevel = minimumLogLevelBeforeTest
         }
+        coEvery { stockBatchDao.markBatchSynced(any()) } answers { unsyncedBatchIds.remove(firstArg<Long>()) }
+        coEvery { stockBatchDao.getById(any()) } answers {
+            StockBatchEntity(batchId = firstArg(), requestIdFromPMS = "REQ")
+        }
+        coEvery { stockBottleInfoDao.getByBatchId(any()) } returns emptyList()
+        return unsyncedBatchIds
+    }
+
+    @Test
+    fun `END COUNT during a running resend pass still gets sent`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        val unsyncedBatchIds = stubUnsyncedCompletedBatches(100L)
+        val firstPassSending = CountDownLatch(1)
+        val releaseFirstPass = CountDownLatch(1)
+        coEvery { hl7MessageSender.sendRaw(any()) } answers {
+            firstPassSending.countDown()
+            releaseFirstPass.await(3, TimeUnit.SECONDS)
+            Result.success(SUCCESS_ACK)
+        }
+
+        // Reconnect pass is mid-send on batch 100 when END COUNT completes batch 9.
+        repo.resendPendingBatches()
+        assertTrue(firstPassSending.await(3, TimeUnit.SECONDS))
+        unsyncedBatchIds.add(9L)
+        repo.resendPendingBatches()
+        releaseFirstPass.countDown()
+
+        coVerify(timeout = 3000) { stockBatchDao.markBatchSynced(9L) }
+        coVerify(exactly = 1) { stockBatchDao.markBatchSynced(100L) }
+    }
+
+    @Test
+    fun `triggers during a running pass never send the same batch twice`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        stubUnsyncedCompletedBatches(100L)
+        val firstPassSending = CountDownLatch(1)
+        val releaseFirstPass = CountDownLatch(1)
+        coEvery { hl7MessageSender.sendRaw(any()) } answers {
+            firstPassSending.countDown()
+            releaseFirstPass.await(3, TimeUnit.SECONDS)
+            Result.success(SUCCESS_ACK)
+        }
+
+        repo.resendPendingBatches()
+        assertTrue(firstPassSending.await(3, TimeUnit.SECONDS))
+        repo.resendPendingBatches()
+        repo.resendPendingBatches()
+        releaseFirstPass.countDown()
+
+        // The queued rerun reads the list after batch 100 is synced, so it sends nothing.
+        coVerify(timeout = 3000, exactly = 2) { stockBatchDao.getUnsyncedCompletedBatchesOnce() }
+        coVerify(exactly = 1) { hl7MessageSender.sendRaw(any()) }
+        coVerify(exactly = 1) { stockBatchDao.markBatchSynced(100L) }
     }
 
     // ─────────────────────────────── handleInrInventoryRequest ───────────────────────────────
