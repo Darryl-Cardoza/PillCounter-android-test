@@ -54,8 +54,7 @@ import javax.inject.Inject
  * The PMS/HL7 entry path is hydrated by [initializeFromHl7Txn], which reads the
  * existing PMS-created transaction (drugId / targetCount / rxNo / expected NDC)
  * and skips straight to PRE_NDC. The NDC scan then validates against the
- * HL7-expected NDC with the same substitute-drug / mismatch dialogs the legacy
- * ScanBarCodeScreen flow had.
+ * HL7-expected NDC with the substitute-drug / mismatch dialogs.
  *
  * Stock counts never come here: they run on StockCountScreen and LooseCountScreen.
  * The txn on screen is [DispenseFlowUiState.txnId]; the screen hands it to the count view model.

@@ -50,7 +50,6 @@ class Hl7Notifier @Inject constructor(
         // The dispense order the tap opens. Null opens the dispense screen on the Rx step.
         dispenseTxnId: Long? = null,
     ) {
-        print("notification show")
         val route = notificationRoute(dispenseTxnId)
 
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -75,10 +74,7 @@ class Hl7Notifier @Inject constructor(
                     Manifest.permission.POST_NOTIFICATIONS
                 ) == PackageManager.PERMISSION_GRANTED
 
-            if (!hasPermission) {
-                print("notification dont have permission ")
-                return
-            }
+            if (!hasPermission) return
         }
 
         val contentView = RemoteViews(
@@ -109,7 +105,9 @@ class Hl7Notifier @Inject constructor(
 // PMS-originated dispense: deep-link into the merged DispenseFlowScreen
 // with fromHl7=true so it hydrates from the pre-created txn and starts
 // at the NDC scan step (the RX info is already in the HL7 payload).
+// With no order, the plain dispense screen opens on the Rx step.
 internal fun notificationRoute(dispenseTxnId: Long?): String =
-    Screen.DispenseFlow.createRoute(txnId = dispenseTxnId ?: 0L, fromHl7 = true)
+    if (dispenseTxnId == null) Screen.DispenseFlow.createRoute()
+    else Screen.DispenseFlow.createRoute(txnId = dispenseTxnId, fromHl7 = true)
 
 

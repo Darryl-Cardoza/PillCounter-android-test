@@ -156,7 +156,7 @@ class Hl7NotifierTest {
     @Test
     fun `any other notification opens the dispense screen with no order`() {
         assertEquals(
-            "dispense_flow?txn_id=0&from_hl7=true&from_queue=false",
+            "dispense_flow?txn_id=0&from_hl7=false&from_queue=false",
             notificationRoute(dispenseTxnId = null),
         )
     }

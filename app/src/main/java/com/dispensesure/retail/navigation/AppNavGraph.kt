@@ -11,7 +11,6 @@ import com.dispensesure.retail.feature.dispense.presentation.DispenseFlowScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceIntroScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceRegistrationScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceUsersListScreen
-import com.dispensesure.retail.feature.stockCount.sealed.presentation.StockCountScreen
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.history.presentation.BatchHistoryDetailScreen
 import com.dispensesure.retail.feature.history.presentation.HistoryDetailScreen
@@ -20,6 +19,7 @@ import com.dispensesure.retail.feature.menu.presentation.MenuScreen
 import com.dispensesure.retail.feature.profile.presentation.ProfileScreen
 import com.dispensesure.retail.feature.settings.presentation.SettingsScreen
 import com.dispensesure.retail.feature.stockCount.loose.LooseCountScreen
+import com.dispensesure.retail.feature.stockCount.sealed.presentation.StockCountScreen
 import com.dispensesure.retail.feature.unsyncedTransaction.presentation.compose.UnsyncedTransactionScreen
 
 // Define constants for nested graph routes for better organization

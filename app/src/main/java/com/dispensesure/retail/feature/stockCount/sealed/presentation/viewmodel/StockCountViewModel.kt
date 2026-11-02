@@ -26,10 +26,10 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.ActiveNdc
-import com.dispensesure.retail.feature.stockCount.sealed.domain.model.StockCountUiState
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditDrugDetails
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.RecentBatchRow
+import com.dispensesure.retail.feature.stockCount.sealed.domain.model.StockCountUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -417,7 +417,7 @@ class StockCountViewModel @Inject constructor(
                 logger.d("INV_SCAN parsed lotNo=$lotNo serialNo=$serialNo expiry=$expiry packageQty=$packageQty")
 
                 // Look for an existing sealed txn for this (drug, lot, expiry)
-                // in the current batch — same logic ScanBarcodeViewModel uses.
+                // in the current batch.
                 val batchId = resolvedBatchId.value
                 val existingStockTxn = if (batchId != 0L) {
                     stockTxnDao.findByDrugInBatch(batchId, drug.drugId)

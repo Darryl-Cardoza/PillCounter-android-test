@@ -11,7 +11,7 @@ object TourGuidePrefs {
 
     private const val PREF_NAME = "tour_guide_prefs"
 
-    fun prefs(context: Context) =
+    private fun prefs(context: Context) =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
     private fun key(localId: Long) = "ftue_v2_$localId"
