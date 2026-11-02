@@ -5,14 +5,11 @@ import android.util.Base64
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isDispensedQuantityStep
 import com.dispensesure.retail.core.models.toImageLabel
-import com.dispensesure.retail.core.security.ImageCrypto
-import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
-import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
-import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
-import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
-import com.dispensesure.retail.core.utils.common.DateFormats
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
+import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -22,15 +19,11 @@ import org.rite.hl7.builder.ZsnTransactionType
 import org.rite.hl7.builder.ZsvMatchStrength
 import org.rite.hl7.builder.ZsvValidationResult
 import org.rite.hl7.builder.ZuiTransactionStatus
-
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * =========================================================
- * HL7MessageBuilder (Hl7Core edition)
+ * DispenseMessageBuilder (Hl7Core edition)
  * =========================================================
  *
  * Kotlin port of iOS `HL7CompletionBuilder`, using the same `HL7Builder`
@@ -47,75 +40,25 @@ import java.util.Locale
  */
 
 /**
- * HL7 sending application formats supported when composing outbound messages.
- * Persisted via [PreferenceHelper.saveHl7Format]/[PreferenceHelper.getHl7Format].
- */
-enum class Hl7Format(val sendingApplication: String) {
-    DISPENSESURE("DISPENSESURE"),
-    EYECON("EYECON"),
-    VIVID("VIVID");
-
-    companion object {
-        val DEFAULT = DISPENSESURE
-
-        fun fromSendingApplication(value: String?): Hl7Format =
-            entries.firstOrNull { it.sendingApplication == value } ?: DEFAULT
-    }
-}
-
-data class HL7Config(
-    val sendingApplication: String,
-    val sendingFacility: String,
-    val receivingApplication: String,
-    val receivingFacility: String,
-    val versionId: String,
-    /** Which body segments (ZUI/ZNI/etc) to emit — independent of [sendingApplication], which is always this app's name. */
-    val messageFormat: Hl7Format = Hl7Format.DEFAULT
-) {
-    companion object {
-        /**
-         * Sourced from app settings: the terminal name identifies this
-         * station as the sending facility, and the configured PMS host name
-         * is used as the receiving facility since the PMS routes by t
-         * identity. Mirrors iOS `HL7Config.current`.
-         */
-        fun current(
-            selectedTerminalName: String,
-            pmsHostName: String,
-            hl7Version: String = PreferenceHelper.DEFAULT_HL7_VERSION,
-            hl7Format: Hl7Format = Hl7Format.DEFAULT,
-            sendingApplicationName: String = Hl7Format.DISPENSESURE.sendingApplication
-        ) = HL7Config(
-            sendingApplication = sendingApplicationName,
-            sendingFacility = selectedTerminalName,
-            receivingApplication = "client",
-            receivingFacility = pmsHostName,
-            versionId = hl7Version,
-            messageFormat = hl7Format
-        )
-    }
-}
-
-/**
  * Builds wire-encoded HL7 strings for outbound messages.
  *
  * All builder methods are **object-level** (companion object) to keep the
- * call site simple: `HL7MessageBuilder.buildDispenseMessage(...)`.
+ * call site simple: `DispenseMessageBuilder.buildDispenseMessage(...)`.
  *
  * The [HL7] facade is instantiated lazily per-call using the HL7 version
  * embedded in [HL7Config] so that version-sensitive trigger events
  * (e.g. RDS^O13 vs RDS^O01) resolve correctly.
  */
-object HL7MessageBuilder {
+object DispenseMessageBuilder {
 
-    private val logger = AppLogger.create<HL7MessageBuilder>()
+    private val logger = AppLogger.create<DispenseMessageBuilder>()
 
     // Resend attempts (PMS reject, ACK timeout, reconnect) call buildDispenseMessage again
     // for the same txn, which used to re-read, decrypt, and re-base64-encode every ZUI-8
     // tray image from disk on each call — multi-MB per image, repeated on every retry.
     // Keyed by txnId (then by path+lastModified, so an edited/rescanned image still misses
     // and re-encodes) instead of a fixed-size LRU: a synced txn is never resent again, so
-    // Hl7Repository calls evictImageCache(txnId) once it's synced — memory only ever holds
+    // DispenseHl7Repository calls evictImageCache(txnId) once it's synced — memory only ever holds
     // images for txns that are still actually pending, not a rolling cap.
     private val imageEncodeCache = mutableMapOf<Long, MutableMap<Pair<String, Long>, String>>()
 
@@ -156,7 +99,7 @@ object HL7MessageBuilder {
         val hl7 = HL7(version = config.versionId)
         val builder = hl7.build()
 
-        val now = now()
+        val now = hl7TimestampNow()
         // Falls back to the txnId (not a timestamp) so the outbound MSH-10 is deterministic
         // per transaction — the ACK handler correlates back to this exact txn via
         // DispenseTxnDao.getByMessageControlId, which only works if resends of the same
@@ -406,228 +349,6 @@ object HL7MessageBuilder {
         fields[19] = fillStatus
         fields[21] = stockBottleBarcodeNdc
         return fields.joinToString("|")
-    }
-
-    // =========================================================
-    // INVENTORY RESPONSE (INU^U05, INV + ZAD)
-    // =========================================================
-
-    fun buildInventoryMessage(
-        batch: StockBatchEntity,
-        bottles: List<StockBottleInfoDto>,
-        config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS")
-    ): String {
-        return buildInventoryMessageChunks(batch, bottles, config).single().message
-    }
-
-    /** One chunk of a (possibly split) inventory sync — see [buildInventoryMessageChunks]. */
-    data class InventoryChunk(
-        val chunkIndex: Int,
-        val totalChunks: Int,
-        val itemTotal: Int,
-        val message: String
-    )
-
-    /**
-     * Splits a batch's grouped inventory rows into multiple complete, independently
-     * sendable INU^U05 messages so no single message exceeds [maxRowsPerChunk] INV
-     * groups — keeping each message safely under PMS's message-size ceiling
-     * regardless of how large the overall batch grows. Chunk position is not encoded
-     * on the wire (this is the shared iOS/Android INU^U05 format); [chunkIndex]/[totalChunks]
-     * only drive local resume bookkeeping — see [Hl7Repository].
-     *
-     * Wire shape per chunk (shared iOS/Android INU^U05 format):
-     * ```
-     * MSH
-     * EQU
-     * ORC
-     * OBX (OPERATOR_NAME, blank sub-id)
-     * [ INV (one per ndc/lot/expiry group, Set-ID keyed)
-     *   OBX (SEALED_QTY, OBX-5 = `pills^bottles`)
-     *   OBX (OPEN_QTY, OBX-5 = `pills^bottles`)
-     *   OBX (IMG001..IMGnnn, one per photo, only if the group has photos) ]  repeats per group
-     * ZAD (batch note, only if the batch has one — always last segment)
-     * ```
-     * No NTE, no BTS, no ZIN.
-     *
-     * Both quantity rows always carry both components, `0^0` included, so PMS parses
-     * one fixed shape. Sealed bottles are summed; a line with loose pills counts as
-     * one open bottle (no open-bottle column exists in the stock model). The
-     * inventory screen derives its bottle count the same way — if an open-bottle
-     * column ever lands, this and `StockCountViewModel.toRecentRows` change together.
-     *
-     * ORC-2 carries this batch's bucketId, and — when this batch answers a
-     * PMS-originated INR^U06 request (`batch.requestIdFromPMS` non-blank) — that
-     * request id appended as `<bucketId>^<requestIdFromPMS>` so PMS can correlate
-     * this response with its original request. Chunks must be sent in order, each
-     * one only after the previous chunk's ACK — see Hl7Repository.
-     */
-    fun buildInventoryMessageChunks(
-        batch: StockBatchEntity,
-        bottles: List<StockBottleInfoDto>,
-        config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS"),
-        maxRowsPerChunk: Int = 200
-    ): List<InventoryChunk> {
-
-        val now = now()
-        val orderId = batch.bucketId.orEmpty()
-        val requestId = batch.requestIdFromPMS?.trim()?.ifEmpty { null }
-
-        data class Key(val ndc: String, val name: String, val lot: String, val expiry: String)
-        data class Qty(
-            var opened: Int = 0,
-            var sealed: Int = 0,
-            var openedBottles: Int = 0,
-            var sealedBottles: Int = 0,
-            val imagePaths: MutableList<String> = mutableListOf()
-        )
-
-        val grouped = linkedMapOf<Key, Qty>()
-        bottles.forEach { bottle ->
-            val key = Key(
-                ndc = bottle.ndc.orEmpty(),
-                name = bottle.drugName.orEmpty(),
-                lot = bottle.lotNo.orEmpty(),
-                expiry = bottle.expiry.orEmpty()
-            )
-            val packageQty = bottle.packageQty ?: 0
-            val e = grouped.getOrPut(key) { Qty() }
-            e.opened += bottle.looseQty ?: 0
-            e.sealed += (bottle.bottleQty ?: 0) * packageQty
-            // No open-bottle column exists: a line with loose pills counts as one
-            // open bottle, matching what the inventory screen already shows.
-            e.sealedBottles += bottle.bottleQty ?: 0
-            if ((bottle.looseQty ?: 0) > 0) e.openedBottles++
-            bottle.imagePaths?.let { e.imagePaths.addAll(it) }
-        }
-
-        // Zero-qty rows are still sent: omitting a counted-zero row would make it
-        // indistinguishable from a drug PMS never asked about.
-        val rows = grouped.entries.toList()
-        val chunkedRows = if (rows.isEmpty()) listOf(rows) else rows.chunked(maxRowsPerChunk)
-        val totalChunks = chunkedRows.size
-
-        return chunkedRows.mapIndexed { chunkIdx, chunkRows ->
-            val chunkIndex = chunkIdx + 1
-            val chunkTotal = chunkRows.sumOf { it.value.opened + it.value.sealed }
-            val messageId = "RES${System.currentTimeMillis() / 1000}-$chunkIndex"
-
-            val hl7 = HL7(version = config.versionId)
-            val builder = hl7.build()
-
-            var obxSetId = 0
-            fun nextObxSetId() = (++obxSetId).toString()
-
-            var imgSeq = 0
-            fun nextImgObservationId() = "IMG${(++imgSeq).toString().padStart(3, '0')}"
-
-            val message = builder.inuU05 {
-                msh { msh ->
-                    msh.sendingApplication = config.sendingApplication
-                    msh.sendingFacility = config.sendingFacility
-                    msh.receivingApplication = config.receivingApplication
-                    msh.receivingFacility = ""
-                    msh.dateTimeOfMessage = now
-                    msh.messageControlId = messageId
-                    msh.processingId = "P"
-                    msh.versionId = config.versionId
-                }
-
-                equ { equ ->
-                    equ.equipmentId = config.sendingApplication
-                    equ.eventDateTime = now
-                }
-
-                orc { orc ->
-                    orc.orderControl = "RE"
-                    // ORC-2: bucketId^requestId as components (not separate fields).
-                    orc.placerOrderNumber = if (!requestId.isNullOrBlank()) "$orderId^$requestId" else orderId
-                }
-
-                obx { obx ->
-                    obx.setId = nextObxSetId()
-                    obx.valueType = "ST"
-                    obx.observationId = "OPERATOR_NAME"
-                    obx.observationValue = batch.userName.orEmpty()
-                    obx.resultStatus = "F"
-                }
-
-                chunkRows.forEachIndexed { idx, (key, value) ->
-                    val invSetId = (idx + 1).toString()
-                    val total = value.opened + value.sealed
-
-                    inv { inv ->
-                        inv.setId = invSetId
-                        inv.substanceCode = key.ndc
-                        inv.substanceName = key.name.ifEmpty { null }
-                        inv.substanceCodeSystem = "L"
-                        inv.inventoryOnHandQuantity = total.toString()
-                        inv.units = "TAB"
-                        inv.expirationDate = key.expiry.ifEmpty { null }
-                        inv.lotNumber = key.lot.ifEmpty { null }
-                    }
-
-                    obx { obx ->
-                        obx.setId = nextObxSetId()
-                        obx.valueType = "NM"
-                        obx.observationId = "SEALED_QTY"
-                        obx.subId = invSetId
-                        // Two components, not one string: HL7Escaping would turn a
-                        // literal "2000^2" into 2000\S\2.
-                        obx.observationValue = value.sealed.toString()
-                        obx.observationValue2 = value.sealedBottles.toString()
-                        obx.resultStatus = "F"
-                    }
-                    obx { obx ->
-                        obx.setId = nextObxSetId()
-                        obx.valueType = "NM"
-                        obx.observationId = "OPEN_QTY"
-                        obx.subId = invSetId
-                        obx.observationValue = value.opened.toString()
-                        obx.observationValue2 = value.openedBottles.toString()
-                        obx.resultStatus = "F"
-                    }
-                    value.imagePaths.forEach { path ->
-                        obx { obx ->
-                            obx.setId = nextObxSetId()
-                            obx.valueType = "RP"
-                            obx.observationId = nextImgObservationId()
-                            obx.subId = invSetId
-                            obx.observationValue = "images/${File(path).name}"
-                            obx.resultStatus = "F"
-                        }
-                    }
-                }
-
-                // ZAD carries the batch note (if any) and is always the last segment
-                // in the message — no separate NTE for the note (matches iOS's INU^U05 shape).
-                batch.note?.trim()?.takeIf { it.isNotEmpty() }?.let { note ->
-                    zad { z ->
-                        z.setId = "1"
-                        z.approvedBy = batch.userName.orEmpty()
-                        z.comment = note
-                    }
-                }
-            }
-
-            // HL7 library escapes literal '^' to '\S\' when it appears inside a field
-            // string — but ORC-2.2 (requestId component) must be a real component separator.
-            // Post-process the encoded ORC line to restore the component separator.
-            val encoded = if (requestId != null) {
-                message.encode().replace(
-                    "ORC|RE|${orderId}\\S\\${requestId}",
-                    "ORC|RE|${orderId}^${requestId}"
-                )
-            } else {
-                message.encode()
-            }
-            InventoryChunk(
-                chunkIndex = chunkIndex,
-                totalChunks = totalChunks,
-                itemTotal = chunkTotal,
-                message = encoded
-            )
-        }
     }
 
     // =========================================================
@@ -881,11 +602,9 @@ object HL7MessageBuilder {
         txnId: String,
         note: String?,
         totalCount: Int,
-        isBatch: Boolean = false,
         expectedCount: Int? = null
     ): List<NoteRow> {
-        val label = if (isBatch) "Batch Id" else "Transaction Id"
-        var comment = "$label: $txnId | Status: Completed | Total Count: $totalCount"
+        var comment = "Transaction Id: $txnId | Status: Completed | Total Count: $totalCount"
 
         if (expectedCount != null && expectedCount != totalCount) {
             val diff = totalCount - expectedCount
@@ -905,7 +624,4 @@ object HL7MessageBuilder {
             )
         )
     }
-
-    private fun now(): String =
-        SimpleDateFormat(DateFormats.HL7_TIMESTAMP, Locale.US).format(Date())
 }

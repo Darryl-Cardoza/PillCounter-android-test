@@ -24,7 +24,7 @@ import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.RecentBatchRow
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -67,7 +67,7 @@ class StockCountViewModelTest {
     private lateinit var operatorNameProvider: OperatorNameProvider
     private lateinit var barcodeDecoder: BarcodeDecoder
     private lateinit var drugRepository: IDrugRepository
-    private lateinit var hl7Repository: Hl7Repository
+    private lateinit var stockHl7Repository: StockHl7Repository
     private lateinit var hl7EventHandler: Hl7EventHandler
     private lateinit var drugImageDownloader: com.dispensesure.retail.core.scanning.data.DrugImageDownloader
     private lateinit var connectionState: MutableStateFlow<Boolean>
@@ -93,7 +93,7 @@ class StockCountViewModelTest {
         operatorNameProvider = mockk(relaxed = true)
         barcodeDecoder = mockk(relaxed = true)
         drugRepository = mockk(relaxed = true)
-        hl7Repository = mockk(relaxed = true)
+        stockHl7Repository = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
         drugImageDownloader = mockk(relaxed = true)
         connectionState = MutableStateFlow(false)
@@ -129,7 +129,7 @@ class StockCountViewModelTest {
             operatorNameProvider,
             ScanDecoder(barcodeDecoder),
             DrugResolver(drugMasterDao, drugRepository, drugImageDownloader),
-            hl7Repository,
+            stockHl7Repository,
             hl7EventHandler,
         )
     }
@@ -1184,7 +1184,7 @@ class StockCountViewModelTest {
 
         coVerify { stockBatchDao.markAsCompleted(7L, any()) }
         coVerify { stockBatchDao.updateNote(7L, "a note") }
-        coVerify { hl7Repository.resendPendingHl7BatchTransactions() }
+        coVerify { stockHl7Repository.resendPendingBatches() }
         assertTrue(vm.batchEnded.value)
         job.cancel()
     }
@@ -1205,7 +1205,7 @@ class StockCountViewModelTest {
 
         coVerify { stockBatchDao.markAsCompleted(7L, any()) }
         coVerify(exactly = 0) { stockBatchDao.updateNote(any(), any()) }
-        coVerify(exactly = 0) { hl7Repository.resendPendingHl7BatchTransactions() }
+        coVerify(exactly = 0) { stockHl7Repository.resendPendingBatches() }
         job.cancel()
     }
 

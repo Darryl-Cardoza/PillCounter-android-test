@@ -97,7 +97,7 @@ object LogEventClassifier {
             "HistoryViewModel", "HistoryDetailsViewModel" ->
                 if ("delete" in message) LogEvent.HISTORY_DELETE_FAILED else LogEvent.HISTORY_LOAD_FAILED
 
-            "Hl7Repository", "Hl7ServiceManager", "Hl7EventHandler", "HL7backgroundService",
+            "DispenseHl7Repository", "StockHl7Repository", "Hl7ServiceManager", "Hl7EventHandler", "HL7backgroundService",
             "MllpClient", "MllpConnectionManager", "MllpServer", "NsdHelper" -> when {
                 // Before "connect", which would otherwise match inside "disconnect".
                 "disconnect" in message -> LogEvent.HL7_SERVICE_STOPPED

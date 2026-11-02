@@ -7,7 +7,8 @@ import com.dispensesure.retail.core.utils.common.DateUtils
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import dagger.Lazy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -59,10 +60,11 @@ class SessionHealthController @Inject constructor(
     private val healthRepository: IHealthRepository,
     private val preferenceHelper: PreferenceHelper,
     // Wrapped in `Lazy` to break the Hilt cycle:
-    // Hl7Repository -> DrugResolver -> DrugImageDownloader -> OkHttpClient -> HealthGateInterceptor
-    // -> SessionHealthController. The repository is only resolved the first time the
+    // DispenseHl7Repository / StockHl7Repository -> DrugResolver -> DrugImageDownloader -> OkHttpClient -> HealthGateInterceptor
+    // -> SessionHealthController. The repositories are only resolved the first time the
     // OFFLINE -> HEALTHY sync trigger fires, by which point every graph node exists.
-    private val hl7Repository: Lazy<Hl7Repository>
+    private val dispenseHl7Repository: Lazy<DispenseHl7Repository>,
+    private val stockHl7Repository: Lazy<StockHl7Repository>
 ) {
 
     private val logger = AppLogger.create<SessionHealthController>()
@@ -153,9 +155,8 @@ class SessionHealthController @Inject constructor(
         scope.launch {
             syncTrigger.collect {
                 try {
-                    val repo = hl7Repository.get()
-                    repo.resendPendingHl7Transactions()
-                    repo.resendPendingHl7BatchTransactions()
+                    dispenseHl7Repository.get().resendPendingDispenses()
+                    stockHl7Repository.get().resendPendingBatches()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

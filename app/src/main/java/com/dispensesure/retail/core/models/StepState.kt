@@ -14,7 +14,7 @@ enum class StepState {
 
 /**
  * The only step whose pill rows are the dispensed quantity. The `getPillCountForStep` query
- * and HL7MessageBuilder's filter both read this so they cannot drift apart.
+ * and DispenseMessageBuilder's filter both read this so they cannot drift apart.
  */
 val DISPENSED_QUANTITY_STEP = StepState.TARGET_VERIFICATION
 

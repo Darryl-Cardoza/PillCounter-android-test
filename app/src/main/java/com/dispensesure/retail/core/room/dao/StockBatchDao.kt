@@ -275,7 +275,7 @@ interface StockBatchDao {
 
     // Cycle Count = PMS-requested inventory counts. A batch carries a PMS
     // request id (requestIdFromPMS) only when it was created from an INR^U04
-    // inventory request (Hl7Repository.handleInrInventoryRequest); manually
+    // inventory request (StockHl7Repository.handleInrInventoryRequest); manually
     // started batches have it null. This is the same discriminator the
     // history / unsynced lists use to tag a batch as PMS-sourced.
     // Pending Batch = manually started (non-PMS) inventory batches.

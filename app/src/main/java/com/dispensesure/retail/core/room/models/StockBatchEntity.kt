@@ -43,7 +43,7 @@ data class StockBatchEntity(
 
     /**
      * Progress markers for a chunked HL7 inventory sync (see
-     * [com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository.buildAndSendInventoryResponse]).
+     * [com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository.sendInventory]).
      * [lastAckedChunkIndex] is the highest chunk index that has received a
      * successful ACK; [totalChunks] is fixed once the sync starts. On resume,
      * sending continues at [lastAckedChunkIndex] + 1 instead of restarting from

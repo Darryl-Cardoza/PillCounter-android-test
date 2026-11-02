@@ -133,7 +133,7 @@ class DispenseFlowViewModel @Inject constructor(
 
     /**
      * Hydrate the screen for an HL7/PMS-initiated dispense. Reads the
-     * PMS-created transaction (saved by [com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository])
+     * PMS-created transaction (saved by [com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository])
      * and jumps straight to [DispenseStage.PRE_NDC], with:
      *  - `hl7ExpectedNdc` populated so NDC scan can validate / detect substitutes
      *  - `drugName` / `rxNo` / `targetCount` from the HL7 record

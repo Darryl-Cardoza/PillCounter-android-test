@@ -3,12 +3,15 @@ package com.dispensesure.retail.feature.hl7.core
 import android.content.Context
 import android.util.Log
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.parsing.Hl7OrderHandler
 import com.dispensesure.retail.feature.hl7.parsing.Hl7Parser
 import com.dispensesure.retail.feature.hl7.parsing.Hl7Validator
 import com.dispensesure.retail.feature.hl7.presentation.Hl7OrderProcessor
+import io.mockk.Called
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -30,7 +33,8 @@ class Hl7EventHandlerTest {
     private lateinit var hl7Validator: Hl7Validator
     private lateinit var hl7OrderHandler: Hl7OrderHandler
     private lateinit var hl7OrderProcessor: Hl7OrderProcessor
-    private lateinit var hl7Repository: Hl7Repository
+    private lateinit var dispenseHl7Repository: DispenseHl7Repository
+    private lateinit var stockHl7Repository: StockHl7Repository
     private lateinit var notifier: Hl7Notifier
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var handler: Hl7EventHandler
@@ -52,7 +56,8 @@ class Hl7EventHandlerTest {
         hl7Validator = mockk(relaxed = true)
         hl7OrderHandler = mockk(relaxed = true)
         hl7OrderProcessor = mockk(relaxed = true)
-        hl7Repository = mockk(relaxed = true)
+        dispenseHl7Repository = mockk(relaxed = true)
+        stockHl7Repository = mockk(relaxed = true)
         notifier = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
 
@@ -66,7 +71,8 @@ class Hl7EventHandlerTest {
             hl7Validator,
             hl7OrderHandler,
             hl7OrderProcessor,
-            hl7Repository,
+            dispenseHl7Repository,
+            stockHl7Repository,
             notifier,
             preferenceHelper,
         )
@@ -159,9 +165,64 @@ class Hl7EventHandlerTest {
         handler.onClientConnected("10.0.0.1", 2575)
 
         assertTrue(handler.connectionState.value)
-        verify(exactly = 1) { hl7Repository.resendPendingHl7Transactions() }
-        verify(exactly = 1) { hl7Repository.resendPendingHl7BatchTransactions() }
+        verify(exactly = 1) { dispenseHl7Repository.resendPendingDispenses() }
+        verify(exactly = 1) { stockHl7Repository.resendPendingBatches() }
         verify(exactly = 1) { notifier.show(title = "x", message = "y") }
+    }
+
+    @Test
+    fun `an inventory request goes to the stock repository`() {
+        val inventoryRequest = message(
+            "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||INR^U06|MSG-4|P|2.5\r" +
+                "INV|12345^Aspirin^NDC|A^Active"
+        )
+
+        handler.onMessageReceived(inventoryRequest, "key-4")
+
+        coVerify(timeout = 3000) { stockHl7Repository.handleInrInventoryRequest(inventoryRequest) }
+        verify { dispenseHl7Repository wasNot Called }
+    }
+
+    @Test
+    fun `an order edit goes to the dispense repository`() {
+        val orderEdit = message(
+            "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||RDE^O11|MSG-5|P|2.5\r" +
+                "ORC|XO|RX1|||IP\r" +
+                "RXE||12345^Aspirin||||||||10"
+        )
+
+        handler.onMessageReceived(orderEdit, "key-5")
+
+        coVerify(timeout = 3000) { dispenseHl7Repository.handleOrderEdit(orderEdit) }
+        verify { stockHl7Repository wasNot Called }
+    }
+
+    @Test
+    fun `a ZNI order packet goes to the dispense repository`() {
+        val zniOrderPacket = message(
+            "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||RDE^O11|MSG-6|P|2.5\r" +
+                "ZNI|1|12345||Aspirin|||||||ORD1||10|RX1|0"
+        )
+
+        handler.onMessageReceived(zniOrderPacket, "key-6")
+
+        coVerify(timeout = 3000) { dispenseHl7Repository.handleOrderPacketDispenseRequest(zniOrderPacket) }
+        coVerify(exactly = 0) { dispenseHl7Repository.handleZuiOrderPacketDispenseRequest(any()) }
+        verify { stockHl7Repository wasNot Called }
+    }
+
+    @Test
+    fun `a ZUI order packet goes to the dispense repository`() {
+        val zuiOrderPacket = message(
+            "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||RDE^O11|MSG-7|P|2.5\r" +
+                "ZUI|12345|Aspirin||ORD1|10|RX1|0"
+        )
+
+        handler.onMessageReceived(zuiOrderPacket, "key-7")
+
+        coVerify(timeout = 3000) { dispenseHl7Repository.handleZuiOrderPacketDispenseRequest(zuiOrderPacket) }
+        coVerify(exactly = 0) { dispenseHl7Repository.handleOrderPacketDispenseRequest(any()) }
+        verify { stockHl7Repository wasNot Called }
     }
 
     @Test

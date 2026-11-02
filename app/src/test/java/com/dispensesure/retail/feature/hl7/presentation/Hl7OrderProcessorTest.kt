@@ -11,7 +11,7 @@ import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.core.scanning.data.DrugRepository
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.parsing.model.Hl7OrderAction
 import com.dispensesure.retail.feature.hl7.parsing.model.OrderGroup
@@ -44,7 +44,7 @@ class Hl7OrderProcessorTest {
     private val drugRepository: DrugRepository = mockk(relaxed = true)
     private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
     private val notifier: Hl7Notifier = mockk(relaxed = true)
-    private val hl7Repository: Hl7Repository = mockk(relaxed = true)
+    private val dispenseHl7Repository: DispenseHl7Repository = mockk(relaxed = true)
 
     private lateinit var processor: Hl7OrderProcessor
 
@@ -63,7 +63,7 @@ class Hl7OrderProcessorTest {
 
         processor = Hl7OrderProcessor(
             context, dispenseTxnDao, preferenceHelper,
-            DrugResolver(drugMasterDao, drugRepository, drugImageDownloader), notifier, hl7Repository,
+            DrugResolver(drugMasterDao, drugRepository, drugImageDownloader), notifier, dispenseHl7Repository,
         )
     }
 
@@ -81,7 +81,7 @@ class Hl7OrderProcessorTest {
         assertEquals("0", row.refillNo)
         assertEquals(30, row.targetCount)
         assertEquals(MSG_ID, row.hl7MessageControlId)
-        coVerify { hl7Repository.insertZinContainerDetails(NEW_TXN_ID, message) }
+        coVerify { dispenseHl7Repository.insertZinContainerDetails(NEW_TXN_ID, message) }
     }
 
     @Test
