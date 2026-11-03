@@ -10,5 +10,6 @@ data class StockBottleInfoDto(
     val bottleQty: Int?,
     val looseQty: Int?,
     val packageQty: Int?,
-    val imagePaths: List<String>? = null
+    val imagePaths: List<String>? = null,
+    val serialNo: String? = null
 )

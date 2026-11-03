@@ -62,4 +62,13 @@ data class StockBatchEntity(
 
     /** Region of the user who started it; lists only show the logged-in region's batches. */
     val region: Region = Region.US,
+
+    /**
+     * ZDR-15 of the PMS request, distinct from [requestIdFromPMS] (which is MSH-10). The PMS
+     * correlates its inventory request to our response on this value, so it must be stored at
+     * request time and echoed back — MSH-10 alone is not enough to match the two up.
+     *
+     * Appended last deliberately: inserting it mid-record would shift every later componentN.
+     */
+    val orderReferenceFromPMS: String? = null,
 )

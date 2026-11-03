@@ -141,11 +141,64 @@ class Hl7ValidatorTest {
 
     private fun validate(giveCode: String) = validator.validateStructure(rdeWithGiveCode(giveCode))
 
-    // Exact text: Hl7Validator's DIN filter matches this wording, so a library rewording must fail here.
+    // Behaviour, not wording: a US device must reject an 8-digit Canadian DIN. The AAR's
+    // error text carries no per-RXE index, so asserting an exact string here only tracked
+    // the library's phrasing — assert the rejection and the segment instead.
     @Test
     fun `US rejects an 8-digit DIN as an invalid NDC`() {
-        val errors = validate("02230714").issues.map { issue -> issue.errorText }
-        assertTrue(errors.toString(), "Invalid NDC in RXE 1" in errors)
+        val result = validate("02230714")
+        assertFalse(result.issues.toString(), result.isValid)
+        assertTrue(
+            result.issues.toString(),
+            result.issues.any { it.errorText.contains("Invalid NDC") && it.segmentId == "RXE" },
+        )
+    }
+
+    // Review point 7: a DIN in one RXE must not mask a bad code in a DIFFERENT RXE.
+    // Single-RXE cases cannot distinguish "suppress for this RXE" from "suppress for all",
+    // so this two-RXE case is the one that pins the behaviour.
+    @Test
+    fun `canada DIN in one RXE does not mask a malformed code in another`() {
+        every { regionProvider.current } returns Region.CA
+        val message = parse(buildString {
+            append("MSH|^~\\&|PMS|FAC|APP|STORE|20240101120000||RDE^O11|CTRL-1|P|2.5\r")
+            append("ORC|NW|ORD-001|RX-001\r")
+            append("RXE||02230714^DRUG A|30||TAB|||||30|TAB|0|||RX-001\r")
+            append("RXE||ABC123^DRUG B|30||TAB|||||30|TAB|0|||RX-002\r")
+        })
+        val result = validator.validateStructure(message)
+        assertFalse(
+            "the malformed code in RXE 2 must still be reported: ${result.issues}",
+            result.isValid,
+        )
+    }
+
+    private fun twoRxe(first: String, second: String) = parse(buildString {
+        append("MSH|^~\\&|PMS|FAC|APP|STORE|20240101120000||RDE^O11|CTRL-1|P|2.5\r")
+        append("ORC|NW|ORD-001|RX-001\r")
+        append("RXE||$first^DRUG A|30||TAB|||||30|TAB|0|||RX-001\r")
+        append("RXE||$second^DRUG B|30||TAB|||||30|TAB|0|||RX-002\r")
+    })
+
+    @Test
+    fun `canada accepts two valid codes of different kinds in separate RXEs`() {
+        every { regionProvider.current } returns Region.CA
+        val result = validator.validateStructure(twoRxe("02230714", "00093005801"))
+        assertTrue(result.issues.toString(), result.isValid)
+    }
+
+    @Test
+    fun `US still rejects a DIN in a multi-RXE order`() {
+        every { regionProvider.current } returns Region.US
+        val result = validator.validateStructure(twoRxe("00093005801", "02230714"))
+        assertFalse(result.issues.toString(), result.isValid)
+        assertTrue(result.issues.any { it.segmentId == "RXE" && it.errorText.contains("Invalid NDC") })
+    }
+
+    @Test
+    fun `canada accepts a dashed NDC`() {
+        every { regionProvider.current } returns Region.CA
+        assertTrue(validate("00093-0058-01").isValid)
     }
 
     @Test

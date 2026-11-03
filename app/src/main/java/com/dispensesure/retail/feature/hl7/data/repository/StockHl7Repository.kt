@@ -25,6 +25,7 @@ import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.hl7.core.Hl7MessageSender
 import com.dispensesure.retail.feature.hl7.data.Hl7ConfigProvider
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
+import com.dispensesure.retail.feature.hl7.util.HL7Config
 import com.dispensesure.retail.feature.hl7.util.Hl7Format
 import com.dispensesure.retail.feature.hl7.util.InventoryMessageBuilder
 import com.dispensesure.retail.feature.hl7.util.isSuccessAck
@@ -103,14 +104,17 @@ class StockHl7Repository @Inject constructor(
             logger.i("sendInventory started, batchId=$batchId")
 
             val config = hl7ConfigProvider.current()
-            if (config.messageFormat == Hl7Format.DISPENSESURE_NATIVE) {
-                sendInventoryNative(batchId, trigger)
-                return
-            }
-
             val batch = stockBatchDao.getById(batchId)
             if (batch == null) {
                 logger.w("No batch found for batchId=$batchId")
+                return
+            }
+
+            // Chosen per batch, not by the setting alone: only a batch that came from a PMS ZDR
+            // request has a request id to answer. A manual count (requestIdFromPMS == null) always
+            // goes out as standard, even while NATIVE is the active format.
+            if (config.messageFormat == Hl7Format.DISPENSESURE_NATIVE && batch.requestIdFromPMS != null) {
+                sendInventoryNative(batch, trigger, config)
                 return
             }
 
@@ -214,28 +218,98 @@ class StockHl7Repository @Inject constructor(
 
     // ─────────────────────── OUTBOUND: DISPENSESURE_NATIVE inventory response (MSH+ZDS) ───────────────────────
 
-    private suspend fun sendInventoryNative(batchId: Long, trigger: SendTrigger) {
-        val batch = stockBatchDao.getById(batchId)
-        if (batch == null) {
-            logger.w("NATIVE sendInventory: no batch found for batchId=$batchId")
-            return
+    /**
+     * Counts for one batch, one row per (ndc, lot, expiry), as the iOS app emits them.
+     *
+     * Android has no sealed/open flag per record: one [StockBottleInfoDto] row carries both
+     * bottleQty (sealed) and looseQty (opened), so both sides accumulate from every row.
+     * sealed pills = bottleQty * packageQty, sealed bottles = bottleQty; opened pills = looseQty,
+     * opened bottles = 1 per row with a non-zero looseQty (that row is the open container).
+     * Null quantities count as 0; groups totalling 0 are dropped; output is sorted by key.
+     */
+    /**
+     * ZDS-30 rows for a native inventory response: "/images/<path>^controlled_count^<ndc>", one
+     * per controlled-count photo on the batch's bottles. The standard INU^U05 path sends these as
+     * image OBX rows, so a controlled count made under the native format must carry them too —
+     * otherwise the photo evidence for controlled stock is lost on one format and not the other.
+     */
+    internal suspend fun buildInventoryImageList(batchId: Long): List<String> =
+        stockBottleInfoDao.getByBatchId(batchId).flatMap { row ->
+            val ndc = row.ndc?.trim().orEmpty()
+            row.imagePaths.orEmpty()
+                .filter { it.isNotBlank() }
+                .map { path -> "/images/$path^controlled_count^$ndc" }
         }
-        val txns = stockBottleInfoDao.getByBatchId(batchId)
-        val ndcs = txns.mapNotNull { it.ndc?.trim()?.takeIf { n -> n.isNotBlank() } }.distinct()
 
+    internal suspend fun buildInventoryCounts(batchId: Long): List<InventoryMessageBuilder.ZdrInventoryCount> {
+        data class Key(val ndc: String, val lot: String, val expiry: String)
+        class Acc {
+            var sealed = 0; var sealedBottles = 0; var opened = 0; var openedBottles = 0
+            var drugName = ""; var serial = ""
+        }
+
+        val groups = HashMap<Key, Acc>()
+        for (row in stockBottleInfoDao.getByBatchId(batchId)) {
+            val ndc = row.ndc?.trim().orEmpty()
+            if (ndc.isBlank()) continue
+            val bottleQty = row.bottleQty ?: 0
+            val looseQty = row.looseQty ?: 0
+            val packageQty = row.packageQty ?: 0
+            val acc = groups.getOrPut(Key(ndc, row.lotNo?.trim().orEmpty(), row.expiry?.trim().orEmpty())) { Acc() }
+            acc.sealed += bottleQty * packageQty
+            acc.sealedBottles += bottleQty
+            acc.opened += looseQty
+            if (looseQty > 0) acc.openedBottles += 1
+            if (acc.drugName.isEmpty()) acc.drugName = row.drugName?.trim().orEmpty()
+            if (acc.serial.isEmpty()) acc.serial = row.serialNo?.trim().orEmpty()
+        }
+        return groups.entries
+            .map { (k, a) ->
+                InventoryMessageBuilder.ZdrInventoryCount(
+                    ndc = k.ndc, total = a.sealed + a.opened, sealed = a.sealed, sealedBottles = a.sealedBottles,
+                    opened = a.opened, openedBottles = a.openedBottles, lot = k.lot, expiry = k.expiry,
+                    drugName = a.drugName, serial = a.serial,
+                )
+            }
+            // Keep a group whose pill total is 0 but which holds sealed bottles: packageQty is
+            // nullable, so an unknown package size makes sealed pills 0 while the bottles were
+            // really counted. Filtering on total alone silently drops that stock. Mirrors iOS
+            // (sealed + sealedBottles > 0 || opened > 0).
+            .filter { it.sealed + it.sealedBottles > 0 || it.opened > 0 }
+            .sortedWith(compareBy({ it.ndc }, { it.lot }, { it.expiry }))
+    }
+
+    private suspend fun sendInventoryNative(batch: StockBatchEntity, trigger: SendTrigger, config: HL7Config) {
+        val batchId = batch.batchId
+        val counts = buildInventoryCounts(batchId)
+        val ndcs = stockBottleInfoDao.getByBatchId(batchId)
+            .mapNotNull { it.ndc?.trim()?.takeIf { n -> n.isNotBlank() } }.distinct()
+        val imageList = buildInventoryImageList(batchId)
+
+        // The PMS matches its request to this response on ZDR-15, not on MSH-10 alone, so both
+        // the request message id and the request's own reference go back.
         val ack = InventoryMessageBuilder.buildZdrInventoryAck(
             requestMessageId = batch.requestIdFromPMS.orEmpty(),
-            orderReferenceNumber = batch.requestIdFromPMS.orEmpty(),
+            orderReferenceNumber = batch.orderReferenceFromPMS.orEmpty(),
             ndcs = ndcs,
-            config = hl7ConfigProvider.current(),
+            counts = counts,
+            imageList = imageList,
+            // userName is stored as a display string; split so the PMS gets structured components.
+            operatorFamilyName = batch.userName?.trim()?.substringAfterLast(' ', "")?.takeIf { it.isNotBlank() },
+            operatorGivenName = batch.userName?.trim()?.substringBefore(' ')?.takeIf { it.isNotBlank() },
+            config = config,
         )
         val result = hl7MessageSender.sendRaw(ack)
-        if (result.isSuccess) {
+        // Transport success only means the payload reached the socket; the PMS must accept it.
+        val ackAccepted = result.getOrNull()?.let { isSuccessAck(it) } ?: false
+        if (result.isSuccess && ackAccepted) {
             stockBatchDao.markBatchSynced(batchId)
-            logger.i("NATIVE inventory ZDS ack sent | batchId=$batchId ndcs=${ndcs.size}")
+            logger.i("NATIVE inventory ZDS sent and ACKed | batchId=$batchId ndcs=${ndcs.size} counts=${counts.size}")
             auditLogger.log(BatchSynced(batchId, trigger, BatchSyncOutcome.COMPLETE, chunkIndex = null, totalChunks = null))
         } else {
-            logger.e("NATIVE inventory ZDS ack failed | batchId=$batchId", result.exceptionOrNull(), event = LogEvent.HL7_SEND_FAILED)
+            val msg = "NATIVE inventory ZDS failed/NAKed | batchId=$batchId"
+            if (result.isFailure) logger.w(msg, result.exceptionOrNull(), event = LogEvent.HL7_SEND_FAILED)
+            else logger.e("$msg: non-success ACK", event = LogEvent.HL7_SEND_FAILED)
             auditLogger.log(BatchSynced(batchId, trigger, BatchSyncOutcome.FAILED, chunkIndex = null, totalChunks = null))
         }
     }
@@ -387,7 +461,7 @@ class StockHl7Repository @Inject constructor(
 
     /**
      * Handles INR^U06 with a ZDR segment (flowType=INVENTORY) — the DISPENSESURE_NATIVE inventory path.
-     * Creates a stock transaction for each resolved NDC in ZDR-05, then sends MSH+ZDS (NATIVE) back.
+     * Creates a stock transaction for each resolved NDC in ZDR-05, the single MSH+ZDS response is sent at End Count by [sendInventory].
      *
      * Validation is done in [Hl7Validator.validateZdrInventoryStructure] before this is called;
      * this method assumes the message is structurally valid.
@@ -413,11 +487,17 @@ class StockHl7Repository @Inject constructor(
             resolveInventoryItem(
                 ndc = ndc,
                 fallbackName = zdr.drugs.find { it.ndc.trim() == ndc }?.name.orEmpty(),
-                lot = "",
-                expiry = "",
-                targetCount = 0
             )?.let { resolvedItems.add(it) }
         }
+
+        // Logged before the empty-resolution guard so a request that resolves nothing is still recorded.
+        auditLogger.log(
+            PmsRequestReceived(
+                controlId = msgId.takeIf { it.isNotBlank() },
+                drugCount = ndcs.size,
+                resolvedCount = resolvedItems.size
+            )
+        )
 
         if (resolvedItems.isEmpty()) {
             logger.w("No drugs resolved for ZDR INVENTORY | msgId=$msgId — no batch created")
@@ -438,19 +518,24 @@ class StockHl7Repository @Inject constructor(
             note = null,
             bucketId = "",
             requestIdFromPMS = msgId,
+            // ZDR-15 is the PMS's own request id and is what it correlates the response on.
+            orderReferenceFromPMS = zdr.orderReferenceNumber.trim().takeIf { it.isNotBlank() },
             region = regionProvider.current,
         )
         val batchId = stockBatchDao.insert(batch)
-        if (batchId > 0L) {
-            auditLogger.log(
-                BatchCreated(
-                    batchId = batchId,
-                    source = BatchSource.PMS,
-                    bucket = batch.bucketId,
-                    requestedNdcs = resolvedItems.map { it.ndc }
-                )
-            )
+        // insert ignores a conflicting row and returns -1; no batch exists to attach txns to.
+        if (batchId <= 0L) {
+            logger.w("ZDR INVENTORY: batch insert returned $batchId | msgId=$msgId — no stock txns created")
+            return
         }
+        auditLogger.log(
+            BatchCreated(
+                batchId = batchId,
+                source = BatchSource.PMS,
+                bucket = batch.bucketId,
+                requestedNdcs = resolvedItems.map { it.ndc }
+            )
+        )
 
         for (item in resolvedItems) {
             val txn = StockTxnEntity(
@@ -466,19 +551,7 @@ class StockHl7Repository @Inject constructor(
 
         logger.i("ZDR INVENTORY: created ${resolvedItems.size} stock txns for batchId=$batchId")
 
-        // Send MSH+ZDS (NATIVE) response back
-        val ack = InventoryMessageBuilder.buildZdrInventoryAck(
-            requestMessageId = msgId,
-            orderReferenceNumber = zdr.orderReferenceNumber.orEmpty(),
-            ndcs = resolvedItems.map { it.ndc },
-            config = hl7ConfigProvider.current()
-        )
-        val result = hl7MessageSender.sendRaw(ack)
-        if (result.isFailure) {
-            logger.e("ZDR INVENTORY: failed to send ZDS ack | msgId=$msgId", result.exceptionOrNull(), event = LogEvent.HL7_SEND_FAILED)
-        } else {
-            logger.i("ZDR INVENTORY: ZDS ack sent | msgId=$msgId")
-        }
+        // No immediate response: exactly one ZDS goes out at End Count, via sendInventory.
 
         notifier.show(
             title = context.getString(R.string.hl7_notification_inventory_title),

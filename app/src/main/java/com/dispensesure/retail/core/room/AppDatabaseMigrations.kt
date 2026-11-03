@@ -28,4 +28,11 @@ object AppDatabaseMigrations {
             )
         }
     }
+
+    /** Adds ZDR-15 storage so a native inventory response can echo the PMS's own request id. */
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `stock_batch` ADD COLUMN `orderReferenceFromPMS` TEXT")
+        }
+    }
 }

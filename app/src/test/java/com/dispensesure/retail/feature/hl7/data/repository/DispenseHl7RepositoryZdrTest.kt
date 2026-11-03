@@ -256,25 +256,37 @@ class DispenseHl7RepositoryZdrTest {
     }
 
     @Test
-    fun `NW zero quantity is rejected — no txn inserted`() = runTest(testDispatcher) {
-        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
-
-        createRepo().handleZdrNewOrRefill(zdrMsg(quantity = "0"))
-
-        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
-    }
-
-    @Test
-    fun `NW resend of finished txn is ignored`() = runTest(testDispatcher) {
+    fun `NW for a completed fill creates a fresh transaction`() = runTest(testDispatcher) {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
         val finished = DispenseTxnEntity(txnId = 1L, status = CountStatus.COMPLETED, rxNo = "RX-001", refillNo = "1")
-        // Code prefers transactionOrderId (ZDR-15) when present; zdrMsg() has orderId="ORDER-001"
         coEvery { dispenseTxnDao.getByTransactionOrderId("ORDER-001") } returns finished
-        coEvery { dispenseTxnDao.getByRxNoAndMessageControlId("RX-001", "MSG001") } returns finished
 
         createRepo().handleZdrNewOrRefill(zdrMsg())
 
-        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
+        coVerify(exactly = 1) { dispenseTxnDao.upsertPreservingId(any()) }
+        coVerify(exactly = 0) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `NW stores ZDR-15 as transactionOrderId`() = runTest(testDispatcher) {
+        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
+        val slot = slot<DispenseTxnEntity>()
+        coEvery { dispenseTxnDao.upsertPreservingId(capture(slot)) } returns 200L
+
+        createRepo().handleZdrNewOrRefill(zdrMsg(orderId = "ORD-77"))
+
+        assertEquals("ORD-77", slot.captured.transactionOrderId)
+    }
+
+    @Test
+    fun `NW with several drugs on the wire acts on the first only`() = runTest(testDispatcher) {
+        // The validator rejects this before dispatch; the handler must still never create more than one txn.
+        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug("00527-8113-37", "DRUG A", 11L)
+        coEvery { drugMasterDao.getDrugByNdc("60505008404", any()) } returns drug("60505008404", "DRUG B", 12L)
+
+        createRepo().handleZdrNewOrRefill(zdrMsgMultiDrug())
+
+        coVerify(exactly = 1) { dispenseTxnDao.upsertPreservingId(any()) }
     }
 
     @Test
@@ -288,32 +300,6 @@ class DispenseHl7RepositoryZdrTest {
 
         coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
         coVerify(exactly = 1) { dispenseTxnDao.updateFromHl7Edit(55L, any(), any(), any(), any(), any()) }
-    }
-
-    // ════════════════════ NW — multi-drug ════════════════════
-
-    @Test
-    fun `NW multi-drug inserts one txn per drug`() = runTest(testDispatcher) {
-        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug("00527-8113-37", "DRUG A", 11L)
-        coEvery { drugMasterDao.getDrugByNdc("60505008404", any()) } returns drug("60505008404", "DRUG B", 12L)
-
-        createRepo().handleZdrNewOrRefill(zdrMsgMultiDrug())
-
-        coVerify(exactly = 2) { dispenseTxnDao.upsertPreservingId(any()) }
-    }
-
-    @Test
-    fun `NW multi-drug skips drug with blank NDC, inserts the rest`() = runTest(testDispatcher) {
-        // first NDC blank, second valid
-        val msg = parseHl7Message(
-            "${mshSegment("RDE", "O11", "MSG-BLANK")}\r" +
-                "ZDR|D|1.0|MSG-BLANK|NW|^DRUG BLANK~60505008404^DRUG B|NDC|DOE^JANE|||PAT|||AB1234|RX-B|ORDER-B|30|1|R|5|A||TAB|||"
-        )
-        coEvery { drugMasterDao.getDrugByNdc("60505008404", any()) } returns drug("60505008404", "DRUG B", 12L)
-
-        createRepo().handleZdrNewOrRefill(msg)
-
-        coVerify(exactly = 1) { dispenseTxnDao.upsertPreservingId(any()) }
     }
 
     // ════════════════════ RF — refill ════════════════════
@@ -358,16 +344,14 @@ class DispenseHl7RepositoryZdrTest {
     }
 
     @Test
-    fun `RF resend of finished fill is ignored`() = runTest(testDispatcher) {
+    fun `RF for a completed fill creates a fresh transaction`() = runTest(testDispatcher) {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
         val finished = DispenseTxnEntity(txnId = 9L, status = CountStatus.COMPLETED, rxNo = "RX-001", refillNo = "2")
-        // Code prefers transactionOrderId (ZDR-15) when present; zdrMsg() has orderId="ORDER-001"
         coEvery { dispenseTxnDao.getByTransactionOrderId("ORDER-001") } returns finished
-        coEvery { dispenseTxnDao.getByRxNoAndMessageControlId("RX-001", "MSG001") } returns finished
 
         createRepo().handleZdrNewOrRefill(zdrMsg(action = "RF", fillNumber = "2"))
 
-        coVerify(exactly = 0) { dispenseTxnDao.upsertPreservingId(any()) }
+        coVerify(exactly = 1) { dispenseTxnDao.upsertPreservingId(any()) }
     }
 
     // ════════════════════ CA — cancel ════════════════════
@@ -382,18 +366,6 @@ class DispenseHl7RepositoryZdrTest {
         verify { auditLogger.log(match { it is OrderCancelled && it.txnIds == listOf(77L) }) }
     }
 
-    @Test
-    fun `CA without orderId returns false`() = runTest(testDispatcher) {
-        val msg = parseHl7Message(
-            "${mshSegment("RDE", "O11", "MSG-CA-NORX")}\r" +
-                "ZDR|D|1.0|MSG-CA-NORX|CA|00527-8113-37^DRUG|NDC|DOE^JANE|||PAT|||AB|||30|1|R|5|A||TAB|||"
-        )
-        val result = createRepo().handleZdrStatusChange(msg)
-
-        assertFalse(result)
-        coVerify(exactly = 0) { dispenseTxnDao.cancelActiveTxnsByOrderId(any()) }
-    }
-
     // ════════════════════ HD — hold ════════════════════
 
     @Test
@@ -404,17 +376,6 @@ class DispenseHl7RepositoryZdrTest {
 
         coVerify(exactly = 1) { dispenseTxnDao.updateStatusByOrderIdIfPartial("ORDER-001", CountStatus.ON_HOLD, any()) }
         verify { auditLogger.log(match { it is OrderHeld && it.orderId == "ORDER-001" }) }
-    }
-
-    @Test
-    fun `HD without orderId returns false`() = runTest(testDispatcher) {
-        val msg = parseHl7Message(
-            "${mshSegment("RDE", "O11", "MSG-HD")}\r" +
-                "ZDR|D|1.0|MSG-HD|HD|00527-8113-37^DRUG|NDC|DOE^JANE|||PAT|||AB|RX-HOLD||30|1|R|5|A||TAB|||"
-        )
-        val result = createRepo().handleZdrStatusChange(msg)
-
-        assertFalse(result)
     }
 
     // ════════════════════ RL — release ════════════════════
@@ -439,34 +400,6 @@ class DispenseHl7RepositoryZdrTest {
 
         coVerify { dispenseTxnDao.softDeleteByOrderId("ORDER-001", any()) }
         verify { auditLogger.log(match { it is OrderDiscontinued && it.orderId == "ORDER-001" }) }
-    }
-
-    // ════════════════════ RL — blank orderId ════════════════════
-
-    @Test
-    fun `RL without orderId returns false`() = runTest(testDispatcher) {
-        val msg = parseHl7Message(
-            "${mshSegment("RDE", "O11", "MSG-RL-NOID")}\r" +
-                "ZDR|D|1.0|MSG-RL-NOID|RL|00527-8113-37^DRUG|NDC|DOE^JANE|||PAT|||AB|RX-RL||30|1|R|5|A||TAB|||"
-        )
-        val result = createRepo().handleZdrStatusChange(msg)
-
-        assertFalse(result)
-        coVerify(exactly = 0) { dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold(any(), any(), any()) }
-    }
-
-    // ════════════════════ DC — blank orderId ════════════════════
-
-    @Test
-    fun `DC without orderId returns false`() = runTest(testDispatcher) {
-        val msg = parseHl7Message(
-            "${mshSegment("RDE", "O11", "MSG-DC-NOID")}\r" +
-                "ZDR|D|1.0|MSG-DC-NOID|DC|00527-8113-37^DRUG|NDC|DOE^JANE|||PAT|||AB|RX-DC||30|1|R|5|A||TAB|||"
-        )
-        val result = createRepo().handleZdrStatusChange(msg)
-
-        assertFalse(result)
-        coVerify(exactly = 0) { dispenseTxnDao.softDeleteByOrderId(any(), any()) }
     }
 
     // ════════════════════ XO — change order ════════════════════
@@ -544,32 +477,100 @@ class DispenseHl7RepositoryZdrTest {
         assertEquals(30, qtySlot.captured)
     }
 
-    // ════════════════════ NW/RF — fallback to rxNo when orderId absent ════════════════════
+    // ════════════════════ blank ZDR-15 — resolved order key ════════════════════
+
+    private fun blankRefMsg(action: String, rx: String = "RX-NOID", fill: String = "1", qty: String = "60") = parseHl7Message(
+        "${mshSegment("RDE", "O11", "MSG-$action")}\r" +
+            "ZDR|D|1.0|MSG-$action|$action|00527-8113-37^DRUG A|NDC|DOE^JANE|||PAT|||AB|$rx||$qty|$fill|R|5|A||TAB|||"
+    )
 
     @Test
-    fun `NW with blank orderId falls back to rxNo+fillNo lookup`() = runTest(testDispatcher) {
+    fun `NW with blank ZDR-15 stores the resolved rx-fill key`() = runTest(testDispatcher) {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
-        // No orderId in ZDR-15 -> fallback to rxNo+fillNo
-        val msg = parseHl7Message(
-            "${mshSegment("RDE", "O11", "MSG-NW-NOID")}\r" +
-                "ZDR|D|1.0|MSG-NW-NOID|NW|00527-8113-37^DRUG A|NDC|DOE^JANE|||PAT|||AB|RX-NOID||60|1|R|5|A||TAB|||"
-        )
-        createRepo().handleZdrNewOrRefill(msg)
+        val slot = slot<DispenseTxnEntity>()
+        coEvery { dispenseTxnDao.upsertPreservingId(capture(slot)) } returns 200L
 
-        // Fallback path queries rxNo+fillNo when orderId absent
-        coVerify { dispenseTxnDao.getByRxNoAndFillNo("RX-NOID", any()) }
+        createRepo().handleZdrNewOrRefill(blankRefMsg("NW", fill = "001"))
+
+        assertEquals("RX-NOID-1", slot.captured.transactionOrderId)
+        coVerify { dispenseTxnDao.getByTransactionOrderId("RX-NOID-1") }
     }
 
     @Test
-    fun `RF with blank orderId falls back to rxNo+fillNo lookup`() = runTest(testDispatcher) {
+    fun `RF with blank ZDR-15 stores the resolved rx-fill key`() = runTest(testDispatcher) {
         coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
-        val msg = parseHl7Message(
-            "${mshSegment("RDE", "O11", "MSG-RF-NOID")}\r" +
-                "ZDR|D|1.0|MSG-RF-NOID|RF|00527-8113-37^DRUG A|NDC|DOE^JANE|||PAT|||AB|RX-NOID||60|1|R|5|A||TAB|||"
-        )
-        createRepo().handleZdrNewOrRefill(msg)
+        val slot = slot<DispenseTxnEntity>()
+        coEvery { dispenseTxnDao.upsertPreservingId(capture(slot)) } returns 200L
 
-        coVerify { dispenseTxnDao.getByRxNoAndFillNo("RX-NOID", any()) }
+        createRepo().handleZdrNewOrRefill(blankRefMsg("RF", fill = "2"))
+
+        assertEquals("RX-NOID-2", slot.captured.transactionOrderId)
+    }
+
+    // Regression: with ZDR-15 AND ZDR-17 both blank, the key must be re-derived from the
+    // computed fill. Keying every refill to "rx-0" made the second RF find the first and
+    // update it in place — one row where two fills were dispensed, and the PMS still got AA.
+    @Test
+    fun `successive refills with a blank ZDR-15 and blank fill do not overwrite each other`() = runTest(testDispatcher) {
+        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
+        val stored = mutableListOf<DispenseTxnEntity>()
+        coEvery { dispenseTxnDao.upsertPreservingId(capture(stored)) } returns 200L
+        // Fill 1 already on file; nothing is keyed to the derived fill-2 key yet.
+        coEvery { dispenseTxnDao.getMostRecentByRxNo("RX-NOID") } returns
+            DispenseTxnEntity(txnId = 200L, status = CountStatus.COMPLETED, rxNo = "RX-NOID", refillNo = "1")
+        coEvery { dispenseTxnDao.getByTransactionOrderId("RX-NOID-2") } returns null
+
+        createRepo().handleZdrNewOrRefill(blankRefMsg("RF", fill = ""))
+
+        // A NEW row keyed to the derived fill, not an update of fill 1.
+        assertEquals(1, stored.size)
+        assertEquals("RX-NOID-2", stored.single().transactionOrderId)
+        assertEquals("2", stored.single().refillNo)
+        coVerify(exactly = 0) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `blank ZDR-15 order is created then found by a subsequent XO`() = runTest(testDispatcher) {
+        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
+        val slot = slot<DispenseTxnEntity>()
+        coEvery { dispenseTxnDao.upsertPreservingId(capture(slot)) } returns 200L
+        val repo = createRepo()
+        repo.handleZdrNewOrRefill(blankRefMsg("NW"))
+        val stored = slot.captured.copy(txnId = 200L)
+        coEvery { dispenseTxnDao.getByTransactionOrderId(stored.transactionOrderId!!) } returns stored
+
+        val result = repo.handleZdrChangeOrder(blankRefMsg("XO", qty = "30"))
+
+        assertTrue(result)
+        coVerify(exactly = 1) { dispenseTxnDao.updateFromHl7Edit(200L, any(), 30, any(), null, any()) }
+    }
+
+    @Test
+    fun `blank ZDR-15 order is created then found by a subsequent CA`() = runTest(testDispatcher) {
+        coEvery { drugMasterDao.getDrugByNdc("00527-8113-37", any()) } returns drug()
+        val slot = slot<DispenseTxnEntity>()
+        coEvery { dispenseTxnDao.upsertPreservingId(capture(slot)) } returns 200L
+        val repo = createRepo()
+        repo.handleZdrNewOrRefill(blankRefMsg("NW"))
+        val key = slot.captured.transactionOrderId!!
+        coEvery { dispenseTxnDao.cancelActiveTxnsByOrderId(key) } returns listOf(200L)
+
+        val result = repo.handleZdrStatusChange(blankRefMsg("CA"))
+
+        assertTrue(result)
+        coVerify(exactly = 1) { dispenseTxnDao.cancelActiveTxnsByOrderId("RX-NOID-1") }
+    }
+
+    @Test
+    fun `HD RL and DC with blank ZDR-15 use the resolved key`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        assertTrue(repo.handleZdrStatusChange(blankRefMsg("HD")))
+        assertTrue(repo.handleZdrStatusChange(blankRefMsg("RL")))
+        assertTrue(repo.handleZdrStatusChange(blankRefMsg("DC")))
+
+        coVerify { dispenseTxnDao.updateStatusByOrderIdIfPartial("RX-NOID-1", CountStatus.ON_HOLD, any()) }
+        coVerify { dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold("RX-NOID-1", CountStatus.PARTIAL, any()) }
+        coVerify { dispenseTxnDao.softDeleteByOrderId("RX-NOID-1", any()) }
     }
 
     // ════════════════════ RF — update open existing txn ════════════════════

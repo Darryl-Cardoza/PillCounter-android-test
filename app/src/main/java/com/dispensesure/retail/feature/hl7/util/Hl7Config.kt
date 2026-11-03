@@ -8,7 +8,7 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
  */
 enum class Hl7Format(val sendingApplication: String) {
     DISPENSESURE_STANDARD("DISPENSESURE"),
-    DISPENSESURE_NATIVE("DISPENSESURE"),
+    DISPENSESURE_NATIVE("DISPENSESURE_NATIVE"),
     EYECON("EYECON"),
     VIVID("VIVID");
 

@@ -113,15 +113,20 @@ class Hl7Parser @Inject constructor() {
         )
     }
 
-    private fun mapPriority(code: String?): TxnPriority {
-        return when (code?.trim()?.uppercase()) {
-            "S", "A" -> TxnPriority.High
-            "R"       -> TxnPriority.Medium
-            "T"       -> TxnPriority.Low
-            null, ""  -> TxnPriority.Medium
-            else      -> {
-                logger.w("Unknown ORC-7.6 priority code '$code' — treating as Medium")
-                TxnPriority.Medium
+    companion object {
+        private val priorityLogger = AppLogger("Hl7Parser")
+
+        /** ORC-7.6 / ZDR-18 priority: S/A=High, T=Low, R/blank/unknown=Medium. Shared by the standard and native flows. */
+        fun mapPriority(code: String?): TxnPriority {
+            return when (code?.trim()?.uppercase()) {
+                "S", "A" -> TxnPriority.High
+                "R"       -> TxnPriority.Medium
+                "T"       -> TxnPriority.Low
+                null, ""  -> TxnPriority.Medium
+                else      -> {
+                    priorityLogger.w("Unknown ORC-7.6 priority code '$code' — treating as Medium")
+                    TxnPriority.Medium
+                }
             }
         }
     }

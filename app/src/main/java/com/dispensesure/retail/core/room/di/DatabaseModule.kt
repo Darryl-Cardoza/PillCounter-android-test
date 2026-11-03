@@ -42,7 +42,7 @@ object DatabaseModule {
         )
             // v6 → v7 keeps the data: it only adds the drug region.
             // v7 → v8 only adds the dek_versions table.
-            .addMigrations(AppDatabaseMigrations.MIGRATION_6_7, AppDatabaseMigrations.MIGRATION_7_8)
+            .addMigrations(AppDatabaseMigrations.MIGRATION_6_7, AppDatabaseMigrations.MIGRATION_7_8, AppDatabaseMigrations.MIGRATION_8_9)
             // Stock-count normalization (v3 → v4) restructures local tables; existing local
             // rows are disposable (synced to PMS), so recreate rather than migrate.
             .fallbackToDestructiveMigration()

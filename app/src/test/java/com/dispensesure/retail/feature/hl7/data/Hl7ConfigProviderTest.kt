@@ -48,6 +48,16 @@ class Hl7ConfigProviderTest {
     }
 
     @Test
+    fun `native sends DISPENSESURE_NATIVE as the outbound sending application`() {
+        every { preferenceHelper.getHl7Format() } returns Hl7Format.DISPENSESURE_NATIVE
+
+        val config = hl7ConfigProvider.current()
+
+        assertEquals("DISPENSESURE_NATIVE", config.sendingApplication)
+        assertEquals(Hl7Format.DISPENSESURE_NATIVE, config.messageFormat)
+    }
+
+    @Test
     fun `Vivid sends the app name as the sending application`() {
         every { preferenceHelper.getHl7Format() } returns Hl7Format.VIVID
 
@@ -66,5 +76,27 @@ class Hl7ConfigProviderTest {
 
         assertEquals("PILLCOUNTER", config.sendingFacility)
         assertEquals("PMS", config.receivingFacility)
+    }
+
+    @Test
+    fun `native format sends DISPENSESURE_NATIVE on the wire`() {
+        assertEquals("DISPENSESURE_NATIVE", Hl7Format.DISPENSESURE_NATIVE.sendingApplication)
+    }
+
+    @Test
+    fun `standard format keeps the legacy DISPENSESURE wire value`() {
+        assertEquals("DISPENSESURE", Hl7Format.DISPENSESURE_STANDARD.sendingApplication)
+    }
+
+    @Test
+    fun `every format round-trips through its sending application`() {
+        Hl7Format.entries.forEach { format ->
+            assertEquals(format, Hl7Format.fromSendingApplication(format.sendingApplication))
+        }
+    }
+
+    @Test
+    fun `legacy stored DISPENSESURE value reads back as standard`() {
+        assertEquals(Hl7Format.DISPENSESURE_STANDARD, Hl7Format.fromSendingApplication("DISPENSESURE"))
     }
 }

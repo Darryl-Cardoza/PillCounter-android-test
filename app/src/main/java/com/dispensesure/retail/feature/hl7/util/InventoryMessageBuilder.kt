@@ -4,6 +4,8 @@ import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
 import org.rite.hl7.HL7
 import java.io.File
+import org.rite.hl7.config.HL7Config as LibHl7Config
+import org.rite.hl7.config.HL7Version as LibHl7Version
 
 /**
  * Builds the INU^U05 inventory response, split into chunks for large batches.
@@ -26,6 +28,8 @@ object InventoryMessageBuilder {
         val openedBottles: Int,
         val lot: String = "",
         val expiry: String = "",
+        val drugName: String = "",
+        val serial: String = "",
     )
 
     fun buildZdrInventoryAck(
@@ -33,16 +37,26 @@ object InventoryMessageBuilder {
         orderReferenceNumber: String = "",
         ndcs: List<String>,
         counts: List<ZdrInventoryCount> = emptyList(),
+        /** ZDS-30 controlled-count photos, "/images/<path>^controlled_count^<ndc>" per row. */
+        imageList: List<String> = emptyList(),
+        /** Who performed the count — the PMS shows this against the submitted inventory. */
+        operatorFamilyName: String? = null,
+        operatorGivenName: String? = null,
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS"),
     ): String {
         val now = hl7TimestampNow()
         val messageId = "INR-ACK-${System.currentTimeMillis() / 1000}"
-        val hl7 = HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from(config.versionId)))
+        val hl7 = HL7(LibHl7Config(LibHl7Version.from(config.versionId)))
         val builder = hl7.build()
 
         val inventoryCountStrings = counts.map { c ->
-            // Format: ndc^total^sealed^sealedBottles^opened^openedBottles^lot^expiry
-            "${c.ndc}^${c.total}^${c.sealed}^${c.sealedBottles}^${c.opened}^${c.openedBottles}^${c.lot}^${c.expiry}"
+            // ZDS-27 is a FIXED 8-component structure (ZDSSegment.InventoryCount: ndc, total,
+            // sealed, sealedBottles, opened, openedBottles, lot, expiry). Do not append fields —
+            // a 9th component shifts nothing for us but breaks a receiver parsing by position.
+            // The expiry is stored for display (MM-dd-yyyy); HL7 dates are yyyyMMdd, so it is
+            // normalized here — an ambiguous date is worse than none on a controlled count.
+            "${c.ndc}^${c.total}^${c.sealed}^${c.sealedBottles}^${c.opened}^${c.openedBottles}^" +
+                "${c.lot}^${hl7Date(c.expiry)}"
         }
 
         val message = builder.rdsO13Ds {
@@ -63,16 +77,31 @@ object InventoryMessageBuilder {
                 z.responseMessageId = messageId
                 z.requestMessageId = requestMessageId
                 z.responseType = "RE"
-                z.drugs = ndcs
+                // ZDS-07 is code^name, as on the dispense ZDS — a bare code leaves the drug
+                // name blank on the PMS screen. Names come from the counts, keyed by code.
+                z.drugs = ndcs.map { code ->
+                    val name = counts.firstOrNull { it.ndc == code }?.drugName.orEmpty()
+                    if (name.isBlank()) code else "$code^$name"
+                }
                 z.drugCodeType = "NDC"
+                z.operatorFamilyName = operatorFamilyName
+                z.operatorGivenName = operatorGivenName
                 z.orderReferenceNumber = orderReferenceNumber.takeIf { it.isNotBlank() }
                 z.unitOfMeasure = "TAB"
                 z.inventoryCounts = inventoryCountStrings
+                if (imageList.isNotEmpty()) z.imageList = imageList
             }
         }
 
         // Library emits RDS^O01 for HL7 < 2.5; spec requires RDS^O13 — fix the message type.
-        return message.encode().replace("RDS^O01", "RDS^O13")
+        val encoded = message.encode().replace("RDS^O01", "RDS^O13")
+        // ZDSBuilder escapes '^' as '\S\' inside its array setters, but ZDS-27 count rows
+        // carry '^' as a real component separator — left escaped, the PMS cannot parse the
+        // quantities. Unescape within ZDS lines only. Mirrors iOS
+        // unescapeZdsComponentSeparators; NDCs, lots and expiries contain no literal '^'.
+        return encoded.split("\r").joinToString("\r") { line ->
+            if (line.startsWith("ZDS")) line.replace("\\S\\", "^") else line
+        }
     }
 
     // =========================================================
@@ -171,7 +200,7 @@ object InventoryMessageBuilder {
             val chunkTotal = chunkRows.sumOf { it.value.opened + it.value.sealed }
             val messageId = "RES${System.currentTimeMillis() / 1000}-$chunkIndex"
 
-            val hl7 = HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from(config.versionId)))
+            val hl7 = HL7(LibHl7Config(LibHl7Version.from(config.versionId)))
             val builder = hl7.build()
 
             var obxSetId = 0

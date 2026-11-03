@@ -606,8 +606,7 @@
     <string name="hl7_notification_refill_exhausted">Resurtidos agotados para Rx %1$s — no quedan resurtidos (RXE-16=%2$d)</string>
     <string name="hl7_notification_refill_ndc_or_qty_missing">Resurtido de Rx %1$s ignorado — NDC o cantidad faltantes o no válidos</string>
     <string name="hl7_notification_no_processable_orders">Mensaje HL7 %1$s recibido, pero no contenía pedidos procesables</string>
-    <string name="hl7_notification_structural_validation_failed">Mensaje HL7 %1$s rechazado — falló la validación estructural: %2$s</string>
-    <string name="hl7_notification_business_validation_failed">Mensaje HL7 %1$s rechazado — %2$s</string>
+    <string name="hl7_notification_message_rejected">Mensaje HL7 %1$s rechazado</string>
 
     <string name="tour_title_kpi_dispense">Tarjetas de dispensación</string>
     <string name="tour_desc_kpi_dispense">Conteos de Alta prioridad, Controlados y Peligrosos de sus dispensaciones. Toque una tarjeta para filtrar la cola.</string>

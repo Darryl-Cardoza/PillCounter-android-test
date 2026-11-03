@@ -38,6 +38,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import org.rite.hl7.HL7
 import org.rite.hl7.model.HL7Message
+import org.rite.hl7.config.HL7Config as LibHl7Config
+import org.rite.hl7.config.HL7Version as LibHl7Version
 
 
 /**
@@ -341,7 +343,7 @@ class HL7Service : Service() {
         coreInitialized = true
 
         // HL7 version comes from config, populated by the feature layer from preferences.
-        hl7 = HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from(config.hl7Version)))
+        hl7 = HL7(LibHl7Config(LibHl7Version.from(config.hl7Version)))
 
         tlsFactory = TlsSocketFactory(this)
         val client = MllpClient(tlsFactory)

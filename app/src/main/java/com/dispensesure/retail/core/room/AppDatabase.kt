@@ -61,7 +61,7 @@ import com.dispensesure.retail.core.room.models.UserEntity
         FaceEmbeddingEntity::class,
         DekVersionEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 @TypeConverters(

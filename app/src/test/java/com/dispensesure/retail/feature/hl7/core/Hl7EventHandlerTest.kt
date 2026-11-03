@@ -18,7 +18,20 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
+import io.mockk.slot
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.AuditLogEvent
+import com.dispensesure.retail.core.audit.model.PmsOrderReceived
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.enums.CountStatus
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -39,6 +52,9 @@ class Hl7EventHandlerTest {
     private lateinit var stockHl7Repository: StockHl7Repository
     private lateinit var notifier: Hl7Notifier
     private lateinit var preferenceHelper: PreferenceHelper
+    private lateinit var auditLogger: AuditLogger
+    private lateinit var dispenseTxnDao: DispenseTxnDao
+    private lateinit var regionProvider: RegionProvider
     private lateinit var handler: Hl7EventHandler
 
     @Before
@@ -62,6 +78,10 @@ class Hl7EventHandlerTest {
         stockHl7Repository = mockk(relaxed = true)
         notifier = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
+        auditLogger = mockk(relaxed = true)
+        dispenseTxnDao = mockk(relaxed = true)
+        regionProvider = mockk(relaxed = true)
+        every { regionProvider.current } returns Region.US
 
         every { context.getString(any()) } returns "x"
         every { context.getString(any(), any()) } returns "y"
@@ -77,7 +97,11 @@ class Hl7EventHandlerTest {
             stockHl7Repository,
             notifier,
             preferenceHelper,
-            io.mockk.mockk(relaxed = true),
+            auditLogger,
+            dispenseTxnDao,
+            regionProvider,
+            // Unconfined: dispatch runs eagerly until it first suspends, so tests stay deterministic.
+            CoroutineScope(Dispatchers.Unconfined),
         )
     }
 
@@ -253,249 +277,260 @@ class Hl7EventHandlerTest {
         assertFalse(handler.pmsCertMismatch.value)
     }
 
-    // ════════════════════ ZDR routing ════════════════════
+    // ════════════════════ Native ZDR gate ════════════════════
 
-    private fun zdrMessage(
+    private fun native(
         action: String = "NW",
         controlId: String = "MSG-ZDR",
         orderId: String = "ORDER-001",
         rxNumber: String = "RX-001",
         qty: String = "30",
+        drugs: String = "12345678901^DRUG A",
+        sendingApp: String = "DISPENSESURE_NATIVE",
+        refillsAllowed: String = "5",
     ) = message(
-        "MSH|^~\\&|PMS|FAC|APP|STORE|20240101120000||RDE^O11|$controlId|P|2.3.1\r" +
-            "ZDR|D|1.0|$controlId|$action|12345678901^DRUG A|NDC|DOE^JANE|||PAT|||AB|$rxNumber|$orderId|$qty|1|R|5|A"
+        "MSH|^~\\&|$sendingApp|FAC|APP|STORE|20240101120000||RDE^O11|$controlId|P|2.3.1\r" +
+            "ZDR|D|1.0|$controlId|$action|$drugs|NDC|DOE^JANE|||PAT|||AB|$rxNumber|$orderId|$qty|1|R|$refillsAllowed|A"
     )
 
-    private fun validResult() = ValidationResult(emptyList())
-
-    @Test
-    fun `ZDR NW with valid structure returns AA and dispatches async`() {
-        every { hl7Validator.validateZdrStructure(any()) } returns validResult()
-
-        val ack = handler.onMessageReceived(zdrMessage("NW"), "k1")
-
-        assertTrue("ACK must contain AA", ack.contains("AA"))
-        coVerify(timeout = 3000) { dispenseHl7Repository.handleZdrNewOrRefill(any()) }
-    }
-
-    @Test
-    fun `ZDR RF with valid structure returns AA`() {
-        every { hl7Validator.validateZdrStructure(any()) } returns validResult()
-
-        val ack = handler.onMessageReceived(zdrMessage("RF"), "k2")
-
-        assertTrue("ACK must contain AA", ack.contains("AA"))
-    }
-
-    @Test
-    fun `ZDR NW structural validation failure returns AE`() {
-        val failResult = ValidationResult(
-            listOf(org.rite.hl7.validation.ValidationIssue(
-                org.rite.hl7.validation.AckSeverity.ERROR, "ZDR-14 required", "ZDR", "14", "207"
-            ))
-        )
-        every { hl7Validator.validateZdrStructure(any()) } returns failResult
-
-        val ack = handler.onMessageReceived(zdrMessage("NW"), "k3")
-
-        assertTrue("ACK must contain AE for structural failure", ack.contains("AE"))
-    }
-
-    @Test
-    fun `ZDR NW with zero quantity returns AE`() {
-        every { hl7Validator.validateZdrStructure(any()) } returns validResult()
-
-        val ack = handler.onMessageReceived(zdrMessage("NW", qty = "0"), "k4")
-
-        assertTrue("ACK must contain AE for zero qty", ack.contains("AE"))
-    }
-
-    @Test
-    fun `ZDR XO with valid orderId and qty returns AA when txn found`() {
-        coEvery { dispenseHl7Repository.handleZdrChangeOrder(any()) } returns true
-
-        val ack = handler.onMessageReceived(zdrMessage("XO"), "k5")
-
-        assertTrue("ACK must contain AA for XO found", ack.contains("AA"))
-    }
-
-    @Test
-    fun `ZDR XO with blank orderId returns AE`() {
-        val msg = message(
-            "MSH|^~\\&|PMS|FAC|APP|STORE|20240101120000||RDE^O11|MSG-XO-NOID|P|2.3.1\r" +
-                "ZDR|D|1.0|MSG-XO-NOID|XO|12345678901^DRUG|NDC|DOE^JANE|||PAT|||AB|RX-001||30|1|R|5|A"
-        )
-        val ack = handler.onMessageReceived(msg, "k6")
-
-        assertTrue("ACK must contain AE when ZDR-15 blank", ack.contains("AE"))
-    }
-
-    @Test
-    fun `ZDR XO returns AE when txn not found`() {
-        coEvery { dispenseHl7Repository.handleZdrChangeOrder(any()) } returns false
-
-        val ack = handler.onMessageReceived(zdrMessage("XO"), "k7")
-
-        assertTrue("ACK must contain AE when XO not found", ack.contains("AE"))
-    }
-
-    @Test
-    fun `ZDR XO with zero quantity returns AE`() {
-        val ack = handler.onMessageReceived(zdrMessage("XO", qty = "0"), "k8")
-
-        assertTrue("ACK must contain AE for zero qty on XO", ack.contains("AE"))
-    }
-
-    @Test
-    fun `ZDR CA returns AA when txn found and cancelled`() {
-        coEvery { dispenseHl7Repository.handleZdrStatusChange(any()) } returns true
-
-        val ack = handler.onMessageReceived(zdrMessage("CA"), "k9")
-
-        assertTrue("ACK must contain AA for CA success", ack.contains("AA"))
-    }
-
-    @Test
-    fun `ZDR CA returns AE when no matching txn`() {
-        coEvery { dispenseHl7Repository.handleZdrStatusChange(any()) } returns false
-
-        val ack = handler.onMessageReceived(zdrMessage("CA"), "k10")
-
-        assertTrue("ACK must contain AE when CA finds no txn", ack.contains("AE"))
-    }
-
-    @Test
-    fun `ZDR HD returns AA when hold applied`() {
-        coEvery { dispenseHl7Repository.handleZdrStatusChange(any()) } returns true
-
-        val ack = handler.onMessageReceived(zdrMessage("HD"), "k11")
-
-        assertTrue("AA for HD success", ack.contains("AA"))
-    }
-
-    @Test
-    fun `ZDR HD returns AE when no matching txn`() {
-        coEvery { dispenseHl7Repository.handleZdrStatusChange(any()) } returns false
-
-        val ack = handler.onMessageReceived(zdrMessage("HD"), "k12")
-
-        assertTrue("AE when HD finds no txn", ack.contains("AE"))
-    }
-
-    @Test
-    fun `ZDR RL returns AA when release applied`() {
-        coEvery { dispenseHl7Repository.handleZdrStatusChange(any()) } returns true
-
-        val ack = handler.onMessageReceived(zdrMessage("RL"), "k13")
-
-        assertTrue("AA for RL success", ack.contains("AA"))
-    }
-
-    @Test
-    fun `ZDR DC returns AE when no matching txn`() {
-        coEvery { dispenseHl7Repository.handleZdrStatusChange(any()) } returns false
-
-        val ack = handler.onMessageReceived(zdrMessage("DC"), "k14")
-
-        assertTrue("AE when DC finds no txn", ack.contains("AE"))
-    }
-
-    @Test
-    fun `ZDR unknown action returns AE`() {
-        val ack = handler.onMessageReceived(zdrMessage("ZZ"), "k15")
-
-        assertTrue("AE for unknown ZDR action", ack.contains("AE"))
-    }
-
-    @Test
-    fun `ZDR lowercase action is normalized and routed correctly`() {
-        every { hl7Validator.validateZdrStructure(any()) } returns validResult()
-        // lowercase "nw" — handler should uppercase before routing
-        val msg = message(
-            "MSH|^~\\&|PMS|FAC|APP|STORE|20240101120000||RDE^O11|MSG-LOWER|P|2.3.1\r" +
-                "ZDR|D|1.0|MSG-LOWER|nw|12345678901^DRUG A|NDC|DOE^JANE|||PAT|||AB|RX-001|ORDER-001|30|1|R|5|A"
-        )
-        val ack = handler.onMessageReceived(msg, "k16")
-
-        // NW path validated and dispatched — should return AA (not AE from "unknown action")
-        assertTrue("lowercase action must route correctly to NW", ack.contains("AA"))
-    }
-
-    // ════════════════════ ZDR INVENTORY (INR^U06) routing ════════════════════
-
-    private fun zdrInventoryMessage(
+    private fun nativeInventory(
         controlId: String = "MSG-INV-1",
-        ndc: String = "12345678901",
+        drugs: String = "12345678901^ASPIRIN",
     ) = message(
-        "MSH|^~\\&|PMS|FAC|APP|STORE|20240101120000||INR^U06|$controlId|P|2.3.1\r" +
-            "ZDR|I|1.0|$controlId||$ndc^ASPIRIN|NDC||||||||||||||"
+        "MSH|^~\\&|DISPENSESURE_NATIVE|FAC|APP|STORE|20240101120000||INR^U06|$controlId|P|2.3.1\r" +
+            "ZDR|I|1.0|$controlId||$drugs|NDC||||||||||||||"
     )
 
-    @Test
-    fun `INR^U06 with ZDR INVENTORY and valid structure returns AA`() {
-        every { hl7Validator.validateZdrInventoryStructure(any()) } returns validResult()
+    private fun existingTxn(status: CountStatus = CountStatus.PARTIAL, deleted: Boolean = false) =
+        DispenseTxnEntity(txnId = 7L, status = status, isDeleted = deleted, transactionOrderId = "ORDER-001")
 
-        val ack = handler.onMessageReceived(zdrInventoryMessage(), "inv-k1")
-
-        assertTrue("ZDR INVENTORY with valid structure must return AA", ack.contains("AA"))
+    private fun givenExisting(txn: DispenseTxnEntity?) {
+        every { dispenseTxnDao.findByTransactionOrderIdIncludingDeleted(any()) } returns txn
     }
 
     @Test
-    fun `INR^U06 with ZDR INVENTORY dispatches to handleZdrInventoryRequest`() {
-        every { hl7Validator.validateZdrInventoryStructure(any()) } returns validResult()
+    fun `a message carrying a ZDR is treated as native`() =
+        assertTrue(Hl7EventHandler.isNativeZdrMessage(native()))
 
-        handler.onMessageReceived(zdrInventoryMessage(), "inv-k2")
+    // The native interface is identified by structure, not by sender name: real PMS senders
+    // use their own MSH-3. Gating on a fixed sending application dropped live orders into the
+    // standard no-RXE branch.
+    @Test
+    fun `a ZDR is native whatever the sending application`() {
+        listOf("HC Companion", "DISPENSESURE", "PMS", "").forEach { sender ->
+            assertTrue(sender, Hl7EventHandler.isNativeZdrMessage(native(sendingApp = sender)))
+        }
+    }
 
+    @Test
+    fun `a message without a ZDR is not treated as native`() = assertFalse(
+        Hl7EventHandler.isNativeZdrMessage(
+            message("MSH|^~\\&|DISPENSESURE_NATIVE|FAC|APP|STORE|20240101||RDE^O11|M1|P|2.5\rORC|NW|RX1")
+        )
+    )
+
+    // Regression: the exact shape a live PMS sends — MSH + ZDR only, no RXE, MSH-3 "HC Companion".
+    // This previously fell through to the standard RDE path and was refused as "no RXE/ZUI/ZNI".
+    @Test
+    fun `a real PMS MSH plus ZDR order is accepted and dispatched`() {
+        val raw = "MSH|^~\\&|HC Companion|PHARMACY|DISPENSESURE|ROBOT|20261103124242||RDE^O11|" +
+            "MSG20261103124242001|P|2.3.1\r" +
+            "ZDR|D|1.0|MSG20261103124242001|NW|76385-0118-01^ETODOLAC 400MG TABLET|NDC|Doe^Jane|" +
+            "19800412|(415) 555-0142|PT-1001|Smith^John|1234567893|AS1234563|100062|RX100062-001|" +
+            "30|1|R|0|||TAB|20261103|20261203||Standard|RITE-01|Take 1 tablet by mouth twice daily|" +
+            "BID|By mouth|Rite Clinic|Tablet|A123456|Medical Board of California"
+
+        val ack = handler.onMessageReceived(message(raw), "live1")
+
+        assertTrue(ack, ack.contains("MSA|AA|"))
+        assertFalse(ack, ack.contains("ERR"))
+        coVerify(exactly = 1) { dispenseHl7Repository.handleZdrOrder(any(), any(), any()) }
+    }
+
+    // ════════════════════ Validate, ACK, then dispatch ════════════════════
+
+    @Test
+    fun `an accepted new order returns AA and is dispatched to handleZdrOrder`() {
+        val ack = handler.onMessageReceived(native("NW"), "n1")
+
+        assertTrue(ack, ack.contains("MSA|AA|"))
+        coVerify(timeout = 3000) { dispenseHl7Repository.handleZdrOrder(any(), any(), any()) }
+    }
+
+    @Test
+    fun `a rejected ZDR returns AR with the reason and never reaches the repository`() {
+        val ack = handler.onMessageReceived(native("NW", drugs = "12345678901^A~10987654321^B"), "n2")
+
+        assertTrue(ack, ack.contains("MSA|AR|"))
+        assertTrue(ack, ack.contains("multipleDrugsOnDispense"))
+        verify { dispenseHl7Repository wasNot Called }
+        verify { stockHl7Repository wasNot Called }
+    }
+
+    @Test
+    fun `a rejected ZDR is not audited as received`() {
+        handler.onMessageReceived(native("NW", qty = "0"), "n3")
+
+        verify(exactly = 0) { auditLogger.log(any<AuditLogEvent>()) }
+    }
+
+    @Test
+    fun `the ACK is returned before the handler completes`() {
+        coEvery { dispenseHl7Repository.handleZdrOrder(any(), any(), any()) } coAnswers { awaitCancellation() }
+
+        val ack = handler.onMessageReceived(native("NW"), "n4")
+
+        assertTrue(ack, ack.contains("MSA|AA|"))
+    }
+
+    @Test
+    fun `a handler failure after the ACK does not propagate`() {
+        coEvery { dispenseHl7Repository.handleZdrOrder(any(), any(), any()) } throws IllegalStateException("boom")
+
+        val ack = handler.onMessageReceived(native("NW"), "n5")
+
+        assertTrue(ack, ack.contains("MSA|AA|"))
+    }
+
+    @Test
+    fun `an XO for an existing order returns AA and dispatches handleZdrOrder`() {
+        givenExisting(existingTxn())
+
+        val ack = handler.onMessageReceived(native("XO"), "x1")
+
+        assertTrue(ack, ack.contains("MSA|AA|"))
+        coVerify(timeout = 3000) { dispenseHl7Repository.handleZdrOrder(any(), any(), any()) }
+    }
+
+    @Test
+    fun `an XO for an unknown order is rejected as orderNotFound and not dispatched`() {
+        givenExisting(null)
+
+        val ack = handler.onMessageReceived(native("XO"), "x2")
+
+        assertTrue(ack, ack.contains("MSA|AR|") && ack.contains("orderNotFound"))
+        verify { dispenseHl7Repository wasNot Called }
+    }
+
+    @Test
+    fun `a CA for a soft-deleted order rejects as orderAlreadyCompleted not orderNotFound`() {
+        givenExisting(existingTxn(deleted = true))
+
+        val ack = handler.onMessageReceived(native("CA"), "c1")
+
+        assertTrue(ack, ack.contains("MSA|AR|"))
+        assertTrue(ack, ack.contains("orderAlreadyCompleted"))
+        assertFalse(ack, ack.contains("orderNotFound"))
+        verify { dispenseHl7Repository wasNot Called }
+    }
+
+    @Test
+    fun `the existing order is looked up including soft-deleted rows`() {
+        givenExisting(existingTxn(deleted = true))
+
+        handler.onMessageReceived(native("DC"), "c2")
+
+        verify { dispenseTxnDao.findByTransactionOrderIdIncludingDeleted("ORDER-001") }
+        coVerify(exactly = 0) { dispenseTxnDao.getByTransactionOrderId(any()) }
+    }
+
+    @Test
+    fun `the order key falls back to rx-fill when ZDR-15 is blank`() {
+        givenExisting(existingTxn())
+
+        handler.onMessageReceived(native("HD", orderId = "", rxNumber = "RX-9"), "c3")
+
+        verify { dispenseTxnDao.findByTransactionOrderIdIncludingDeleted("RX-9-1") }
+    }
+
+    @Test
+    fun `a control action on a live order returns AA and dispatches handleZdrControl`() {
+        givenExisting(existingTxn())
+
+        val ack = handler.onMessageReceived(native("HD"), "c4")
+
+        assertTrue(ack, ack.contains("MSA|AA|"))
+        coVerify(timeout = 3000) { dispenseHl7Repository.handleZdrControl(any(), "HD") }
+        coVerify(exactly = 0) { dispenseHl7Repository.handleZdrOrder(any(), any(), any()) }
+    }
+
+    @Test
+    fun `a release for an order that is not on hold is rejected`() {
+        givenExisting(existingTxn(CountStatus.PARTIAL))
+
+        val ack = handler.onMessageReceived(native("RL"), "c5")
+
+        assertTrue(ack, ack.contains("orderNotOnHold"))
+        verify { dispenseHl7Repository wasNot Called }
+    }
+
+    @Test
+    fun `a refill uses the live fill count`() {
+        every { dispenseTxnDao.countActiveByRxNo("RX-001") } returns 0
+
+        val ack = handler.onMessageReceived(native("RF"), "r1")
+
+        assertTrue(ack, ack.contains("orderNotFound"))
+        verify { dispenseHl7Repository wasNot Called }
+    }
+
+    @Test
+    fun `a refill with fills remaining is accepted and dispatched`() {
+        every { dispenseTxnDao.countActiveByRxNo("RX-001") } returns 1
+
+        val ack = handler.onMessageReceived(native("RF"), "r2")
+
+        assertTrue(ack, ack.contains("MSA|AA|"))
+        coVerify(timeout = 3000) { dispenseHl7Repository.handleZdrOrder(any(), any(), any()) }
+    }
+
+    @Test
+    fun `audit logs the ZDR order action not the absent ORC order control`() {
+        givenExisting(existingTxn())
+        val logged = slot<AuditLogEvent>()
+        every { auditLogger.log(capture(logged)) } returns Unit
+
+        handler.onMessageReceived(native("HD"), "a1")
+
+        val event = logged.captured as PmsOrderReceived
+        assertEquals("HD", event.orderControl)
+        assertEquals("ZDR", event.format)
+    }
+
+    @Test
+    fun `an accepted native inventory request returns AA and goes to the stock repository`() {
+        val ack = handler.onMessageReceived(nativeInventory(), "i1")
+
+        assertTrue(ack, ack.contains("MSA|AA|"))
         coVerify(timeout = 3000) { stockHl7Repository.handleZdrInventoryRequest(any()) }
+        coVerify(exactly = 0) { stockHl7Repository.handleInrInventoryRequest(any()) }
     }
 
     @Test
-    fun `INR^U06 with ZDR INVENTORY validation failure returns AE`() {
-        val failResult = ValidationResult(
-            listOf(org.rite.hl7.validation.ValidationIssue(
-                org.rite.hl7.validation.AckSeverity.ERROR, "ZDR-01 flowType must be INVENTORY", "ZDR", "1", "207"
-            ))
-        )
-        every { hl7Validator.validateZdrInventoryStructure(any()) } returns failResult
+    fun `a native inventory request with a bad drug code is rejected and not dispatched`() {
+        val ack = handler.onMessageReceived(nativeInventory(drugs = "123^ASPIRIN"), "i2")
 
-        val ack = handler.onMessageReceived(zdrInventoryMessage(), "inv-k3")
-
-        assertTrue("Inventory validation failure must return AE", ack.contains("AE"))
+        assertTrue(ack, ack.contains("MSA|AR|") && ack.contains("invalidDrugCode"))
+        verify { stockHl7Repository wasNot Called }
     }
 
     @Test
-    fun `INR^U06 with ZDR INVENTORY validation failure does not dispatch to repository`() {
-        val failResult = ValidationResult(
-            listOf(org.rite.hl7.validation.ValidationIssue(
-                org.rite.hl7.validation.AckSeverity.ERROR, "ZDR-05 drugs required", "ZDR", "5", "207"
-            ))
-        )
-        every { hl7Validator.validateZdrInventoryStructure(any()) } returns failResult
+    fun `a native inventory request does no order lookup`() {
+        handler.onMessageReceived(nativeInventory(), "i3")
 
-        handler.onMessageReceived(zdrInventoryMessage(), "inv-k4")
-
-        coVerify(exactly = 0) { stockHl7Repository.handleZdrInventoryRequest(any()) }
+        verify { dispenseTxnDao wasNot Called }
     }
 
     @Test
-    fun `INR^U06 without ZDR segment routes to standard handleInrInventoryRequest`() {
+    fun `a standard INR without ZDR still routes to handleInrInventoryRequest`() {
         val standardMsg = message(
             "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||INR^U06|MSG-STD-INR|P|2.5\r" +
                 "INV|12345^Aspirin^NDC|A^Active"
         )
 
-        handler.onMessageReceived(standardMsg, "inv-k5")
+        handler.onMessageReceived(standardMsg, "i4")
 
         coVerify(timeout = 3000) { stockHl7Repository.handleInrInventoryRequest(standardMsg) }
         coVerify(exactly = 0) { stockHl7Repository.handleZdrInventoryRequest(any()) }
-    }
-
-    @Test
-    fun `INR^U06 with ZDR INVENTORY does not route to standard handleInrInventoryRequest`() {
-        every { hl7Validator.validateZdrInventoryStructure(any()) } returns validResult()
-
-        handler.onMessageReceived(zdrInventoryMessage(), "inv-k6")
-
-        coVerify(exactly = 0) { stockHl7Repository.handleInrInventoryRequest(any()) }
     }
 }

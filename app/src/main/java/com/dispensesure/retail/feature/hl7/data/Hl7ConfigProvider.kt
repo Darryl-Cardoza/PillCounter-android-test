@@ -22,10 +22,12 @@ class Hl7ConfigProvider @Inject constructor(
     fun current(): HL7Config {
         val hl7Format = preferenceHelper.getHl7Format()
         // Eyecon's PMS-side routing keys off MSH-3 == "EYECON" (its own format
-        // name) rather than this app's display name — DispenseSure/Vivid keep
+        // name) rather than this app's display name, and DISPENSESURE_NATIVE must
+        // carry "DISPENSESURE_NATIVE" (iOS sends format.sendingApplication for every
+        // format). Standard/Vivid keep
         // using the app's display name (context.getString(R.string.app_name)),
         // unchanged, since PMS already matches on that for those formats.
-        val sendingApplicationName = if (hl7Format == Hl7Format.EYECON) {
+        val sendingApplicationName = if (hl7Format == Hl7Format.EYECON || hl7Format == Hl7Format.DISPENSESURE_NATIVE) {
             hl7Format.sendingApplication
         } else {
             context.getString(R.string.app_name)

@@ -45,10 +45,23 @@ class Hl7Validator @Inject constructor(
 
     fun validateStructure(message: HL7Message): ValidationResult {
         val libraryResult = libValidator.validate(message)
-        if (!regionProvider.current.hl7OrdersAcceptDin) return libraryResult
-        // The library only knows NDC formats; a Canadian order's RXE-2 can be an 8-digit DIN.
+        // The library only knows NDC formats (and only inspects the first RXE), and its error text carries no RXE index, so it cannot
+        // say which RXE a code issue belongs to. Drop its RXE drug-code issues unconditionally and
+        // re-validate every RXE's give code ourselves (NDC, plus DIN where the region accepts it), one issue per bad code.
         val rxeSegments = message.segments<RXESegment>(RXESegment.NAME)
-        return ValidationResult(libraryResult.issues.filterNot { issue -> issue.isInvalidNdcForDin(rxeSegments) })
+        val kept = libraryResult.issues.filterNot { issue -> issue.isLibraryRxeDrugCodeIssue() }
+        val acceptsDin = regionProvider.current.hl7OrdersAcceptDin
+        val perCodeIssues = rxeSegments.mapNotNull { rxe ->
+            val code = rxe.giveCode?.trim().orEmpty()
+            // A blank code is the library's "Missing NDC in RXE", which is kept above — adding
+            // our own "Invalid NDC" for it would just duplicate the same rejection.
+            when {
+                code.isEmpty() -> null
+                code.isAcceptedDrugCode(acceptsDin) -> null
+                else -> invalidRxeCodeIssue(code)
+            }
+        }
+        return ValidationResult(kept + perCodeIssues)
     }
 
     // NW and RF only — do not call for XO (ZDR-14 may be absent in valid XO messages).
@@ -106,11 +119,16 @@ class Hl7Validator @Inject constructor(
     }
 }
 
-// The library raises an "Invalid NDC in RXE" issue (segmentId=RXE, fieldPosition=2) for RXE-2
-// that fails NDC validation. For Canada, RXE-2 may be an 8-digit DIN — suppress the issue when
-// any RXE in the message carries a DIN as its give code.
-private fun ValidationIssue.isInvalidNdcForDin(rxeSegments: List<RXESegment>): Boolean {
-    if (segmentId != "RXE" || fieldPosition != "2") return false
-    if (!errorText.contains("Invalid NDC", ignoreCase = true)) return false
-    return rxeSegments.any { rxeSegment -> rxeSegment.giveCode?.trim()?.isDin() == true }
-}
+// The library raises an "Invalid NDC in RXE" issue (segmentId=RXE, fieldPosition=2) for RXE-2 that
+// fails NDC validation; it cannot be attributed to a specific RXE, so it is replaced by our own.
+private fun ValidationIssue.isLibraryRxeDrugCodeIssue(): Boolean =
+    segmentId == "RXE" && fieldPosition == "2" && errorText.contains("Invalid NDC", ignoreCase = true)
+
+private fun invalidRxeCodeIssue(code: String) =
+    ValidationIssue(AckSeverity.ERROR, "Invalid NDC in RXE: '$code'", "RXE", "2", "207")
+
+// Same shapes the HL7 library accepts for an NDC: 10-11 digits undashed, or dashed 4-5 / 3-4 / 1-2.
+private val NDC_PATTERN = Regex("""^(\d{10,11}|\d{4,5}-\d{3,4}-\d{1,2})$""")
+
+private fun String.isAcceptedDrugCode(acceptsDin: Boolean): Boolean =
+    NDC_PATTERN.matches(this) || (acceptsDin && isDin())

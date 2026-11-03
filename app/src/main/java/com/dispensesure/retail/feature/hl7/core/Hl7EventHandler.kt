@@ -4,6 +4,10 @@ import android.content.Context
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.audit.model.PmsOrderReceived
+import com.dispensesure.retail.core.di.ApplicationScope
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.hl7.core.Hl7EventListener
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -13,18 +17,21 @@ import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.parsing.Hl7OrderHandler
 import com.dispensesure.retail.feature.hl7.parsing.Hl7Parser
+import com.dispensesure.retail.feature.hl7.order.NativeOrderKey
 import com.dispensesure.retail.feature.hl7.parsing.Hl7Validator
+import com.dispensesure.retail.feature.hl7.parsing.NativeRejectReason
+import com.dispensesure.retail.feature.hl7.parsing.NativeZdrValidator
+import com.dispensesure.retail.feature.hl7.util.Hl7Format
+import com.dispensesure.retail.feature.hl7.util.NativeAckBuilder
 import com.dispensesure.retail.feature.hl7.presentation.Hl7OrderProcessor
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CancellationException
 import org.rite.hl7.HL7
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.segment.ORCSegment
@@ -39,6 +46,8 @@ import org.rite.hl7.validation.ValidationIssue
 import org.rite.hl7.validation.ValidationResult
 import javax.inject.Inject
 import javax.inject.Singleton
+import org.rite.hl7.config.HL7Config as LibHl7Config
+import org.rite.hl7.config.HL7Version as LibHl7Version
 
 @Singleton
 class Hl7EventHandler @Inject constructor(
@@ -52,10 +61,12 @@ class Hl7EventHandler @Inject constructor(
     private val notifier: Hl7Notifier,
     private val preferenceHelper: PreferenceHelper,
     private val auditLogger: AuditLogger,
+    private val dispenseTxnDao: DispenseTxnDao,
+    private val regionProvider: RegionProvider,
+    @ApplicationScope private val scope: CoroutineScope,
 ) : Hl7EventListener {
 
     private val logger = AppLogger("HL7EventHandler")
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val _connectionState = MutableStateFlow(false)
     val connectionState: StateFlow<Boolean> = _connectionState
@@ -66,7 +77,81 @@ class Hl7EventHandler @Inject constructor(
     fun clearCertMismatch() { _pmsCertMismatch.value = false }
 
     private val ackBuilder by lazy { AckBuilder() }
-    private fun hl7() = HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from(preferenceHelper.getHl7Version())))
+    private fun hl7() = HL7(LibHl7Config(LibHl7Version.from(preferenceHelper.getHl7Version())))
+
+    companion object {
+        /**
+         * True when the message carries a ZDR segment. The native interface is defined by
+         * structure — inbound MSH + ZDR, outbound MSH + ZDS — not by the sender's name: real
+         * PMS senders use their own MSH-3 (e.g. "HC Companion"), so gating on a fixed sending
+         * application silently dropped live orders into the standard no-RXE branch. No standard
+         * flow carries a ZDR, so its presence alone identifies the native path. The ACK gate and
+         * the dispatch gate must stay this one predicate.
+         */
+        fun isNativeZdrMessage(message: HL7Message): Boolean =
+            message.segmentsNamed(ZDRSegment.NAME).isNotEmpty()
+    }
+
+    /**
+     * Native ZDR receive path: gate (caller) -> validate -> ACK -> dispatch. The ACK is built from
+     * validation alone and returned immediately; the handler runs afterwards on [scope], and only
+     * when validation passed, so a rejected message never reaches a handler.
+     */
+    private fun handleNativeZdr(parsed: HL7Message, msgId: String): String {
+        val zdr = parsed.segment<ZDRSegment>(ZDRSegment.NAME)
+            ?: return NativeAckBuilder.build(parsed, NativeRejectReason.NO_ZDR_SEGMENT, preferenceHelper.getHl7Version())
+
+        // existing/fillCount are plain blocking reads (non-suspend DAO queries): only a dispense
+        // needs them, and they are local DB lookups, never network.
+        var existing: DispenseTxnEntity? = null
+        var fillCount = 0
+        if (zdr.flowTypeRaw.trim().equals("D", ignoreCase = true)) {
+            try {
+                existing = dispenseTxnDao.findByTransactionOrderIdIncludingDeleted(NativeOrderKey.resolve(zdr))
+                fillCount = dispenseTxnDao.countActiveByRxNo(zdr.rxNumber.trim())
+            } catch (e: Exception) {
+                logger.e("ZDR order-state lookup failed | msgId=$msgId", e.withoutMessage(), event = LogEvent.HL7_SERVICE_ERROR)
+            }
+        }
+
+        val reason = NativeZdrValidator.validate(parsed, existing, fillCount, regionProvider.current)
+        val ack = NativeAckBuilder.build(parsed, reason, preferenceHelper.getHl7Version())
+        if (reason != null) {
+            logger.w("Native ZDR rejected | msgId=$msgId | reason=${reason.code}", event = LogEvent.HL7_SERVICE_ERROR)
+            return ack
+        }
+
+        val action = zdr.orderAction.trim().uppercase()
+        auditLogger.log(
+            PmsOrderReceived(messageId = msgId.ifBlank { null }, orderControl = action.ifBlank { null }, format = "ZDR")
+        )
+        scope.launch {
+            try {
+                dispatchNativeZdr(parsed, zdr, action, msgId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Native ZDR handler failed | msgId=$msgId | action=$action", e.withoutMessage(), event = LogEvent.HL7_SERVICE_ERROR)
+            }
+        }
+        return ack
+    }
+
+    private suspend fun dispatchNativeZdr(parsed: HL7Message, zdr: ZDRSegment, action: String, msgId: String) {
+        if (zdr.flowTypeRaw.trim().equals("I", ignoreCase = true)) {
+            stockHl7Repository.handleZdrInventoryRequest(parsed)
+            return
+        }
+        when (action) {
+            "NW", "RF", "XO" -> dispenseHl7Repository.handleZdrOrder(
+                zdr,
+                msgId.ifBlank { null },
+                parsed.header?.sequenceNumber?.takeIf { it.isNotBlank() },
+            )
+            "CA", "HD", "RL", "DC" -> dispenseHl7Repository.handleZdrControl(zdr, action)
+            else -> logger.w("Native ZDR: no handler for action=$action | msgId=$msgId")
+        }
+    }
 
     override fun onMessageReceived(parsed: HL7Message, idempotencyKey: String): String {
         val msh = parsed.header
@@ -75,22 +160,17 @@ class Hl7EventHandler @Inject constructor(
         val triggerEvent = msh?.triggerEvent?.uppercase().orEmpty()
         logger.i("HL7 message received | msgId=$msgId | type=$messageCode^$triggerEvent | key=$idempotencyKey")
 
+        // The native path owns a ZDR only when MSH-3 also declares the native sender, so the
+        // validation gate and the dispatch gate are the same predicate. A ZDR from any other
+        // sender falls through to the standard handlers below, which apply their own
+        // validation — matching iOS, which returns from the native branch only when it matches.
+        if (isNativeZdrMessage(parsed)) return handleNativeZdr(parsed, msgId)
+
         return when {
             messageCode == "INR" && triggerEvent == "U06"
                     && parsed.segment<ZADSegment>(ZADSegment.NAME) == null -> {
-                val zdrSegment = parsed.segment<ZDRSegment>(ZDRSegment.NAME)
-                if (zdrSegment != null && zdrSegment.flowType == ZDRSegment.FlowType.INVENTORY) {
-                    // DISPENSESURE_NATIVE inventory request: validate ZDR structure first, then dispatch async
-                    val structResult = hl7Validator.validateZdrInventoryStructure(parsed)
-                    if (!structResult.isValid) {
-                        logger.e("ZDR INVENTORY structural validation failed | msgId=$msgId | ${structResult.issues.firstOrNull()?.errorText.orEmpty()}")
-                        return buildErrorAck(parsed, structResult)
-                    }
-                    scope.launch { stockHl7Repository.handleZdrInventoryRequest(parsed) }
-                } else {
-                    // Standard INR^U06 — inventory count request; process async
-                    scope.launch { stockHl7Repository.handleInrInventoryRequest(parsed) }
-                }
+                // Standard INR^U06 — inventory count request; process async
+                scope.launch { stockHl7Repository.handleInrInventoryRequest(parsed) }
                 buildSuccessAck(parsed)
             }
             messageCode == "RDE" -> {
@@ -112,27 +192,11 @@ class Hl7EventHandler @Inject constructor(
             }
 
     private fun buildErrorAck(parsed: HL7Message, validationResult: ValidationResult): String =
-        runCatching { ackBuilder.build(parsed, validationResult).encode().stripBlankErrSegments() }
+        runCatching { ackBuilder.build(parsed, validationResult).encode() }
             .getOrElse { e ->
                 logger.e("AckBuilder.build() failed — falling back to hl7().ack()", e.withoutMessage(), event = LogEvent.HL7_SERVICE_ERROR)
                 hl7().ack(parsed)
             }
-
-    /**
-     * AckBuilder emits one ERR segment per ValidationIssue regardless of whether the issue
-     * carries a segmentId/fieldPosition. When our app-generated issues have blank segment/field
-     * (e.g. "no matching txn"), the ERR segment encodes with no meaningful content.
-     * Strip those blank ERR segments so PMS sees a clean MSH+MSA+ERR(populated) or MSH+MSA only.
-     */
-    private fun String.stripBlankErrSegments(): String =
-        split('\r')
-            .filter { seg ->
-                if (!seg.startsWith("ERR")) return@filter true
-                val fields = seg.split('|')
-                // Keep ERR only if at least one field beyond ERR is non-blank
-                fields.drop(1).any { it.isNotBlank() }
-            }
-            .joinToString("\r")
 
     private fun errorResult(reason: String): ValidationResult = ValidationResult(
         listOf(ValidationIssue(AckSeverity.ERROR, reason, "", "", "207"))
@@ -147,82 +211,9 @@ class Hl7EventHandler @Inject constructor(
         val rxe = parsed.segment<RXESegment>(RXESegment.NAME)
         val hasZui = parsed.segment<ZUISegment>(ZUISegment.NAME) != null
         val hasZni = parsed.segment<ZNISegment>(ZNISegment.NAME) != null
-        val zdr = parsed.segment<ZDRSegment>(ZDRSegment.NAME)
         val orderControl = orc?.orderControl?.uppercase()
 
         return when {
-            // ZDR native dispense order (DISPENSESURE_NATIVE format) — one txn per drug.
-            // Validate structure first (MSH required fields + ZDR required fields) via the
-            // same library rules used for standard RXE messages before dispatching async.
-            zdr != null && zdr.flowType == ZDRSegment.FlowType.DISPENSE -> {
-                when (val action = zdr.orderAction.uppercase()) {
-                    "NW", "RF" -> {
-                        // ZDR-specific structural validation — checks ZDR required fields including
-                        // ZDR-14 (rxNumber) and ZDR-16 (qty) presence, ZDR-03==MSH-10, etc.
-                        // Uses DSValidationRule; separate from ORC/RXE path to avoid interference.
-                        val structResult = hl7Validator.validateZdrStructure(parsed)
-                        if (!structResult.isValid) {
-                            logger.e("ZDR $action structural validation failed | msgId=$msgId | ${structResult.issues.firstOrNull()?.errorText.orEmpty()}")
-                            notifier.show(
-                                title = context.getString(R.string.hl7_notification_new_rx_title),
-                                message = context.getString(R.string.hl7_notification_message_rejected, msgId),
-                            )
-                            return buildErrorAck(parsed, structResult)
-                        }
-                        val qty = zdr.quantityToDispense?.trim()?.toDoubleOrNull()?.toInt()
-                        if (qty == null || qty <= 0) {
-                            logger.e("ZDR $action: invalid quantity='${zdr.quantityToDispense}' | msgId=$msgId")
-                            notifier.show(
-                                title = context.getString(R.string.hl7_notification_new_rx_title),
-                                message = context.getString(R.string.hl7_notification_message_rejected, msgId),
-                            )
-                            return buildErrorAck(parsed, errorResult("ZDR $action: quantity must be a positive number"))
-                        }
-                        auditLogger.log(PmsOrderReceived(messageId = msgId.ifBlank { null }, orderControl = orderControl, format = "ZDR"))
-                        scope.launch { dispenseHl7Repository.handleZdrNewOrRefill(parsed) }
-                        buildSuccessAck(parsed)
-                    }
-                    "XO" -> {
-                        // Change-order: lookup by ZDR-15 orderReferenceNumber (transactionOrderId).
-                        // No DSValidationRule — ZDR-14 rxNumber may be absent in valid XO messages.
-                        val orderId = zdr.orderReferenceNumber?.takeIf { it.isNotBlank() }
-                        if (orderId == null) {
-                            logger.e("ZDR XO: blank ZDR-15 orderReferenceNumber | msgId=$msgId")
-                            return buildErrorAck(parsed, errorResult("ZDR XO: orderReferenceNumber (ZDR-15) is required"))
-                        }
-                        val qty = zdr.quantityToDispense?.trim()?.toDoubleOrNull()?.toInt()
-                        if (qty == null || qty <= 0) {
-                            logger.e("ZDR XO: invalid quantity='${zdr.quantityToDispense}' | msgId=$msgId")
-                            return buildErrorAck(parsed, errorResult("ZDR XO: quantity must be a positive number"))
-                        }
-                        auditLogger.log(PmsOrderReceived(messageId = msgId.ifBlank { null }, orderControl = "XO", format = "ZDR"))
-                        val applied = runBlocking { dispenseHl7Repository.handleZdrChangeOrder(parsed) }
-                        if (!applied) {
-                            logger.e("ZDR XO: no txn found for orderId=$orderId — returning NACK | msgId=$msgId")
-                            return buildErrorAck(parsed, errorResult("ZDR XO: no matching active transaction found"))
-                        }
-                        buildSuccessAck(parsed)
-                    }
-                    "CA", "HD", "RL", "DC" -> {
-                        // Status-change actions: qty/drug fields not required by spec — skip
-                        // dispense-field validation (library rejects blank ZDR-16 for all DISPENSE
-                        // flowType messages regardless of orderAction). Run synchronously so we can
-                        // NACK if no matching txn exists.
-                        auditLogger.log(PmsOrderReceived(messageId = msgId.ifBlank { null }, orderControl = orderControl, format = "ZDR"))
-                        val applied = runBlocking { dispenseHl7Repository.handleZdrStatusChange(parsed) }
-                        if (!applied) {
-                            logger.e("ZDR $action: no txn found for order — returning NACK | msgId=$msgId")
-                            return buildErrorAck(parsed, errorResult("ZDR $action: no matching active transaction found"))
-                        }
-                        buildSuccessAck(parsed)
-                    }
-                    else -> {
-                        logger.w("ZDR: unhandled orderAction='$action' | msgId=$msgId")
-                        buildErrorAck(parsed, errorResult("ZDR: unhandled orderAction=$action"))
-                    }
-                }
-            }
-
             // ZUI and ZNI order-packet formats bypass the new RDE parser — handled in repository
             hasZui -> {
                 auditLogger.log(PmsOrderReceived(messageId = msgId.ifBlank { null }, orderControl = orderControl, format = "ZUI"))
