@@ -13,8 +13,7 @@ class AuditJsonTest {
     private val integrityEvent = DeviceIntegrityCheckFailed(
         failedChecks = listOf("EMULATOR"),
         notChecked = listOf("ROOTED"),
-        installer = "unknown",
-        overlayPackages = emptyList()
+        installer = "unknown"
     )
 
     @Test

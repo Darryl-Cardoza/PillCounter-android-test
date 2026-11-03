@@ -32,7 +32,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.constants.LocalDimens
 import com.dispensesure.retail.ui.theme.LocalExtendedColors
 
-/** Debug-only list of decrypted audit records, newest first, with an Export action. */
+/** Debug-only list of decrypted audit records, newest first, with Export and Run integrity check actions. */
 @Composable
 fun AuditLogScreen(
     navController: NavController,
@@ -47,6 +47,12 @@ fun AuditLogScreen(
         viewModel.exportResults.collect { exportedPath ->
             if (exportedPath != null) showToast(context.getString(R.string.audit_log_exported, exportedPath))
             else showToast(context, R.string.audit_log_export_failed)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.integrityCheckResults.collect { eventLogged ->
+            showToast(context, if (eventLogged) R.string.audit_log_integrity_logged else R.string.audit_log_integrity_passed)
         }
     }
 
@@ -69,6 +75,9 @@ fun AuditLogScreen(
                 color = extendedColors.textColor,
                 modifier = Modifier.weight(1f)
             )
+            TextButton(onClick = viewModel::runIntegrityCheck) {
+                Text(stringResource(R.string.audit_log_run_integrity_check))
+            }
             TextButton(onClick = viewModel::export) {
                 Text(stringResource(R.string.audit_log_export))
             }

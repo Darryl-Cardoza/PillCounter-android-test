@@ -132,6 +132,9 @@
     <string name="audit_log_empty" translatable="false">No audit records yet</string>
     <string name="audit_log_exported" translatable="false">Exported to %1$s</string>
     <string name="audit_log_export_failed" translatable="false">Export failed</string>
+    <string name="audit_log_run_integrity_check" translatable="false">Run integrity check</string>
+    <string name="audit_log_integrity_logged" translatable="false">Integrity check failed and was logged. Reopen to see it.</string>
+    <string name="audit_log_integrity_passed" translatable="false">All integrity checks passed. Nothing logged.</string>
     <string name="setting_save_history_for">Save history for</string>
     <string name="pill_counting_sound">Pill Counting Sound</string>
     <string name="require_double_count">Require Double Counts</string>

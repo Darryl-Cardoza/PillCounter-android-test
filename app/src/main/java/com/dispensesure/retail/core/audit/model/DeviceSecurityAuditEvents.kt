@@ -9,8 +9,7 @@ import kotlinx.serialization.Serializable
 data class DeviceIntegrityCheckFailed(
     @SerialName("failed_checks") val failedChecks: List<String>,
     @SerialName("not_checked") val notChecked: List<String>,
-    val installer: String,
-    @SerialName("overlay_packages") val overlayPackages: List<String>
+    val installer: String
 ) : AuditLogEvent() {
     override val result: AuditResult get() = AuditResult.FAILURE
 }

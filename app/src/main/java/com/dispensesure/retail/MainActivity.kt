@@ -35,8 +35,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import com.dispensesure.retail.core.audit.AuditLogger
-import com.dispensesure.retail.core.audit.model.DeviceIntegrityCheckFailed
+import com.dispensesure.retail.core.audit.DeviceIntegrityAuditor
 import com.dispensesure.retail.core.auth.AuthEvent
 import com.dispensesure.retail.core.auth.AuthEventBus
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
@@ -47,7 +46,6 @@ import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.security.RuntimeUnit
-import com.dispensesure.retail.core.security.SecurityUtils
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourEvent
 import com.dispensesure.retail.core.tourguide.TourSectionPrompt
@@ -127,7 +125,7 @@ class MainActivity : ComponentActivity() {
     lateinit var connectivityCallback: ConnectivityCallback
 
     @Inject
-    lateinit var auditLogger: AuditLogger
+    lateinit var deviceIntegrityAuditor: DeviceIntegrityAuditor
 
     private lateinit var navController: NavController
 
@@ -236,7 +234,7 @@ class MainActivity : ComponentActivity() {
 
         // Log-only integrity check, once per fresh launch of a release build and off the main thread.
         if (savedInstanceState == null && !BuildConfig.DEBUG) {
-            lifecycleScope.launch(Dispatchers.IO) { logFailedIntegrityChecks() }
+            lifecycleScope.launch(Dispatchers.IO) { deviceIntegrityAuditor.logFailedIntegrityChecks() }
         }
 
         lifecycleScope.launch {
@@ -571,23 +569,6 @@ class MainActivity : ComponentActivity() {
             showToast(this, R.string.session_expired, keepUntilShown = true)
         } finally {
             sessionHealthController.endTeardown()
-        }
-    }
-
-    private fun logFailedIntegrityChecks() {
-        try {
-            val report = SecurityUtils.runIntegrityChecks(applicationContext)
-            if (report.failedChecks.isEmpty()) return
-            auditLogger.log(
-                DeviceIntegrityCheckFailed(
-                    failedChecks = report.failedChecks,
-                    notChecked = report.notChecked,
-                    installer = report.installer,
-                    overlayPackages = report.overlayPackages
-                )
-            )
-        } catch (e: Exception) {
-            logger.e("Integrity check for audit log failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
         }
     }
 

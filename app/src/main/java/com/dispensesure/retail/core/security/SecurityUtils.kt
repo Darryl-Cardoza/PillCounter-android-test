@@ -90,8 +90,7 @@ object SecurityUtils {
     data class IntegrityCheckReport(
         val failedChecks: List<String>,
         val notChecked: List<String>,
-        val installer: String,
-        val overlayPackages: List<String>
+        val installer: String
     )
 
     /** Runs every integrity check for the audit log only: nothing is blocked. Call off the main thread. */
@@ -118,12 +117,11 @@ object SecurityUtils {
         return IntegrityCheckReport(
             failedChecks = violationByCheckName.filterValues { it == true }.keys.toList(),
             notChecked = violationByCheckName.filterValues { it == null }.keys.toList(),
-            installer = installer,
-            overlayPackages = overlayPackages
+            installer = installer
         )
     }
 
-    // Third-party apps holding SYSTEM_ALERT_WINDOW; shared by the overlay check and the audit event.
+    // Third-party apps holding SYSTEM_ALERT_WINDOW; shared by the overlay check and runIntegrityChecks.
     private fun overlayAppPackages(context: Context): List<String> {
         val pm = context.packageManager
         val packages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

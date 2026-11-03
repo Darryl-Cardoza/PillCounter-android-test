@@ -55,7 +55,7 @@ class AuditLoggerTest {
     private var nextSeq = 0L
     private val sequenceCounter = mockk<AuditSequenceCounter>().also { every { it.next() } answers { ++nextSeq } }
 
-    private val integrityEvent = DeviceIntegrityCheckFailed(listOf("EMULATOR"), emptyList(), "unknown", emptyList())
+    private val integrityEvent = DeviceIntegrityCheckFailed(listOf("EMULATOR"), emptyList(), "unknown")
 
     private fun createLogger(
         recordCipher: AuditRecordCipher = cipher,
