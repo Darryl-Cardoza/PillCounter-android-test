@@ -2,6 +2,8 @@ package com.dispensesure.retail.feature.hl7.data.repository
 
 import android.content.Context
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
@@ -65,6 +67,8 @@ import java.util.concurrent.TimeUnit
 @OptIn(ExperimentalCoroutinesApi::class)
 class StockHl7RepositoryTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var context: Context
@@ -119,9 +123,10 @@ class StockHl7RepositoryTest {
         operatorNameProvider = operatorNameProvider,
         stockBatchDao = stockBatchDao,
         hl7MessageSender = hl7MessageSender,
-        drugResolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader),
+        drugResolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader, regionProvider),
         notifier = notifier,
         hl7ConfigProvider = Hl7ConfigProvider(context, preferenceHelper),
+        regionProvider = regionProvider,
     )
 
     // ─────────────────────────────── message builders ───────────────────────────────
@@ -142,7 +147,7 @@ class StockHl7RepositoryTest {
     @Test
     fun `handleInrInventoryRequest routes inventory request`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { stockBatchDao.insert(any()) } returns 100L
         coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
@@ -465,7 +470,7 @@ class StockHl7RepositoryTest {
     @Test
     fun `handleInrInventoryRequest local drug with name resolves and creates batch`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { stockBatchDao.insert(any()) } returns 100L
         coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
@@ -480,9 +485,25 @@ class StockHl7RepositoryTest {
     }
 
     @Test
+    fun `handleInrInventoryRequest stamps the batch with the current region`() = runTest(testDispatcher) {
+        every { regionProvider.current } returns Region.CA
+        val repo = createRepo()
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.CA) } returns
+            DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345", region = Region.CA)
+        val insertedBatch = slot<StockBatchEntity>()
+        coEvery { stockBatchDao.insert(capture(insertedBatch)) } returns 100L
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
+
+        repo.handleInrInventoryRequest(inventoryMessage())
+
+        coVerify(timeout = 3000) { stockBatchDao.insert(any()) }
+        assertEquals(Region.CA, insertedBatch.captured.region)
+    }
+
+    @Test
     fun `handleInrInventoryRequest local drug empty name is fetched from the server`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
             DrugMasterEntity(drugId = 5L, drugName = "", ndc = "12345")
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns serverDrugInfo()
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 9L
@@ -498,7 +519,7 @@ class StockHl7RepositoryTest {
     @Test
     fun `handleInrInventoryRequest api fallback success`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns serverDrugInfo()
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 9L
         coEvery { stockBatchDao.insert(any()) } returns 100L
@@ -513,7 +534,7 @@ class StockHl7RepositoryTest {
     @Test
     fun `handleInrInventoryRequest api null name uses substance name fallback`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns
             serverDrugInfo(genericName = null)
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 9L
@@ -530,7 +551,7 @@ class StockHl7RepositoryTest {
     @Test
     fun `handleInrInventoryRequest reads ndc and name from INV-1 not the INV-2 status`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
+        coEvery { drugMasterDao.getDrugByNdc(any(), any()) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns
             serverDrugInfo(ndc = "", genericName = null)
         val savedDrug = slot<DrugMasterEntity>()
@@ -547,7 +568,7 @@ class StockHl7RepositoryTest {
     @Test
     fun `handleInrInventoryRequest api null name and blank substance name skipped`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns
             serverDrugInfo(genericName = null)
 
@@ -561,7 +582,7 @@ class StockHl7RepositoryTest {
     @Test
     fun `handleInrInventoryRequest api throws continues`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { drugMasterDao.getDrugByNdc("12345") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } throws
             RuntimeException("api boom")
 

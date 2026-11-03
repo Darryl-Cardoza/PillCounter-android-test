@@ -4,6 +4,8 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.StockBatchEntity
@@ -12,6 +14,7 @@ import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -30,6 +33,8 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class StockCountRepositoryTest {
+
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
 
     @get:Rule
     val temporaryFolder = TemporaryFolder()
@@ -51,6 +56,7 @@ class StockCountRepositoryTest {
             stockTxnDao = db.stockTxnDao(),
             stockBottleInfoDao = db.stockBottleInfoDao(),
             operatorNameProvider = operatorNameProvider,
+            regionProvider = regionProvider,
         )
     }
 

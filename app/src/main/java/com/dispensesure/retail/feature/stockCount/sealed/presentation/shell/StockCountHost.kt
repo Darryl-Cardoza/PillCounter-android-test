@@ -24,6 +24,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.tourguide.FtueController
@@ -104,6 +106,7 @@ fun StockCountHost(
     var pendingNote by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
+    val loggedInRegion = LocalRegion.current
     val analyzer = remember {
         FrameBarcodeAnalyzer(
             context.applicationContext,
@@ -112,6 +115,7 @@ fun StockCountHost(
             // run more decode attempts/sec to cut time-to-detect on a steadied label.
             minIntervalMs = 100L,
             isGrayscale = stockCountViewModel::isGrayscaleImage,
+            region = loggedInRegion,
         )
     }
     DisposableEffect(Unit) { onDispose { analyzer.close() } }
@@ -139,9 +143,9 @@ fun StockCountHost(
     LaunchedEffect(errorMessage) {
         errorMessage?.let { err ->
             val text = if (err.formatArg != null) {
-                context.getString(err.messageResId, err.formatArg)
+                context.getString(loggedInRegion.wording(err.messageResId), err.formatArg)
             } else {
-                context.getString(err.messageResId)
+                context.getString(loggedInRegion.wording(err.messageResId))
             }
             showToast(text)
             stockCountViewModel.clearErrorMessage()

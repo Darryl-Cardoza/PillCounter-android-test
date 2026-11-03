@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.utils.common.HistoryRetention
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -187,6 +188,7 @@ fun MenuScreen(
                 )
                 if (showTourPicker) {
                     val labels = TourSection.entries.map { it.label() }
+                    val loggedInRegion = LocalRegion.current
                     CommonSingleSelectDialog(
                         title = stringResource(R.string.tour_picker_title),
                         options = listOf(stringResource(R.string.tour_picker_full)) + labels,
@@ -200,6 +202,7 @@ fun MenuScreen(
                                 sections,
                                 hl7Enabled = loginViewModel.preferenceHelper.isHl7Enabled(),
                                 notesEnabled = loginViewModel.preferenceHelper.getShowNotesDialogSetting(),
+                                bucketsEnabled = loggedInRegion.showsBucket,
                             )
                             navController.navigate(Screen.Dashboard.route) {
                                 popUpTo(0)

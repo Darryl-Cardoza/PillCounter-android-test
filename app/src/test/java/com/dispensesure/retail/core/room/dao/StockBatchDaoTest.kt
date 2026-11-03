@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.room.dao
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import app.cash.turbine.test
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
@@ -10,6 +11,7 @@ import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.tourguide.TutorialData
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -147,12 +149,12 @@ class StockBatchDaoTest {
 
     @Test
     fun `getLatestByStatus returns most recent match or null`() = runTest {
-        assertNull(stockBatchDao.getLatestByStatus(BatchStatus.COMPLETED))
+        assertNull(stockBatchDao.getLatestByStatus(BatchStatus.COMPLETED, Region.US))
 
         stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.COMPLETED))
         stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
 
-        val latest = stockBatchDao.getLatestByStatus(BatchStatus.COMPLETED)
+        val latest = stockBatchDao.getLatestByStatus(BatchStatus.COMPLETED, Region.US)
         assertEquals(2L, latest?.batchId)
     }
 
@@ -161,7 +163,7 @@ class StockBatchDaoTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS))
         stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
 
-        val latest = stockBatchDao.getLatest()
+        val latest = stockBatchDao.getLatest(Region.US)
         assertEquals(1L, latest?.batchId)
     }
 
@@ -232,7 +234,7 @@ class StockBatchDaoTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
         stockBatchDao.insert(StockBatchEntity(batchId = 3L, startDateTime = 500L, status = BatchStatus.COMPLETED))
 
-        val ids = stockBatchDao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = null)
+        val ids = stockBatchDao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = null, region = Region.US)
         assertEquals(setOf(1L, 2L), ids.toSet())
     }
 
@@ -241,7 +243,7 @@ class StockBatchDaoTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS))
         stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
 
-        val ids = stockBatchDao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = true)
+        val ids = stockBatchDao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = true, region = Region.US)
         assertEquals(listOf(2L), ids)
     }
 
@@ -250,7 +252,7 @@ class StockBatchDaoTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS))
         stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
 
-        val ids = stockBatchDao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = false)
+        val ids = stockBatchDao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = false, region = Region.US)
         assertEquals(listOf(1L), ids)
     }
 
@@ -260,7 +262,7 @@ class StockBatchDaoTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 150L))
         stockBatchDao.softDelete(2L)
 
-        val ids = stockBatchDao.getBatchIdsByDate(start = 100L, end = 200L, isCompleted = null)
+        val ids = stockBatchDao.getBatchIdsByDate(start = 100L, end = 200L, isCompleted = null, region = Region.US)
         assertTrue(ids.isEmpty())
     }
 
@@ -269,7 +271,7 @@ class StockBatchDaoTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.COMPLETED))
         stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 900L, status = BatchStatus.COMPLETED))
 
-        stockBatchDao.softDeleteBatchesByDate(start = 0L, end = 300L, isCompleted = true)
+        stockBatchDao.softDeleteBatchesByDate(start = 0L, end = 300L, isCompleted = true, region = Region.US)
 
         assertTrue(stockBatchDao.getById(1L)!!.isDeleted)
         assertFalse(stockBatchDao.getById(2L)!!.isDeleted)
@@ -288,7 +290,7 @@ class StockBatchDaoTest {
         db.stockTxnDao().insertIgnore(StockTxnEntity(txnId = 3L, drugId = drug20, batchId = 1L, isDeleted = false))
         db.stockTxnDao().insertIgnore(StockTxnEntity(txnId = 4L, drugId = drug30, batchId = 1L, isDeleted = true))
 
-        stockBatchDao.getBatchSummaries(0L, 200L).test {
+        stockBatchDao.getBatchSummaries(0L, 200L, Region.US).test {
             val summaries = awaitItem()
             assertEquals(1, summaries.size)
             assertEquals(2, summaries.first().uniqueNdcCount)
@@ -300,7 +302,7 @@ class StockBatchDaoTest {
     fun `getBatchSummaries includes batches with no transactions at zero count`() = runTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L))
 
-        stockBatchDao.getBatchSummaries(0L, 200L).test {
+        stockBatchDao.getBatchSummaries(0L, 200L, Region.US).test {
             val summaries = awaitItem()
             assertEquals(1, summaries.size)
             assertEquals(0, summaries.first().uniqueNdcCount)
@@ -313,7 +315,7 @@ class StockBatchDaoTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED, isSynced = true))
         stockBatchDao.insert(StockBatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS, isSynced = false))
 
-        stockBatchDao.observeUnsyncedCompletedBatches().test {
+        stockBatchDao.observeUnsyncedCompletedBatches(Region.US).test {
             val list = awaitItem()
             assertEquals(1, list.size)
             assertEquals(1L, list.first().batchId)
@@ -325,7 +327,7 @@ class StockBatchDaoTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
         stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
 
-        stockBatchDao.observeInProgressBatchSummaries().test {
+        stockBatchDao.observeInProgressBatchSummaries(Region.US).test {
             val list = awaitItem()
             assertEquals(1, list.size)
             assertEquals(1L, list.first().batchId)
@@ -341,14 +343,14 @@ class StockBatchDaoTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 5L, status = BatchStatus.INPROGRESS, requestIdFromPMS = "pms-3"))
         stockBatchDao.softDelete(5L)
 
-        stockBatchDao.observeInProgressBatchKpiCounts().test {
+        stockBatchDao.observeInProgressBatchKpiCounts(Region.US).test {
             assertEquals(InventoryKpiCountsDto(cycleCount = 1, pendingBatchCount = 2), awaitItem())
         }
     }
 
     @Test
     fun `observeInProgressBatchKpiCounts emits zeros when there are no batches`() = runTest {
-        stockBatchDao.observeInProgressBatchKpiCounts().test {
+        stockBatchDao.observeInProgressBatchKpiCounts(Region.US).test {
             assertEquals(InventoryKpiCountsDto(cycleCount = 0, pendingBatchCount = 0), awaitItem())
         }
     }
@@ -379,10 +381,10 @@ class StockBatchDaoTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS, bucketId = TutorialData.BUCKET))
 
         assertEquals(listOf(2L), stockBatchDao.getUnsyncedCompletedBatchesOnce().map { it.batchId })
-        stockBatchDao.observeInProgressBatchSummaries().test {
+        stockBatchDao.observeInProgressBatchSummaries(Region.US).test {
             assertTrue(awaitItem().isEmpty())
         }
-        stockBatchDao.observeInProgressBatchKpiCounts().test {
+        stockBatchDao.observeInProgressBatchKpiCounts(Region.US).test {
             assertEquals(0, awaitItem().pendingBatchCount)
         }
     }
@@ -428,10 +430,48 @@ class StockBatchDaoTest {
     fun `getUnsyncedCompletedBatchCount reflects live count of unsynced completed batches`() = runTest {
         stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
 
-        stockBatchDao.getUnsyncedCompletedBatchCount().test {
+        stockBatchDao.getUnsyncedCompletedBatchCount(Region.US).test {
             assertEquals(1, awaitItem())
             stockBatchDao.markBatchSynced(1L)
             assertEquals(0, awaitItem())
         }
+    }
+
+    // ───────────────────────── region ─────────────────────────
+
+    @Test
+    fun `batch lists and counts only show the asked region`() = runTest {
+        stockBatchDao.insertNewInProgressBatch(bucketId = null, region = Region.US)
+        Thread.sleep(2) // batchId is the creation time
+        stockBatchDao.insertNewInProgressBatch(bucketId = null, region = Region.CA)
+
+        assertEquals(1, stockBatchDao.observeInProgressBatchSummaries(Region.CA).first().size)
+        assertEquals(1, stockBatchDao.observeInProgressBatchSummaries(Region.US).first().size)
+        assertEquals(1, stockBatchDao.observeInProgressBatchKpiCounts(Region.CA).first().pendingBatchCount)
+        assertEquals(1, stockBatchDao.getBatchSummaries(0L, Long.MAX_VALUE, Region.CA).first().size)
+        assertEquals(Region.CA, stockBatchDao.getLatest(Region.CA)?.region)
+    }
+
+    @Test
+    fun `unsynced completed batches and their count only show the asked region`() = runTest {
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, region = Region.US))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED, region = Region.CA))
+
+        assertEquals(listOf(2L), stockBatchDao.observeUnsyncedCompletedBatches(Region.CA).first().map { it.batchId })
+        assertEquals(1, stockBatchDao.getUnsyncedCompletedBatchCount(Region.US).first())
+        // HL7 resends every region's finished batches.
+        assertEquals(setOf(1L, 2L), stockBatchDao.getUnsyncedCompletedBatchesOnce().map { it.batchId }.toSet())
+    }
+
+    @Test
+    fun `deleting history by date only deletes the asked region`() = runTest {
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.COMPLETED, region = Region.US))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 100L, status = BatchStatus.COMPLETED, region = Region.CA))
+
+        assertEquals(listOf(2L), stockBatchDao.getBatchIdsByDate(0L, 200L, isCompleted = null, region = Region.CA))
+        stockBatchDao.softDeleteBatchesByDate(0L, 200L, isCompleted = null, region = Region.CA)
+
+        assertEquals(false, stockBatchDao.getById(1L)?.isDeleted)
+        assertEquals(true, stockBatchDao.getById(2L)?.isDeleted)
     }
 }

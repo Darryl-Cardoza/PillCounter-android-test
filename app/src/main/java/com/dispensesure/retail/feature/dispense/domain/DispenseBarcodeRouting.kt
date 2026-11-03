@@ -1,6 +1,7 @@
 package com.dispensesure.retail.feature.dispense.domain
 
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseStage
@@ -10,7 +11,8 @@ sealed interface BarcodeRoute {
     data class RxLabel(val rawValue: String) : BarcodeRoute
 
     // firstBottle holds the GS1 lot / expiry / serial, saved as the txn's first bottle.
-    data class Container(val gtin14: String, val firstBottle: DispenseBottle) : BarcodeRoute
+    // scannedCode is a GTIN-14, or for Canada an 8-digit DIN as scanned.
+    data class Container(val scannedCode: String, val firstBottle: DispenseBottle) : BarcodeRoute
 
     data object RxLabelOnContainerStep : BarcodeRoute
     data class Bottle(val rawValue: String, val imagePath: String?) : BarcodeRoute
@@ -21,7 +23,7 @@ sealed interface BarcodeRoute {
 }
 
 /** Which handler gets a scanned value, per stage and counting step. */
-class DispenseBarcodeRouting(private val scanDecoder: ScanDecoder) {
+class DispenseBarcodeRouting(private val scanDecoder: ScanDecoder, private val region: Region) {
 
     /** True when the stage or step reads barcodes at all; the screen runs the analyzer only then. */
     fun readsBarcodes(stage: DispenseStage, currentStep: StepState, isVialStillShown: Boolean): Boolean =
@@ -63,12 +65,8 @@ class DispenseBarcodeRouting(private val scanDecoder: ScanDecoder) {
         // ({RXNO}|{NDCNO}|{QTY}|{BUCKET}) — never a valid GTIN / GS1.
         // Nudge with a toast and resume scanning.
         if (rawValue.contains('|')) return BarcodeRoute.RxLabelOnContainerStep
-        val scan = scanDecoder.decode(rawValue)
-        val finalGtin14 = scan.gtin14 ?: ""
-        val isInvalid = finalGtin14.isBlank() ||
-                finalGtin14.length != 14 ||
-                !finalGtin14.all { it.isDigit() }
-        if (isInvalid) return BarcodeRoute.Ignored
+        val scan = scanDecoder.decode(rawValue, region)
+        val scannedCode = scan.lookupCode?.takeIf { it.isNotBlank() } ?: return BarcodeRoute.Ignored
         // First-bottle info for this txn: a plain (non-GS1) barcode carries no
         // lot/exp/serial, so the bottle entry is count-only in that case.
         val firstBottle = DispenseBottle(
@@ -77,7 +75,7 @@ class DispenseBarcodeRouting(private val scanDecoder: ScanDecoder) {
             serialNumber = scan.serial,
             barcodeImagePath = imagePath,
         )
-        return BarcodeRoute.Container(finalGtin14, firstBottle)
+        return BarcodeRoute.Container(scannedCode, firstBottle)
     }
 
     // Actively counting pills: keep the barcode scanner live so a rescan of the same NDC

@@ -3,6 +3,8 @@ package com.dispensesure.retail.feature.menu.presentation.viewmodel
 import android.util.Log
 import app.cash.turbine.test
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -31,6 +33,8 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class MenuViewModelTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var dispenseTxnDao: DispenseTxnDao
@@ -55,8 +59,8 @@ class MenuViewModelTest {
         sessionLockController = mockk(relaxed = true)
 
         // Sensible defaults so the init observer does not blow up.
-        every { dispenseTxnDao.getTotalCompletedTransactionCount(any(), any()) } returns flowOf(0)
-        every { stockBatchDao.getUnsyncedCompletedBatchCount(any()) } returns flowOf(0)
+        every { dispenseTxnDao.getTotalCompletedTransactionCount(any(), any(), any()) } returns flowOf(0)
+        every { stockBatchDao.getUnsyncedCompletedBatchCount(any(), any()) } returns flowOf(0)
     }
 
     @After
@@ -66,7 +70,7 @@ class MenuViewModelTest {
     }
 
     private fun createViewModel(): MenuViewModel =
-        MenuViewModel(dispenseTxnDao, stockBatchDao, preferenceHelper, sessionLockController)
+        MenuViewModel(dispenseTxnDao, stockBatchDao, preferenceHelper, sessionLockController, regionProvider)
 
     @Test
     fun `initial uiState has the unsynced count at zero`() {
@@ -77,8 +81,8 @@ class MenuViewModelTest {
 
     @Test
     fun `init adds unsynced dispenses and batches`() = runTest(testDispatcher) {
-        every { dispenseTxnDao.getTotalCompletedTransactionCount(any(), any()) } returns flowOf(6)
-        every { stockBatchDao.getUnsyncedCompletedBatchCount(any()) } returns flowOf(9)
+        every { dispenseTxnDao.getTotalCompletedTransactionCount(any(), any(), any()) } returns flowOf(6)
+        every { stockBatchDao.getUnsyncedCompletedBatchCount(any(), any()) } returns flowOf(9)
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -91,7 +95,7 @@ class MenuViewModelTest {
 
     @Test
     fun `observeUnsyncedTransactionCount catch keeps default count`() = runTest(testDispatcher) {
-        every { dispenseTxnDao.getTotalCompletedTransactionCount(any(), any()) } returns
+        every { dispenseTxnDao.getTotalCompletedTransactionCount(any(), any(), any()) } returns
             flow { throw RuntimeException("unsynced error") }
 
         val vm = createViewModel()

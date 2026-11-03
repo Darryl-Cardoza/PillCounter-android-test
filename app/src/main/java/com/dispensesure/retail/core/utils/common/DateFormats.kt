@@ -10,6 +10,8 @@ object DateFormats {
     // PDF reports
     const val MMM_DD_YYYY = "MMM dd, yyyy"
     const val MMM_DD_YYYY_HH_MM_A = "MMM dd, yyyy hh:mm a"
+    const val YYYY_MM_DD = "yyyy-MM-dd"
+    const val YYYY_MM_DD_HH_MM_A = "yyyy-MM-dd hh:mm a"
 
     // Expiry is saved in this format. PMS and HL7 read it. Do not change the value.
     const val EXPIRY_STORED = "MM-dd-yyyy"

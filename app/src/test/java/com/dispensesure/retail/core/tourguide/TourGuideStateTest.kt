@@ -197,4 +197,24 @@ class TourGuideStateTest {
         assertFalse(state.isActive)
         assertEquals(1, ended)
     }
+
+    // Stock-count steps with the bucket step in the middle, as in the real tour.
+    private fun bucketTourState(scope: CoroutineScope) = TourGuideState(
+        stepsFor = { listOf(step("s_card", it), step(BUCKET_STEP_ID, it), step("s_scan", it)) },
+        scope = scope,
+    )
+
+    @Test
+    fun `bucket step is left out when buckets are off`() = runTest {
+        val state = bucketTourState(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        state.start(listOf(TourSection.STOCK_COUNT), bucketsEnabled = false)
+        assertEquals(listOf("s_card", "s_scan"), state.steps.map { it.id })
+    }
+
+    @Test
+    fun `bucket step is kept by default`() = runTest {
+        val state = bucketTourState(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        state.start(listOf(TourSection.STOCK_COUNT))
+        assertEquals(listOf("s_card", BUCKET_STEP_ID, "s_scan"), state.steps.map { it.id })
+    }
 }

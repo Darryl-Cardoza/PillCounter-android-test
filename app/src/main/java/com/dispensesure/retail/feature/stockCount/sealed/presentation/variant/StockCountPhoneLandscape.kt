@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.feature.stockCount.sealed.presentation.compose.StockCountHeader
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.StockCountUiState
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditBatchRow
@@ -201,7 +202,7 @@ private fun EmptyScannedDetailsLandscape(
     // the bottom — no dead space below the summary.
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
-            text = stringResource(R.string.batch_stock_count_scanned_drug_details),
+            text = regionStringResource(R.string.batch_stock_count_scanned_drug_details),
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = responsiveSp(8.sp),
             fontWeight = FontWeight.SemiBold,

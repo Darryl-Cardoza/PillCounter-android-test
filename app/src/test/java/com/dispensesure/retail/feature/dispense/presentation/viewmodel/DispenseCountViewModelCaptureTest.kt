@@ -70,7 +70,7 @@ class DispenseCountViewModelCaptureTest : DispenseCountViewModelTestBase() {
         coEvery { dispenseCountRepository.totalPillCount(any()) } returns 30
         // captureVialForTour is a no-op without an active tour, and refuses a non-demo txn.
         coEvery { dispenseCountRepository.isDemoTxn(42L) } returns true
-        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false)
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, bucketsEnabled = true)
 
         try {
             // Throws TimeoutCancellationException (virtual 8s) if the flow never leaves VIAL.

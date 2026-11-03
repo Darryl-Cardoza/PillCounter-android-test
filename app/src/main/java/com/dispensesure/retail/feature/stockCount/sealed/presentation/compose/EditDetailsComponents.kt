@@ -38,6 +38,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.formatExpiry
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
@@ -45,7 +48,6 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.drugDisplayName
-import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.core.utils.compose.repeatWhileHeld
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.EditDrugDetails
@@ -114,7 +116,7 @@ internal fun EditDetailsContent(
                 .verticalScroll(rememberScrollState()),
         ) {
             Text(
-                text = stringResource(R.string.batch_stock_count_scanned_drug_details),
+                text = regionStringResource(R.string.batch_stock_count_scanned_drug_details),
                 color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
                 fontSize = responsiveSp(8.sp),
                 fontWeight = FontWeight.SemiBold,
@@ -130,15 +132,17 @@ internal fun EditDetailsContent(
                         modifier = Modifier.weight(2f),
                     )
                     EditDetailField(
-                        label = stringResource(R.string.batch_stock_count_label_ndc),
+                        label = regionStringResource(R.string.batch_stock_count_label_ndc),
                         value = details.ndc,
                         modifier = Modifier.weight(1.4f),
                     )
-                    EditDetailField(
-                        label = stringResource(R.string.batch_stock_count_label_bucket),
-                        value = details.bucket,
-                        modifier = Modifier.weight(1f),
-                    )
+                    if (LocalRegion.current.showsBucket) {
+                        EditDetailField(
+                            label = stringResource(R.string.batch_stock_count_label_bucket),
+                            value = details.bucket,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             } else {
                 // Drug Name on its own full-width row, then NDC | Bucket.
@@ -153,16 +157,18 @@ internal fun EditDetailsContent(
                 )
                 Row(modifier = Modifier.fillMaxWidth()) {
                     EditDetailField(
-                        label = stringResource(R.string.batch_stock_count_label_ndc),
+                        label = regionStringResource(R.string.batch_stock_count_label_ndc),
                         value = details.ndc,
                         modifier = Modifier.weight(1f),
                     )
-                    EditDetailField(
-                        label = stringResource(R.string.batch_stock_count_label_bucket),
-                        value = details.bucket,
-                        modifier = Modifier.weight(1f),
-                        alignEnd = true,
-                    )
+                    if (LocalRegion.current.showsBucket) {
+                        EditDetailField(
+                            label = stringResource(R.string.batch_stock_count_label_bucket),
+                            value = details.bucket,
+                            modifier = Modifier.weight(1f),
+                            alignEnd = true,
+                        )
+                    }
                 }
             }
             HorizontalDivider(
@@ -327,7 +333,7 @@ private fun EditBatchRowItem(
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = formatDateToUSFormat(row.expiry).ifBlank { "—" },
+            text = LocalRegion.current.formatExpiry(row.expiry).ifBlank { "—" },
             color = AppTheme.extendedColors.textColor,
             fontSize = responsiveSp(6.sp),
             maxLines = 1,

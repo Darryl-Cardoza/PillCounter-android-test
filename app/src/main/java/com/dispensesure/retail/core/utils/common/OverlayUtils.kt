@@ -13,6 +13,9 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.formatExpiry
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.TrayClass
 import com.dispensesure.retail.core.scanning.logic.TrayDetection
@@ -40,6 +43,7 @@ data class PhotoInfo(
     val userName: String?,
     val location: String?,
     val timestamp: Long,
+    val region: Region,
 )
 
 /** One label/value cell of an info strip. */
@@ -107,14 +111,14 @@ object OverlayUtils {
     /** Top-strip fields under the drug name; stock counts have a single NDC. */
     internal fun topRowFields(info: PhotoInfo, res: Resources): List<InfoField> = buildList {
         if (info.isStockCount) {
-            add(InfoField(res.getString(R.string.ndc), info.requestedNdc.orDash()))
+            add(InfoField(res.getString(info.region.wording(R.string.ndc)), info.requestedNdc.orDash()))
         } else {
-            add(InfoField(res.getString(R.string.photo_label_requested_ndc), info.requestedNdc.orDash()))
-            add(InfoField(res.getString(R.string.photo_label_dispensed_ndc), info.dispensedNdc.orDash()))
+            add(InfoField(res.getString(info.region.wording(R.string.photo_label_requested_ndc)), info.requestedNdc.orDash()))
+            add(InfoField(res.getString(info.region.wording(R.string.photo_label_dispensed_ndc)), info.dispensedNdc.orDash()))
         }
         add(InfoField(res.getString(R.string.lotNo), info.lotNumber.orDash()))
         add(InfoField(res.getString(R.string.serial_no), info.serialNumber.orDash()))
-        add(InfoField(res.getString(R.string.expiry), info.expirationDate?.let(::formatDateToUSFormat).orDash()))
+        add(InfoField(res.getString(R.string.expiry), info.expirationDate?.let { storedExpiry -> info.region.formatExpiry(storedExpiry) }.orDash()))
     }
 
     /**
@@ -122,7 +126,7 @@ object OverlayUtils {
      * Location at half width.
      */
     internal fun bottomRows(info: PhotoInfo, res: Resources): List<List<InfoField>> {
-        val date = SimpleDateFormat(DateFormats.MM_DD_YY_HH_MM_A, Locale.getDefault()).format(Date(info.timestamp))
+        val date = SimpleDateFormat(info.region.numericDateTimePattern, Locale.getDefault()).format(Date(info.timestamp))
         return listOf(
             listOfNotNull(
                 InfoField(res.getString(R.string.count), info.count.toString()),

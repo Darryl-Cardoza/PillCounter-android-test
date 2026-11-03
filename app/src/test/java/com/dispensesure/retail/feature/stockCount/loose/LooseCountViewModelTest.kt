@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import androidx.lifecycle.SavedStateHandle
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.DecodedScan
@@ -60,6 +62,7 @@ class LooseCountViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val scanDecoder: ScanDecoder = mockk()
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
     private val drugResolver: DrugResolver = mockk()
     private val stockCountRepository: StockCountRepository = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
@@ -78,7 +81,7 @@ class LooseCountViewModelTest {
         every { engine.state } returns MutableStateFlow(EngineState())
         every { engine.events } returns engineEvents
         every { engine.lastTenDetections } returns MutableStateFlow(ArrayDeque())
-        every { scanDecoder.decode(any()) } returns containerScan
+        every { scanDecoder.decode(any(), any()) } returns containerScan
         coEvery { drugResolver.resolve(any(), any(), any(), any(), any(), any()) } returns
             DrugLookup.Found(drug(), fromServer = false)
         every { stockCountRepository.observeCanReset(any()) } returns flowOf(true)
@@ -104,6 +107,7 @@ class LooseCountViewModelTest {
         stockCountRepository = stockCountRepository,
         preferenceHelper = preferenceHelper,
         engineFactory = engineFactory,
+        regionProvider = regionProvider,
     )
 
     private fun drug(drugType: String? = null, isHazardous: Boolean = false) = DrugMasterEntity(
@@ -220,7 +224,7 @@ class LooseCountViewModelTest {
 
     @Test
     fun `a barcode with no GTIN-14 is ignored and scanning resumes`() = runTest {
-        every { scanDecoder.decode(any()) } returns containerScan.copy(gtin14 = null)
+        every { scanDecoder.decode(any(), any()) } returns containerScan.copy(gtin14 = null, lookupCode = null)
         val viewModel = createViewModel()
         val effects = collectEffects(viewModel)
 
@@ -299,7 +303,7 @@ class LooseCountViewModelTest {
         viewModel.onAction(LooseCountAction.ContainerScanned("RAW"))
         advanceUntilIdle()
 
-        assertEquals(listOf(LooseCountEffect.ContainerRejected(R.string.the_scanned_ndc_does_not_match)), effects)
+        assertEquals(listOf(LooseCountEffect.ContainerRejected(R.string.batch_stock_count_drug_not_found, CONTAINER_GTIN)), effects)
     }
 
     @Test
@@ -505,7 +509,7 @@ class LooseCountViewModelTest {
         val viewModel = countingViewModel(batchId = 0L)
         addPills(viewModel, pillCount = 5, photoPath = "/photos/1.jpg")
         viewModel.onAction(LooseCountAction.DoneTapped)
-        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false)
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, bucketsEnabled = true)
 
         try {
             viewModel.onAction(LooseCountAction.EndCountConfirmed)
@@ -695,5 +699,28 @@ class LooseCountViewModelTest {
         createViewModel()
 
         verify { engine.resetGloves() }
+    }
+
+    @Test
+    fun `canada container scan is looked up by the DIN and saves no GTIN`() = runTest {
+        every { regionProvider.current } returns Region.CA
+        every { scanDecoder.decode(any(), Region.CA) } returns
+            DecodedScan(isGs1 = false, gtin14 = null, lot = null, expiry = null, serial = null, lookupCode = "00013285")
+        coEvery { drugResolver.resolve(any(), any(), any(), any(), any(), any()) } returns
+            DrugLookup.Found(drug(), fromServer = true)
+        val viewModel = createViewModel()
+
+        viewModel.onAction(LooseCountAction.ContainerScanned("00013285"))
+        advanceUntilIdle()
+
+        coVerify {
+            drugResolver.resolve(
+                code = "00013285",
+                expectedNdc = null,
+                allowNoName = true,
+                nameIfUnknown = null,
+                scannedGtin = null,
+            )
+        }
     }
 }

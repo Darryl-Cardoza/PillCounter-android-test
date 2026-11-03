@@ -32,6 +32,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.bucketLabelForLoggedInRegion
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
@@ -102,6 +105,7 @@ fun DispenseFlowScreen(
     dispenseCountViewModel: DispenseCountViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val loggedInRegion = LocalRegion.current
     val dispenseState by dispenseVm.uiState.collectAsState()
     val dispenseCountState by dispenseCountViewModel.uiState.collectAsState()
     val configuration = LocalConfiguration.current
@@ -159,7 +163,7 @@ fun DispenseFlowScreen(
     LaunchedEffect(Unit) {
         dispenseCountViewModel.effects.collect { effect ->
             when (effect) {
-                is DispenseCountEffect.ShowToast -> showToast(context, effect.text)
+                is DispenseCountEffect.ShowToast -> showToast(context, loggedInRegion.wording(effect.text))
                 DispenseCountEffect.Finished -> {
                     // Do NOT reset workflow steps here — that changes pillStepType
                     // while still on COUNTING stage and triggers unwanted TTS speech.
@@ -217,7 +221,7 @@ fun DispenseFlowScreen(
     val awaitingResume = dispenseState.isResolvingEntry
 
     // Which handler a barcode read goes to, per stage and counting step.
-    val barcodeRouting = remember { DispenseBarcodeRouting(ScanDecoder(BarcodeDecoder())) }
+    val barcodeRouting = remember { DispenseBarcodeRouting(ScanDecoder(BarcodeDecoder()), loggedInRegion) }
     val readsBarcodes = barcodeRouting.readsBarcodes(
         stage = dispenseState.stage,
         currentStep = pillStepType,
@@ -289,7 +293,11 @@ fun DispenseFlowScreen(
     }
 
     val barcodeAnalyzer = remember {
-        FrameBarcodeAnalyzer(context.applicationContext, isGrayscale = dispenseCountViewModel::isGrayscaleImage)
+        FrameBarcodeAnalyzer(
+            context.applicationContext,
+            isGrayscale = dispenseCountViewModel::isGrayscaleImage,
+            region = loggedInRegion,
+        )
     }
     DisposableEffect(Unit) {
         onDispose { barcodeAnalyzer.pause() }
@@ -347,7 +355,7 @@ fun DispenseFlowScreen(
         dispenseVm.effects.collect { effect ->
             when (effect) {
                 is DispenseFlowEffect.ScanRejected -> {
-                    effect.toastText?.let { toastText -> showToast(context, toastText) }
+                    effect.toastText?.let { toastText -> showToast(context, loggedInRegion.wording(toastText)) }
                     // Read again after the pause, or now when nothing is in the way.
                     if (effect.pauseScanning) {
                         scanCooldownStarts++
@@ -380,7 +388,7 @@ fun DispenseFlowScreen(
         drugName = dispenseCountState.drugName,
         ndc = dispenseCountState.ndc,
         strength = dispenseCountState.strength,
-        bucket = dispenseCountState.bucketId ?: stringResource(R.string.default_bucket),
+        bucket = bucketLabelForLoggedInRegion(dispenseCountState.bucketId),
         dosageForm = dispenseCountState.dosageForm,
         drugImage = dispenseCountState.drugImage,
         totalCount = dispenseCountState.totalCount,
@@ -487,7 +495,7 @@ fun DispenseFlowScreen(
             is BarcodeRoute.RxLabel ->
                 dispenseVm.onAction(DispenseFlowAction.RxLabelScanned(barcodeRoute.rawValue))
             is BarcodeRoute.Container ->
-                dispenseVm.onAction(DispenseFlowAction.ContainerScanned(barcodeRoute.gtin14, barcodeRoute.firstBottle))
+                dispenseVm.onAction(DispenseFlowAction.ContainerScanned(barcodeRoute.scannedCode, barcodeRoute.firstBottle))
             // Wrong label for this step: the view model toasts; read again.
             BarcodeRoute.RxLabelOnContainerStep -> {
                 dispenseVm.onAction(DispenseFlowAction.RxLabelScannedOnContainerStep)

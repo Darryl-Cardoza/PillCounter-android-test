@@ -2,6 +2,7 @@ package com.dispensesure.retail.feature.dispense.data
 
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isControlledDrugType
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
@@ -21,6 +22,7 @@ import javax.inject.Inject
 class DispenseFlowRepository @Inject constructor(
     private val dispenseTxnDao: DispenseTxnDao,
     private val drugMasterDao: DrugMasterDao,
+    private val regionProvider: RegionProvider,
 ) {
 
     suspend fun loadTxn(txnId: Long): DispenseTxnEntity? = dispenseTxnDao.getById(txnId)
@@ -46,8 +48,8 @@ class DispenseFlowRepository @Inject constructor(
 
     /** Tour: saves the demo drug under [name] and returns it; null if it can't be read back. */
     suspend fun upsertDemoDrug(name: String): DrugMasterEntity? {
-        TutorialData.upsertDemoDrug(drugMasterDao, name)
-        return drugMasterDao.getDrugByNdc(TutorialData.DEMO_NDC)
+        TutorialData.upsertDemoDrug(drugMasterDao, name, regionProvider.current)
+        return drugMasterDao.getDrugByNdc(TutorialData.DEMO_NDC, regionProvider.current)
     }
 
     /**
@@ -90,10 +92,11 @@ class DispenseFlowRepository @Inject constructor(
     ): Boolean {
         val txn = dispenseTxnDao.getById(txnId) ?: return false
         val substitutedDrugId = substituteDrug?.let { drug ->
+            val loggedInRegion = regionProvider.current
             // The image was already downloaded during the NDC scan step (the container scan).
             // Carry that path forward so the upsert doesn't overwrite it with null.
-            val existingImagePath = drugMasterDao.getDrugByNdc(drug.ndc)?.drugImagePath
-            drugMasterDao.upsertPreservingId(drug.copy(drugImagePath = existingImagePath))
+            val existingImagePath = drugMasterDao.getDrugByNdc(drug.ndc, loggedInRegion)?.drugImagePath
+            drugMasterDao.upsertPreservingId(drug.copy(drugImagePath = existingImagePath, region = loggedInRegion))
         }
         // Stamp the first bottle scanned against this txn — only when the txn has no
         // bottle entries yet, so resuming an already-in-progress dispense (e.g. after
@@ -131,7 +134,7 @@ class DispenseFlowRepository @Inject constructor(
                     txn = txn,
                     isHazardous = txn.isHazardous,
                     isHighPriority = txn.priority == TxnPriority.High,
-                    isControlled = isControlledDrugType(txn.drugType),
+                    isControlled = isControlledDrugType(txn.drugType, regionProvider.current),
                 )
             }
         }

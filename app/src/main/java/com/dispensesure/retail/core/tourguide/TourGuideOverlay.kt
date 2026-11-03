@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.ui.theme.AppTheme.extendedColors
 import kotlin.math.roundToInt
@@ -276,7 +277,7 @@ fun TourGuideOverlay(
                     )
                 }
                 Text(
-                    text = stringResource(step.descriptionRes),
+                    text = regionStringResource(step.descriptionRes),
                     color = extendedColors.textColor,
                     fontSize = 12.5.sp,
                 )

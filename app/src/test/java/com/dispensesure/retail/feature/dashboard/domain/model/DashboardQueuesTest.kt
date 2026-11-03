@@ -1,5 +1,6 @@
 package com.dispensesure.retail.feature.dashboard.domain.model
 
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
@@ -73,7 +74,7 @@ class DashboardQueuesTest {
         txn(1, priority = TxnPriority.High, drugType = "CII"),
         txn(2, isHazardous = true),
         txn(3),
-    ).toPendingDispenseItems()
+    ).toPendingDispenseItems(Region.US)
 
     // PMS cycle count (10), manual (11).
     private val inventory = listOf(batch(10, requestIdFromPMS = "pms"), batch(11)).toPendingInventoryItems()
@@ -81,6 +82,7 @@ class DashboardQueuesTest {
     private val recent = recentActivityItems(
         dispenses = listOf(completedTxn(20, createdAt = 5)),
         batches = listOf(batch(30, createdAt = 6, status = BatchStatus.COMPLETED)),
+        region = Region.US,
     )
 
     private val sources = QueueSources(
@@ -174,22 +176,31 @@ class DashboardQueuesTest {
 
     @Test
     fun `pending dispense keeps the dao order`() {
-        val items = listOf(txn(2, createdAt = 9), txn(1, createdAt = 1)).toPendingDispenseItems()
+        val items = listOf(txn(2, createdAt = 9), txn(1, createdAt = 1)).toPendingDispenseItems(Region.US)
         assertEquals(listOf(2L, 1L), items.txnIds())
     }
 
     @Test
     fun `pending dispense maps priority controlled and hazardous flags`() {
         val item = listOf(txn(1, priority = TxnPriority.High, drugType = "CII", isHazardous = true))
-            .toPendingDispenseItems().single()
+            .toPendingDispenseItems(Region.US).single()
         assertTrue(item.isHighPriority)
         assertTrue(item.isControlled)
         assertTrue(item.isHazardous)
 
-        val plain = listOf(txn(2)).toPendingDispenseItems().single()
+        val plain = listOf(txn(2)).toPendingDispenseItems(Region.US).single()
         assertFalse(plain.isHighPriority)
         assertFalse(plain.isControlled)
         assertFalse(plain.isHazardous)
+    }
+
+    @Test
+    fun `canada schedules count as controlled for canada and not for US`() {
+        val canadaItem = listOf(txn(1, drugType = "TS")).toPendingDispenseItems(Region.CA).single()
+        val usItem = listOf(txn(1, drugType = "TS")).toPendingDispenseItems(Region.US).single()
+
+        assertTrue(canadaItem.isControlled)
+        assertFalse(usItem.isControlled)
     }
 
     @Test
@@ -206,6 +217,7 @@ class DashboardQueuesTest {
                 batch(30, createdAt = 6, status = BatchStatus.COMPLETED),
                 batch(31, createdAt = 7, status = BatchStatus.INPROGRESS),
             ),
+            region = Region.US,
         )
 
         assertEquals(listOf(6L, 5L), items.map { it.createdAt })

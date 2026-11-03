@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
@@ -97,13 +98,14 @@ interface StockBatchDao {
      * Retrieves the most recently created batch with the given [status].
      *
      * @param status The [BatchStatus] to filter by.
+     * @param region Region of the logged-in user.
      * @return The latest matching [StockBatchEntity], or null if none exist.
      */
-    @Query("SELECT * FROM stock_batch WHERE isDeleted = 0 AND status = :status ORDER BY startDateTime DESC LIMIT 1")
-    suspend fun getLatestByStatus(status: BatchStatus): StockBatchEntity?
+    @Query("SELECT * FROM stock_batch WHERE isDeleted = 0 AND status = :status AND region = :region ORDER BY startDateTime DESC LIMIT 1")
+    suspend fun getLatestByStatus(status: BatchStatus, region: Region): StockBatchEntity?
 
-    /** Convenience wrapper — returns the latest [BatchStatus.INPROGRESS] batch. */
-    suspend fun getLatest() = getLatestByStatus(BatchStatus.INPROGRESS)
+    /** Latest in-progress batch of [region]. */
+    suspend fun getLatest(region: Region) = getLatestByStatus(BatchStatus.INPROGRESS, region)
 
     // ────────────────────────────── Delete ──────────────────────────────
 
@@ -152,6 +154,7 @@ interface StockBatchDao {
         SELECT batchId FROM stock_batch
         WHERE isDeleted = 0
           AND startDateTime BETWEEN :start AND :end
+          AND region = :region
           AND (
             :isCompleted IS NULL
             OR (:isCompleted = 1 AND status = :completedStatus)
@@ -162,6 +165,7 @@ interface StockBatchDao {
         start: Long,
         end: Long,
         isCompleted: Boolean?,
+        region: Region,
         completedStatus: BatchStatus = BatchStatus.COMPLETED,
         inProgressStatus: BatchStatus = BatchStatus.INPROGRESS
     ): List<Long>
@@ -171,6 +175,7 @@ interface StockBatchDao {
         SET isDeleted = 1
         WHERE isDeleted = 0
           AND startDateTime BETWEEN :start AND :end
+          AND region = :region
           AND (
             :isCompleted IS NULL
             OR (:isCompleted = 1 AND status = :completedStatus)
@@ -181,6 +186,7 @@ interface StockBatchDao {
         start: Long,
         end: Long,
         isCompleted: Boolean?,
+        region: Region,
         completedStatus: BatchStatus = BatchStatus.COMPLETED,
         inProgressStatus: BatchStatus = BatchStatus.INPROGRESS
     )
@@ -190,8 +196,7 @@ interface StockBatchDao {
      * range, LEFT JOINed with their transactions so that empty batches (no txns yet) still appear
      * with [BatchSummaryDto.uniqueNdcCount] = 0.
      *
-     * The join filters transactions by [userLocalId] so that NDC counts are user-scoped, while
-     * the batch rows themselves are always included regardless of whether they have transactions.
+     * Only [region]'s batches are returned.
      */
     @Query(
         """
@@ -209,13 +214,15 @@ interface StockBatchDao {
     WHERE b.isDeleted = 0
       AND b.startDateTime BETWEEN :startDate AND :endDate
       AND b.bucketId IS NOT '${TutorialData.BUCKET}'
+      AND b.region = :region
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
     """
     )
     fun getBatchSummaries(
         startDate: Long,
-        endDate: Long
+        endDate: Long,
+        region: Region,
     ): Flow<List<BatchSummaryDto>>
 
     @Query(
@@ -235,11 +242,13 @@ interface StockBatchDao {
       AND b.status = :completedStatus
       AND b.bucketId IS NOT '${TutorialData.BUCKET}'
       AND b.isSynced = 0
+      AND b.region = :region
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
     """
     )
     fun observeUnsyncedCompletedBatches(
+        region: Region,
         completedStatus: BatchStatus = BatchStatus.COMPLETED
     ): Flow<List<BatchSummaryDto>>
 
@@ -265,11 +274,13 @@ interface StockBatchDao {
     WHERE b.isDeleted = 0
       AND b.status = :inProgressStatus
       AND b.bucketId IS NOT '${TutorialData.BUCKET}'
+      AND b.region = :region
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
     """
     )
     fun observeInProgressBatchSummaries(
+        region: Region,
         inProgressStatus: BatchStatus = BatchStatus.INPROGRESS
     ): Flow<List<BatchSummaryDto>>
 
@@ -288,9 +299,11 @@ interface StockBatchDao {
     WHERE isDeleted = 0
       AND status = :inProgressStatus
       AND bucketId IS NOT '${TutorialData.BUCKET}'
+      AND region = :region
     """
     )
     fun observeInProgressBatchKpiCounts(
+        region: Region,
         inProgressStatus: BatchStatus = BatchStatus.INPROGRESS
     ): Flow<InventoryKpiCountsDto>
 
@@ -347,8 +360,10 @@ interface StockBatchDao {
           AND status = :completedStatus
           AND isSynced = 0
           AND bucketId IS NOT '${TutorialData.BUCKET}'
+          AND region = :region
     """)
     fun getUnsyncedCompletedBatchCount(
+        region: Region,
         completedStatus: BatchStatus = BatchStatus.COMPLETED
     ): Flow<Int>
 }
@@ -370,12 +385,13 @@ interface StockBatchDao {
  *   in try/catch (ensure-variant) or rely on `withTransaction` to roll back.
  *
  * @param bucketId Optional bucket association for the new batch.
+ * @param region Region of the logged-in user.
  * @return The new batchId returned by [StockBatchDao.insert].
  *
  * Example Usage:
- * val batchId = stockBatchDao.insertNewInProgressBatch(bucketId = "B1")
+ * val batchId = stockBatchDao.insertNewInProgressBatch(bucketId = "B1", region = Region.US)
  */
-suspend fun StockBatchDao.insertNewInProgressBatch(bucketId: String?): Long {
+suspend fun StockBatchDao.insertNewInProgressBatch(bucketId: String?, region: Region): Long {
     val now = System.currentTimeMillis()
     return insert(
         StockBatchEntity(
@@ -386,6 +402,7 @@ suspend fun StockBatchDao.insertNewInProgressBatch(bucketId: String?): Long {
             isDeleted = false,
             note = null,
             bucketId = bucketId,
+            region = region,
         )
     )
 }

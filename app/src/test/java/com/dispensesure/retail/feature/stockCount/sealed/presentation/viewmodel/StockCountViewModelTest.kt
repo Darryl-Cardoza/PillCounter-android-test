@@ -3,6 +3,8 @@ package com.dispensesure.retail.feature.stockCount.sealed.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
@@ -56,6 +58,8 @@ import java.time.LocalDate
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class StockCountViewModelTest {
+
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
 
     private val testDispatcher = StandardTestDispatcher()
 
@@ -128,9 +132,10 @@ class StockCountViewModelTest {
             preferenceHelper,
             operatorNameProvider,
             ScanDecoder(barcodeDecoder),
-            DrugResolver(drugMasterDao, drugRepository, drugImageDownloader),
+            DrugResolver(drugMasterDao, drugRepository, drugImageDownloader, regionProvider),
             stockHl7Repository,
             hl7EventHandler,
+            regionProvider,
         )
     }
 
@@ -320,8 +325,8 @@ class StockCountViewModelTest {
     @Test
     fun `onBarcodeDetected gtin14 valid path local drug found persists insert`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin("00300930058018") } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin("00300930058018", Region.US) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
 
         val vm = createViewModel(batchId = 7L)
@@ -342,9 +347,9 @@ class StockCountViewModelTest {
     fun `onBarcodeDetected raw-digit fallback when gtin invalid`() = runTest(testDispatcher) {
         every { barcodeDecoder.isGs1Barcode(any()) } returns false
         every { barcodeDecoder.toGtin14("1234567890") } returns null
-        coEvery { drugMasterDao.getDrugByGtin("1234567890") } returns null
-        coEvery { drugMasterDao.getDrugByNdc("1234567890") } returns drug(ndc = "1234567890")
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin("1234567890", Region.US) } returns null
+        coEvery { drugMasterDao.getDrugByNdc("1234567890", Region.US) } returns drug(ndc = "1234567890")
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
 
         val vm = createViewModel(batchId = 7L)
         val job = launch { vm.uiState.collect {} }
@@ -374,16 +379,16 @@ class StockCountViewModelTest {
     @Test
     fun `onBarcodeDetected server lookup success upserts and re-reads`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin("00300930058018") } returns null
-        coEvery { drugMasterDao.getDrugByNdc("00300930058018") } returns null
+        coEvery { drugMasterDao.getDrugByGtin("00300930058018", Region.US) } returns null
+        coEvery { drugMasterDao.getDrugByNdc("00300930058018", Region.US) } returns null
         coEvery {
             drugRepository.getDrugInfoByNdc(any())
         } returns DrugInfo(
             brandName = null, genericName = "Server Drug", ndc = "SRV-NDC",
             drugType = "tablet", qty = 50, isHazardous = true,
         )
-        coEvery { drugMasterDao.getDrugByNdc("SRV-NDC") } returns drug(ndc = "SRV-NDC", drugName = "Server Drug")
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByNdc("SRV-NDC", Region.US) } returns drug(ndc = "SRV-NDC", drugName = "Server Drug")
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
 
         val vm = createViewModel(batchId = 7L)
         val job = launch { vm.uiState.collect {} }
@@ -401,8 +406,8 @@ class StockCountViewModelTest {
     fun `onBarcodeDetected server returns blank genericName saves the drug with no name`() =
         runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns null
-        coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns null
+        coEvery { drugMasterDao.getDrugByNdc(any(), any()) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
             brandName = null, genericName = "", ndc = "SRV", drugType = "t", qty = null, isHazardous = null,
         )
@@ -424,8 +429,8 @@ class StockCountViewModelTest {
     @Test
     fun `onBarcodeDetected server returns null emits drug_not_found`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns null
-        coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns null
+        coEvery { drugMasterDao.getDrugByNdc(any(), any()) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
 
         val vm = createViewModel(batchId = 7L)
@@ -440,8 +445,8 @@ class StockCountViewModelTest {
     @Test
     fun `onBarcodeDetected server lookup throws is caught and emits drug_not_found`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns null
-        coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns null
+        coEvery { drugMasterDao.getDrugByNdc(any(), any()) } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any()) } throws RuntimeException("network")
 
         val vm = createViewModel(batchId = 7L)
@@ -460,7 +465,7 @@ class StockCountViewModelTest {
         )
         coEvery { stockTxnDao.getNdcsForBatch(5L) } returns listOf("ALLOWED-NDC")
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug(ndc = "OTHER-NDC")
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug(ndc = "OTHER-NDC")
 
         val vm = createViewModel(batchId = 5L)
         advanceUntilIdle()
@@ -474,8 +479,8 @@ class StockCountViewModelTest {
     @Test
     fun `onBarcodeDetected lazy batch creation inserts when batchId zero`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
         coEvery { stockBatchDao.insert(any()) } returns 99L
 
         val vm = createViewModel(batchId = 0L, bucketId = "BK")
@@ -493,7 +498,7 @@ class StockCountViewModelTest {
     @Test
     fun `onBarcodeDetected insert returns zero emits no_active_batch`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
         coEvery { stockBatchDao.insert(any()) } returns 0L
 
         val vm = createViewModel(batchId = 0L)
@@ -508,7 +513,7 @@ class StockCountViewModelTest {
     @Test
     fun `onBarcodeDetected insert throws causes ensureBatchCreated zero and no_active_batch`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
         coEvery { stockBatchDao.insert(any()) } throws RuntimeException("db")
 
         val vm = createViewModel(batchId = 0L)
@@ -529,10 +534,10 @@ class StockCountViewModelTest {
         every { barcodeDecoder.toGtin14("00000000000001") } returns "00000000000001"
         every { barcodeDecoder.toGtin14("G2") } returns "00000000000002"
         every { barcodeDecoder.toGtin14("00000000000002") } returns "00000000000002"
-        coEvery { drugMasterDao.getDrugByGtin("00000000000001") } returns drug(drugId = 10L, ndc = "NDC-1")
-        coEvery { drugMasterDao.getDrugByGtin("00000000000002") } returns drug(drugId = 20L, ndc = "NDC-2")
-        coEvery { drugMasterDao.getDrugIdByNdc("NDC-1") } returns 10L
-        coEvery { drugMasterDao.getDrugIdByNdc("NDC-2") } returns 20L
+        coEvery { drugMasterDao.getDrugByGtin("00000000000001", Region.US) } returns drug(drugId = 10L, ndc = "NDC-1")
+        coEvery { drugMasterDao.getDrugByGtin("00000000000002", Region.US) } returns drug(drugId = 20L, ndc = "NDC-2")
+        coEvery { drugMasterDao.getDrugIdByNdc("NDC-1", Region.US) } returns 10L
+        coEvery { drugMasterDao.getDrugIdByNdc("NDC-2", Region.US) } returns 20L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
 
         val vm = createViewModel(batchId = 7L)
@@ -553,8 +558,8 @@ class StockCountViewModelTest {
     @Test
     fun `onBarcodeDetected same-ndc cooldown ignored`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
 
         val vm = createViewModel(batchId = 7L)
         val job = launch { vm.uiState.collect {} }
@@ -573,8 +578,8 @@ class StockCountViewModelTest {
     @Test
     fun `onBtBarcodeDetected bypasses cooldown and increments same ndc`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
 
         val vm = createViewModel(batchId = 7L)
         val job = launch { vm.uiState.collect {} }
@@ -592,8 +597,8 @@ class StockCountViewModelTest {
     @Test
     fun `onBarcodeDetected existing sealed txn seeds bottles from prev count`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns stockTxn()
         coEvery {
             stockBottleInfoDao.findSealedLine(any(), any(), any())
@@ -613,8 +618,8 @@ class StockCountViewModelTest {
     @Test
     fun `onBarcodeDetected saves expiry as MM-dd-yyyy`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns stockTxn()
         coEvery { stockBottleInfoDao.findSealedLine(any(), any(), any()) } returns null
 
@@ -648,8 +653,8 @@ class StockCountViewModelTest {
     @Test
     fun `persistActive update path when existing txn found via onAdd`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
         // No bottle line on scan (insert), then an existing line on onAdd flush (update).
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returnsMany listOf(null, stockTxn())
         coEvery {
@@ -673,9 +678,9 @@ class StockCountViewModelTest {
     @Test
     fun `persistActive drug_not_found when drugId null`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
         // drugId lookup returns null in persistActive
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns null
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns null
 
         val vm = createViewModel(batchId = 7L)
         advanceUntilIdle()
@@ -689,8 +694,8 @@ class StockCountViewModelTest {
     @Test
     fun `persistActive save_failed when dao throws`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
         coEvery { stockBottleInfoDao.insert(any<StockBottleInfoEntity>()) } throws RuntimeException("db")
 
@@ -743,8 +748,8 @@ class StockCountViewModelTest {
     @Test
     fun `increment then decrement debounced persist fires after delay`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
 
         val vm = createViewModel(batchId = 7L)
@@ -772,8 +777,8 @@ class StockCountViewModelTest {
     // Scan inserts a 1-bottle sealed line; the NDC has 40 open pills, so decrement may reach 0.
     private fun stubSealedLineWithOpenPills(sealedLine: StockBottleInfoEntity) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns stockTxn()
         coEvery { stockBottleInfoDao.getByBatchId(7L) } returns listOf(
             StockBottleInfoDto(2, 10L, "Aspirin", "00093-0058", null, null, 0, 40, 100)
@@ -833,7 +838,7 @@ class StockCountViewModelTest {
     fun `onRecentRowTapped txn null returns without activating`() = runTest(testDispatcher) {
         // No bottle lines for this ndc → buildActiveTotals returns null → nothing activates.
         coEvery { stockBottleInfoDao.getByBatchId(7L) } returns emptyList()
-        coEvery { drugMasterDao.getDrugByNdc("NDC") } returns drug(ndc = "NDC")
+        coEvery { drugMasterDao.getDrugByNdc("NDC", Region.US) } returns drug(ndc = "NDC")
 
         val vm = createViewModel(batchId = 7L)
         val job = launch { vm.uiState.collect {} }
@@ -848,7 +853,7 @@ class StockCountViewModelTest {
 
     @Test
     fun `onRecentRowTapped drug null returns`() = runTest(testDispatcher) {
-        coEvery { drugMasterDao.getDrugByNdc("NDC") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("NDC", Region.US) } returns null
 
         val vm = createViewModel(batchId = 7L)
         val job = launch { vm.uiState.collect {} }
@@ -865,13 +870,13 @@ class StockCountViewModelTest {
     fun `onRecentRowTapped success activates and commits current different active`() = runTest(testDispatcher) {
         // First scan to set an active NDC (different from tapped row)
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug(ndc = "ACTIVE-NDC")
-        coEvery { drugMasterDao.getDrugIdByNdc("ACTIVE-NDC") } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug(ndc = "ACTIVE-NDC")
+        coEvery { drugMasterDao.getDrugIdByNdc("ACTIVE-NDC", Region.US) } returns 10L
         // buildActiveTotals sums this NDC's bottle lines from getByBatchId.
         coEvery { stockBottleInfoDao.getByBatchId(7L) } returns listOf(
             StockBottleInfoDto(1, 30L, "Row Drug", "ROW-NDC", "RL", "RE", 7, 0, 1)
         )
-        coEvery { drugMasterDao.getDrugByNdc("ROW-NDC") } returns drug(drugId = 30L, ndc = "ROW-NDC", drugName = "Row Drug")
+        coEvery { drugMasterDao.getDrugByNdc("ROW-NDC", Region.US) } returns drug(drugId = 30L, ndc = "ROW-NDC", drugName = "Row Drug")
 
         val vm = createViewModel(batchId = 7L)
         val job = launch { vm.uiState.collect {} }
@@ -891,7 +896,7 @@ class StockCountViewModelTest {
 
     @Test
     fun `onRecentRowTapped catches exception`() = runTest(testDispatcher) {
-        coEvery { drugMasterDao.getDrugByNdc(any()) } returns drug(ndc = "NDC")
+        coEvery { drugMasterDao.getDrugByNdc(any(), any()) } returns drug(ndc = "NDC")
         coEvery { stockBottleInfoDao.getByBatchId(any()) } throws RuntimeException("db")
 
         val vm = createViewModel(batchId = 7L)
@@ -906,8 +911,8 @@ class StockCountViewModelTest {
     @Test
     fun `onClear clears active ndc`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
 
         val vm = createViewModel(batchId = 7L)
         val job = launch { vm.uiState.collect {} }
@@ -937,8 +942,8 @@ class StockCountViewModelTest {
     @Test
     fun `onAdd persists and clears active`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
 
         val vm = createViewModel(batchId = 7L)
@@ -959,8 +964,8 @@ class StockCountViewModelTest {
     @Test
     fun `onScanPillsForActive with active manual batch uses empty allowlist`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
 
         val vm = createViewModel(batchId = 7L)
         val job = launch { vm.uiState.collect {} }
@@ -989,8 +994,8 @@ class StockCountViewModelTest {
         )
         coEvery { stockTxnDao.getNdcsForBatch(5L) } returns listOf("00093-0058", "PMS-2")
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
 
         val vm = createViewModel(batchId = 5L)
         val job = launch { vm.uiState.collect {} }
@@ -1247,8 +1252,8 @@ class StockCountViewModelTest {
     @Test
     fun `a scanned line writes the operator name onto the batch`() = runTest(testDispatcher) {
         stubGs1Decode()
-        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
-        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
         coEvery { stockBottleInfoDao.findSealedLine(any(), any(), any()) } returns null
         coEvery { operatorNameProvider() } returns OperatorName("Bruce", "Wayne")

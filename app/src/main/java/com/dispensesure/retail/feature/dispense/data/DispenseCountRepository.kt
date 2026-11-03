@@ -7,6 +7,7 @@ import androidx.room.withTransaction
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.DISPENSED_QUANTITY_STEP
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
@@ -48,6 +49,7 @@ class DispenseCountRepository @Inject constructor(
     private val drugMasterDao: DrugMasterDao,
     private val operatorNameProvider: OperatorNameProvider,
     private val dispenseHl7Repository: DispenseHl7Repository,
+    private val regionProvider: RegionProvider,
 ) {
 
     private val logger = AppLogger("DispenseCountRepository")
@@ -60,7 +62,8 @@ class DispenseCountRepository @Inject constructor(
 
     /** The local drug a scanned code belongs to: by GTIN, then by NDC. */
     suspend fun findLocalDrug(code: String): DrugMasterEntity? =
-        drugMasterDao.getDrugByGtin(code) ?: drugMasterDao.getDrugByNdc(code)
+        drugMasterDao.getDrugByGtin(code, regionProvider.current)
+            ?: drugMasterDao.getDrugByNdc(code, regionProvider.current)
 
     suspend fun saveTargetCount(txnId: Long, targetCount: Int) = dispenseTxnDao.updateTargetCount(txnId, targetCount)
 
@@ -127,6 +130,7 @@ class DispenseCountRepository @Inject constructor(
             expirationDate = activeBottle?.expirationDate,
             rxRefill = OverlayUtils.rxRefill(dispenseTxn?.rxNo, dispenseTxn?.refillNo),
             stepLabel = step.name,
+            region = regionProvider.current,
         )
     }
 

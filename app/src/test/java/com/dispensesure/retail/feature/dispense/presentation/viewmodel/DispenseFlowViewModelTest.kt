@@ -525,7 +525,7 @@ class DispenseFlowViewModelTest {
         coEvery { dispenseFlowRepository.upsertDemoDrug(any()) } returns null
         val viewModel = createViewModel()
         val effects = collectEffects(viewModel)
-        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false)
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, bucketsEnabled = true)
 
         try {
             viewModel.onAction(DispenseFlowAction.TourRxNextTapped("Demo drug"))

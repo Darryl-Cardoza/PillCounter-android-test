@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isControlledDrugType
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.DecodedScan
@@ -50,6 +51,7 @@ class LooseCountViewModel @Inject constructor(
     private val stockCountRepository: StockCountRepository,
     preferenceHelper: PreferenceHelper,
     engineFactory: PillCountingEngine.Factory,
+    private val regionProvider: RegionProvider,
 ) : ViewModel() {
 
     private val logger = AppLogger("LooseCountVM")
@@ -137,10 +139,9 @@ class LooseCountViewModel @Inject constructor(
             rejectContainer(R.string.scan_correct_label)
             return
         }
-        val decodedScan = scanDecoder.decode(rawValue)
-        val gtin14 = decodedScan.gtin14
-            ?.takeIf { scannedGtin -> scannedGtin.length == 14 && scannedGtin.all { digit -> digit.isDigit() } }
-        if (gtin14 == null) {
+        val decodedScan = scanDecoder.decode(rawValue, regionProvider.current)
+        val scannedCode = decodedScan.lookupCode
+        if (scannedCode == null) {
             rejectContainer(toastText = null)
             return
         }
@@ -149,24 +150,25 @@ class LooseCountViewModel @Inject constructor(
         engine.pauseDetection()
         viewModelScope.launch {
             val drugLookup = drugResolver.resolve(
-                code = gtin14,
+                code = scannedCode,
                 allowNoName = true,
-                scannedGtin = gtin14,
+                scannedGtin = decodedScan.gtin14,
             )
             engine.resumeDetection()
             _uiState.update { it.copy(isResolvingContainer = false) }
-            applyContainerLookup(drugLookup, gtin14, decodedScan)
+            applyContainerLookup(drugLookup, scannedCode, decodedScan)
         }
     }
 
-    private fun applyContainerLookup(drugLookup: DrugLookup, gtin14: String, decodedScan: DecodedScan) {
+    private fun applyContainerLookup(drugLookup: DrugLookup, scannedCode: String, decodedScan: DecodedScan) {
         val scannedDrug = (drugLookup as? DrugLookup.Found)?.drug
         when {
             drugLookup is DrugLookup.Failed -> rejectContainer(R.string.batch_stock_count_scan_failed)
             // A PMS batch counts only what its request asked for; an unknown drug can't be one.
             allowedNdcs.isNotEmpty() && (scannedDrug == null || scannedDrug.ndc !in allowedNdcs) ->
-                rejectContainer(R.string.batch_stock_count_ndc_not_in_request, scannedDrug?.ndc ?: gtin14)
-            scannedDrug == null -> rejectContainer(R.string.the_scanned_ndc_does_not_match)
+                rejectContainer(R.string.batch_stock_count_ndc_not_in_request, scannedDrug?.ndc ?: scannedCode)
+            // Same toast as the sealed-bottle scan: "Invalid NDC/DIN <code>".
+            scannedDrug == null -> rejectContainer(R.string.batch_stock_count_drug_not_found, scannedCode)
             else -> startCounting(scannedDrug, decodedScan)
         }
     }
@@ -230,6 +232,7 @@ class LooseCountViewModel @Inject constructor(
             expirationDate = state.expirationDate,
             rxRefill = null,
             stepLabel = StepState.TARGET_VERIFICATION.name,
+            region = countedDrug.region,
         )
     }
 
@@ -253,8 +256,8 @@ class LooseCountViewModel @Inject constructor(
         val countedDrug = _uiState.value.drug ?: return
         if (_uiState.value.isSaving) return
         _uiState.update { it.copy(showEndCountDialog = false, isSaving = true) }
-        // Controlled drugs (CII–CVI) keep their photos on the saved line; others are deleted.
-        val isControlled = isControlledDrugType(countedDrug.drugType)
+        // Controlled drugs (CII–CVI, or C/N/TS in Canada) keep their photos on the saved line; others are deleted.
+        val isControlled = isControlledDrugType(countedDrug.drugType, countedDrug.region)
         viewModelScope.launch {
             pendingAddSaves.toList().joinAll()
             val state = _uiState.value

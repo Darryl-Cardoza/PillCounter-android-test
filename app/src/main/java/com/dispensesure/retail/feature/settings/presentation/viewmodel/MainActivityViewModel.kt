@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.hl7.service.HL7Config
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.models.ApiResponse
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
@@ -70,6 +71,7 @@ class MainActivityViewModel @Inject constructor(
     private val tutorialDataCleaner: TutorialDataCleaner,
     private val sessionHealthController: SessionHealthController,
     private val ioDispatcher: CoroutineDispatcher,
+    private val regionProvider: RegionProvider,
 ) : ViewModel(), IApplicationSettingsViewModel {
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
@@ -708,21 +710,22 @@ class MainActivityViewModel @Inject constructor(
     /** Replaces the controlled-drug schedules that require a double count. */
     fun updateSchedules(codes: Set<ScheduleCode>) {
         _selectedSchedules.value = codes
-        preferenceHelper.setControlDrugTypes(codes.map { it.name }.toSet())
+        preferenceHelper.setControlDrugTypes(regionProvider.current, codes.map { it.name }.toSet())
     }
 
     private fun loadSchedulesFromPrefs(): Set<ScheduleCode> {
-        if (!preferenceHelper.isControlDrugTypesInitialized()) {
+        val loggedInRegion = regionProvider.current
+        val regionSchedules = ScheduleCode.forRegion(loggedInRegion)
+        if (!preferenceHelper.isControlDrugTypesInitialized(loggedInRegion)) {
             // Never explicitly set — first launch, seed with all schedules selected
-            val defaults = ScheduleCode.entries.toSet()
-            preferenceHelper.setControlDrugTypes(defaults.map { it.name }.toSet())
-            return defaults
+            preferenceHelper.setControlDrugTypes(loggedInRegion, regionSchedules.map { it.name }.toSet())
+            return regionSchedules.toSet()
         }
 
         // User has explicitly saved a selection at least once; empty set is a valid choice
-        return preferenceHelper.getControlDrugTypes().mapNotNull {
-            runCatching { ScheduleCode.valueOf(it) }.getOrNull()
-        }.toSet()
+        return preferenceHelper.getControlDrugTypes(loggedInRegion)
+            .mapNotNull { savedName -> regionSchedules.firstOrNull { it.name == savedName } }
+            .toSet()
     }
 
 

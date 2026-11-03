@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.utils.preference
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
@@ -27,6 +28,8 @@ private const val KEY_LOGGED_IN_EMAIL = "logged_in_email"
 private const val KEY_LOCAL_ID = "local_id"
 private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
 private const val KEY_REMEMBER_ME = "remember_me"
+private const val KEY_REGION = "key_region"
+private const val KEY_LAST_REGION = "key_last_region"
 
 // UI Theme
 private const val KEY_THEME_COLORS = "theme_colors"
@@ -45,6 +48,8 @@ private const val KEY_REQUIRE_BACK_COUNT = "key_require_back_count"
 private const val KEY_REQUIRE_DOUBLE_COUNT = "key_require_double_count"
 private const val KEY_CONTROL_DRUG_TYPES="key_control_drug_types"
 private const val KEY_CONTROL_DRUG_TYPES_INITIALIZED = "key_control_drug_types_initialized"
+private const val KEY_CONTROL_DRUG_TYPES_CA = "key_control_drug_types_ca"
+private const val KEY_CONTROL_DRUG_TYPES_INITIALIZED_CA = "key_control_drug_types_initialized_ca"
 private const val KEY_SOUND_OVERRIDE="key_sound_override"
 private const val KEY_FACE_LOCK_TIMEOUT_MINUTES = "key_face_lock_timeout_minutes"
 private const val KEY_HAS_ENABLED_FACE_PROFILE = "key_has_enabled_face_profile"
@@ -122,6 +127,8 @@ class PreferenceHelper @Inject constructor(
         // it here, a user switch or re-login before that fetch lands would leave the
         // next user running under the previous user's standalone flag.
         setStandaloneMode(false)
+        // Region is per-user too; the next login stores the new user's.
+        prefs.remove(KEY_REGION)
         logger.w("Cleared authentication tokens from secure storage.")
     }
 
@@ -344,6 +351,19 @@ class PreferenceHelper @Inject constructor(
         return enabled
     }
 
+    fun setRegion(region: Region) {
+        prefs.putString(KEY_REGION, region.name)
+        // Kept through logout: PMS requests that arrive while nobody is logged in use it.
+        prefs.putString(KEY_LAST_REGION, region.name)
+        logger.i("Region set to: ${region.name}")
+    }
+
+    fun getRegion(): Region? =
+        prefs.getString(KEY_REGION)?.let { storedRegionName -> Region.fromCountryCode(storedRegionName) }
+
+    fun getLastRegion(): Region? =
+        prefs.getString(KEY_LAST_REGION)?.let { storedRegionName -> Region.fromCountryCode(storedRegionName) }
+
     fun setSoundEnabled(enabled: Boolean) {
         prefs.putBoolean(KEY_SOUND, enabled)
         logger.i("setSoundEnabled: $enabled")
@@ -389,14 +409,14 @@ class PreferenceHelper @Inject constructor(
     }
 
     // Stored as JSON string — SecurePreferences does not support StringSet
-    fun setControlDrugTypes(controlDrugTypes: Set<String>) {
-        prefs.putString(KEY_CONTROL_DRUG_TYPES, gson.toJson(controlDrugTypes))
-        prefs.putBoolean(KEY_CONTROL_DRUG_TYPES_INITIALIZED, true)
-        logger.i("setControlDrugTypes : ${controlDrugTypes.joinToString(",")}")
+    fun setControlDrugTypes(region: Region, controlDrugTypes: Set<String>) {
+        prefs.putString(controlDrugTypesKey(region), gson.toJson(controlDrugTypes))
+        prefs.putBoolean(controlDrugTypesInitializedKey(region), true)
+        logger.i("setControlDrugTypes ${region.name}: ${controlDrugTypes.joinToString(",")}")
     }
 
-    fun getControlDrugTypes(): Set<String> {
-        val json = prefs.getString(KEY_CONTROL_DRUG_TYPES) ?: return emptySet()
+    fun getControlDrugTypes(region: Region): Set<String> {
+        val json = prefs.getString(controlDrugTypesKey(region)) ?: return emptySet()
         return try {
             gson.fromJson(json, Array<String>::class.java).toSet()
         } catch (e: Exception) {
@@ -405,9 +425,20 @@ class PreferenceHelper @Inject constructor(
         }
     }
 
-    /** Returns true only after [setControlDrugTypes] has been called at least once. */
-    fun isControlDrugTypesInitialized(): Boolean {
-        return prefs.getBoolean(KEY_CONTROL_DRUG_TYPES_INITIALIZED, false)
+    /** Returns true only after [setControlDrugTypes] has been called at least once for [region]. */
+    fun isControlDrugTypesInitialized(region: Region): Boolean {
+        return prefs.getBoolean(controlDrugTypesInitializedKey(region), false)
+    }
+
+    // US keeps the original keys so selections saved before region support survive.
+    private fun controlDrugTypesKey(region: Region): String = when (region) {
+        Region.US -> KEY_CONTROL_DRUG_TYPES
+        Region.CA -> KEY_CONTROL_DRUG_TYPES_CA
+    }
+
+    private fun controlDrugTypesInitializedKey(region: Region): String = when (region) {
+        Region.US -> KEY_CONTROL_DRUG_TYPES_INITIALIZED
+        Region.CA -> KEY_CONTROL_DRUG_TYPES_INITIALIZED_CA
     }
 
     fun setSoundOverride(enabled: Boolean) {
@@ -850,6 +881,8 @@ class PreferenceHelper @Inject constructor(
 
     /** Key used for [KEY_USER_LOGGED_IN] change notifications via [registerOnChangeListener]. */
     val userLoggedInKey: String get() = KEY_USER_LOGGED_IN
+
+    val regionKey: String get() = KEY_REGION
 
     fun registerOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnChangeListener(listener)

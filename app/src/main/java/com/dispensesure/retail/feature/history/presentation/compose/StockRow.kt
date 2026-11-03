@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.common.drugDisplayName
@@ -44,7 +45,7 @@ fun StockRow(
     onTxnClick: () -> Unit
 ) {
     val dimens = AppTheme.dimens
-    val date =rowData.createdAt.toFormattedDate()
+    val date = rowData.createdAt.toFormattedDate(LocalRegion.current)
     Card(
         shape = RoundedCornerShape(dimens.small),
         colors = CardDefaults.cardColors(

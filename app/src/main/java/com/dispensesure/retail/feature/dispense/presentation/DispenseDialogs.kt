@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.res.stringResource
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.scanning.logic.TrayColor
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -103,7 +104,7 @@ fun TrayClassificationDialog(
     }
     CommonDialog(
         title = stringResource(R.string.tray_classification_title),
-        message = stringResource(R.string.tray_classification_message, pendingColor.label),
+        message = regionStringResource(R.string.tray_classification_message, pendingColor.label),
         confirmText = stringResource(R.string.yes),
         cancelText = stringResource(R.string.no),
         onConfirm = {

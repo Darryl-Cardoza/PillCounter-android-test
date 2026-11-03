@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.RectF
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.scanning.logic.TrayClass
@@ -76,6 +77,7 @@ class AddPhotoWriterTest {
         expirationDate = "04-30-2028",
         rxRefill = "123-2",
         stepLabel = "TARGET_VERIFICATION",
+        region = Region.US,
     )
 
     // A tray with its chute below it, inside a 400 x 300 frame.

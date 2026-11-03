@@ -1,6 +1,7 @@
 package com.dispensesure.retail.feature.dispense.domain
 
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseStage
@@ -18,7 +19,7 @@ private const val SCAN_IMAGE_PATH = "/scans/barcode.jpg"
 /** Unit tests for [DispenseBarcodeRouting]. Real [ScanDecoder], no Android. */
 class DispenseBarcodeRoutingTest {
 
-    private val routing = DispenseBarcodeRouting(ScanDecoder(BarcodeDecoder()))
+    private val routing = DispenseBarcodeRouting(ScanDecoder(BarcodeDecoder()), Region.US)
 
     private fun route(
         rawValue: String,
@@ -51,7 +52,7 @@ class DispenseBarcodeRoutingTest {
     fun `a GS1 container label carries its lot and expiry as the first bottle`() {
         val containerRoute = route(GS1_CONTAINER_LABEL, DispenseStage.PRE_NDC) as BarcodeRoute.Container
 
-        assertEquals("00368540100014", containerRoute.gtin14)
+        assertEquals("00368540100014", containerRoute.scannedCode)
         assertEquals("LOT123", containerRoute.firstBottle.lotNumber)
         assertEquals("12-31-2025", containerRoute.firstBottle.expirationDate)
         assertNull(containerRoute.firstBottle.serialNumber)
@@ -62,7 +63,7 @@ class DispenseBarcodeRoutingTest {
     fun `a plain container barcode gives a count-only first bottle`() {
         val containerRoute = route(PLAIN_UPC, DispenseStage.PRE_NDC) as BarcodeRoute.Container
 
-        assertEquals("00368540100014", containerRoute.gtin14)
+        assertEquals("00368540100014", containerRoute.scannedCode)
         assertNull(containerRoute.firstBottle.lotNumber)
         assertNull(containerRoute.firstBottle.expirationDate)
         assertNull(containerRoute.firstBottle.serialNumber)
@@ -121,5 +122,21 @@ class DispenseBarcodeRoutingTest {
         assertFalse(routing.readsBarcodes(DispenseStage.COUNTING, StepState.VIAL, isVialStillShown = true))
         assertFalse(routing.readsBarcodes(DispenseStage.COUNTING, StepState.CONTAINER_INITIATE, isVialStillShown = false))
         assertFalse(routing.readsBarcodes(DispenseStage.COUNTING, StepState.CONTAINER_PENDING, isVialStillShown = false))
+    }
+
+    @Test
+    fun `canada routes an 8-digit DIN on the container step as scanned`() {
+        val canadaRouting = DispenseBarcodeRouting(ScanDecoder(BarcodeDecoder()), Region.CA)
+
+        val containerRoute = canadaRouting.route("00013285", SCAN_IMAGE_PATH, DispenseStage.PRE_NDC, StepState.TARGET_VERIFICATION, false)
+            as BarcodeRoute.Container
+
+        assertEquals("00013285", containerRoute.scannedCode)
+        assertNull(containerRoute.firstBottle.lotNumber)
+    }
+
+    @Test
+    fun `US ignores a 7-digit code on the container step`() {
+        assertEquals(BarcodeRoute.Ignored, route("1234567", DispenseStage.PRE_NDC))
     }
 }

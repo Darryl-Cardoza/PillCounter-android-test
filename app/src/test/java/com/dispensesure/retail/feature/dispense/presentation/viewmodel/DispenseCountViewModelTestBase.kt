@@ -1,6 +1,8 @@
 package com.dispensesure.retail.feature.dispense.presentation.viewmodel
 
 import android.app.Application
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.scanning.domain.model.DecodedScan
@@ -48,6 +50,7 @@ abstract class DispenseCountViewModelTestBase {
     protected val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     protected val dispenseCountRepository: DispenseCountRepository = mockk(relaxed = true)
     protected val scanDecoder: ScanDecoder = mockk()
+    protected val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
     protected val userDao: UserDao = mockk(relaxed = true)
     protected val locationProvider: LocationProvider = mockk(relaxed = true)
     protected val modelLoader: PillDetectionModelLoader = mockk(relaxed = true)
@@ -62,10 +65,10 @@ abstract class DispenseCountViewModelTestBase {
         every { application.getString(any<Int>()) } returns "test error"
         every { application.getString(any<Int>(), any()) } returns "test error"
         coJustRun { performanceLogger.logPerformanceSnapshot(any()) }
-        every { preferenceHelper.getControlDrugTypes() } returns emptySet()
+        every { preferenceHelper.getControlDrugTypes(Region.US) } returns emptySet()
         every { preferenceHelper.isRequireDoubleCountEnabled() } returns false
         every { preferenceHelper.isRequireBackCountEnabled() } returns false
-        every { scanDecoder.decode(any()) } returns DecodedScan(isGs1 = false, gtin14 = null, lot = null, expiry = null, serial = null)
+        every { scanDecoder.decode(any(), any()) } returns DecodedScan(isGs1 = false, gtin14 = null, lot = null, expiry = null, serial = null)
         // Nullable and enum results are stubbed: a relaxed mock would hand back a child mock.
         every { dispenseCountRepository.observeCounts(any(), any()) } returns flowOf(emptyList())
         every { dispenseCountRepository.observeCanReset(any()) } returns flowOf(true)
@@ -91,6 +94,7 @@ abstract class DispenseCountViewModelTestBase {
             scanDecoder = scanDecoder,
             dispenseCountRepository = dispenseCountRepository,
             engineFactory = engineFactory,
+            regionProvider = regionProvider,
         )
     }
 
@@ -140,6 +144,7 @@ abstract class DispenseCountViewModelTestBase {
         expirationDate = expirationDate,
         rxRefill = rxRefill,
         stepLabel = "TARGET_VERIFICATION",
+        region = Region.US,
     )
 
     /** Starts counting on [txn], as the screen does when the stage becomes COUNTING. */

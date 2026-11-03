@@ -1,6 +1,7 @@
 package com.dispensesure.retail.feature.history.presentation.compose
 
 import androidx.test.core.app.ApplicationProvider
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import org.junit.After
@@ -57,7 +58,7 @@ class HistoryPdfExporterTest {
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        exporter = HistoryPdfExporter(context)
+        exporter = HistoryPdfExporter(context, Region.US)
         reportsDir = File(
             context.getExternalFilesDir(null),
             "PillReports/DailyHistoryReports"

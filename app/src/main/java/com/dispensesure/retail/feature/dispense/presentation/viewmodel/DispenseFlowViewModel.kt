@@ -111,7 +111,7 @@ class DispenseFlowViewModel @Inject constructor(
     fun onAction(action: DispenseFlowAction) {
         when (action) {
             is DispenseFlowAction.RxLabelScanned -> onRxBarcodeRead(action.rawValue)
-            is DispenseFlowAction.ContainerScanned -> onNdcBarcodeRead(action.gtin14, action.firstBottle)
+            is DispenseFlowAction.ContainerScanned -> onNdcBarcodeRead(action.scannedCode, action.firstBottle)
             DispenseFlowAction.RxLabelScannedOnContainerStep -> onRxScannedInNdcStage()
             is DispenseFlowAction.VialLabelScanned -> onVialBarcodeRead(action.rawValue)
             DispenseFlowAction.RxProceedTapped -> onRxConfirmed()
@@ -449,10 +449,10 @@ class DispenseFlowViewModel @Inject constructor(
      * Process a raw barcode read while the user is in PRE_NDC.
      * [ContainerVerifier] checks it against the expected NDC.
      */
-    private fun onNdcBarcodeRead(gtin14: String, firstBottle: DispenseBottle?) {
+    private fun onNdcBarcodeRead(scannedCode: String, firstBottle: DispenseBottle?) {
         if (_uiState.value.stage != DispenseStage.PRE_NDC) return
         if (_uiState.value.isLoading) return
-        if (gtin14.isBlank()) {
+        if (scannedCode.isBlank()) {
             rejectScan(R.string.scan_correct_label, pauseScanning = false)
             return
         }
@@ -469,7 +469,7 @@ class DispenseFlowViewModel @Inject constructor(
                     ?.takeIf { it.isNotBlank() }
                     ?: _uiState.value.ndc.takeIf { it.isNotBlank() }
 
-                applyContainerOutcome(containerVerifier.verify(gtin14, expectedNdc), expectedNdc)
+                applyContainerOutcome(containerVerifier.verify(scannedCode, expectedNdc), expectedNdc)
             } catch (e: CancellationException) {
                 _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
                 throw e

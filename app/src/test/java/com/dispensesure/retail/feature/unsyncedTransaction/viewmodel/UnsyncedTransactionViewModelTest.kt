@@ -1,5 +1,7 @@
 package com.dispensesure.retail.feature.unsyncedTransaction.viewmodel
 
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
@@ -32,6 +34,8 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class UnsyncedTransactionViewModelTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
@@ -53,6 +57,7 @@ class UnsyncedTransactionViewModelTest {
             stockBatchDao = stockBatchDao,
             stockHl7Repository = stockHl7Repository,
             hl7EventHandler = hl7EventHandler,
+            regionProvider = regionProvider,
         )
     }
 

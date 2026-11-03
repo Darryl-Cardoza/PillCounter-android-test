@@ -2,6 +2,8 @@ package com.dispensesure.retail.feature.unsyncedTransaction.presentation.viewmod
 
 import android.util.Log
 import app.cash.turbine.test
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
@@ -33,6 +35,8 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class UnsyncedTransactionViewModelTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var dispenseTxnDao: DispenseTxnDao
@@ -62,9 +66,9 @@ class UnsyncedTransactionViewModelTest {
 
         // Sensible defaults so the init observers do not blow up.
         every {
-            dispenseTxnDao.observeUnsyncedDispenses(any(), any(), any())
+            dispenseTxnDao.observeUnsyncedDispenses(any(), any(), any(), any())
         } returns flowOf(emptyList())
-        every { stockBatchDao.observeUnsyncedCompletedBatches() } returns flowOf(emptyList())
+        every { stockBatchDao.observeUnsyncedCompletedBatches(any()) } returns flowOf(emptyList())
         every { hl7EventHandler.connectionState } returns connectionState
     }
 
@@ -75,7 +79,7 @@ class UnsyncedTransactionViewModelTest {
     }
 
     private fun createViewModel(): UnsyncedTransactionViewModel =
-        UnsyncedTransactionViewModel(dispenseTxnDao, stockBatchDao, stockHl7Repository, hl7EventHandler)
+        UnsyncedTransactionViewModel(dispenseTxnDao, stockBatchDao, stockHl7Repository, hl7EventHandler, regionProvider)
 
     private fun pillCount(
         drugName: String? = "Aspirin",
@@ -101,7 +105,7 @@ class UnsyncedTransactionViewModelTest {
     fun `observeUnsyncedDispense maps txn to CountItem with non-null drugName`() =
         runTest(testDispatcher) {
             every {
-                dispenseTxnDao.observeUnsyncedDispenses(any(), any(), any())
+                dispenseTxnDao.observeUnsyncedDispenses(any(), any(), any(), any())
             } returns flowOf(listOf(pillCount(drugName = "Aspirin", targetCount = 50)))
 
             val vm = createViewModel()
@@ -130,7 +134,7 @@ class UnsyncedTransactionViewModelTest {
     fun `observeUnsyncedDispense maps null drugName to empty and null target to zero`() =
         runTest(testDispatcher) {
             every {
-                dispenseTxnDao.observeUnsyncedDispenses(any(), any(), any())
+                dispenseTxnDao.observeUnsyncedDispenses(any(), any(), any(), any())
             } returns flowOf(listOf(pillCount(drugName = null, targetCount = null)))
 
             val vm = createViewModel()
@@ -144,7 +148,7 @@ class UnsyncedTransactionViewModelTest {
     @Test
     fun `observeUnsyncedDispense catch keeps default empty list`() = runTest(testDispatcher) {
         every {
-            dispenseTxnDao.observeUnsyncedDispenses(any(), any(), any())
+            dispenseTxnDao.observeUnsyncedDispenses(any(), any(), any(), any())
         } returns flow { throw RuntimeException("dispense error") }
 
         val vm = createViewModel()
@@ -157,7 +161,7 @@ class UnsyncedTransactionViewModelTest {
 
     @Test
     fun `observeUnsyncedBatches maps dto to BatchSummary`() = runTest(testDispatcher) {
-        every { stockBatchDao.observeUnsyncedCompletedBatches() } returns flowOf(
+        every { stockBatchDao.observeUnsyncedCompletedBatches(any()) } returns flowOf(
             listOf(
                 BatchSummaryDto(
                     batchId = 9L,
@@ -189,7 +193,7 @@ class UnsyncedTransactionViewModelTest {
     @Test
     fun `observeUnsyncedBatches catch keeps default empty list`() = runTest(testDispatcher) {
         // Invalid status forces BatchStatus.valueOf to throw -> flow fails -> catch.
-        every { stockBatchDao.observeUnsyncedCompletedBatches() } returns flowOf(
+        every { stockBatchDao.observeUnsyncedCompletedBatches(any()) } returns flowOf(
             listOf(
                 BatchSummaryDto(
                     batchId = 1L,

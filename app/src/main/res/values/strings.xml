@@ -237,6 +237,7 @@
     <string name="error_email_invalid">Please enter a valid email address.</string>
     <string name="error_unknown">Something went wrong.</string>
     <string name="error_invalid_otp">Invalid Pin entered.</string>
+    <string name="error_unsupported_region">Your account\'s country is not supported on this app. Please contact support.</string>
     <string name="error_phone_invalid">Invalid phone number</string>
     <string name="error_name_invalid">Name cannot contain numbers</string>
     <string name="error_name_required">This field is required</string>
@@ -475,7 +476,6 @@
 <!--    StockCount-->
     <string name="scan_open_pills">Scan Open Pills</string>
     <string name="camera_permission_required">Camera permission is required to scan. Please allow camera access.</string>
-    <string name="scan_ndc_to_count">Scan NDC to count pills</string>
 
 
 <!--    partial count screen -->
@@ -669,4 +669,44 @@
     <string name="tour_picker_start">Start</string>
     <string name="tour_demo_drug_name">Tutorial Demo Drug</string>
     <string name="tour_ended_locked">Tour ended because the session locked.</string>
+
+    <!-- Canada wording (Region.wording) -->
+    <string name="queue_tab_controlled_ca">CONTROLLED / TARGETED SUBSTANCE</string>
+    <string name="queue_tab_hazardous_ca">CYTOTOXIC</string>
+    <string name="kpi_cont_drugs_ca">Controlled / Targeted Substance</string>
+    <string name="kpi_hazardous_ca">Cytotoxic</string>
+    <string name="tour_desc_kpi_dispense_ca">High Priority, Controlled / Targeted Substance and Cytotoxic counts for your dispenses. Tap a card to filter the queue.</string>
+    <string name="tour_desc_scan_container_ca">Point the camera at the container\'s QR code or DIN barcode.</string>
+    <string name="tour_desc_inv_camera_preview_ca">Point the camera at a bottle\'s DIN barcode to start counting it.</string>
+    <string name="tour_desc_inv_edit_actions_ca">Cancel to discard changes, or save to update this DIN\'s counts.</string>
+    <string name="tour_desc_inv_end_count_ca">Tap End Count once every DIN in this batch has been counted. Next opens the note screen.</string>
+    <string name="ndc_value_ca">DIN %1$s</string>
+    <string name="ndc_ca">DIN</string>
+    <string name="ndc_gtin14_ca">DIN/GTIN14</string>
+    <string name="ndc_number_ca">DIN Number</string>
+    <string name="the_scanned_ndc_does_not_match_ca">The scanned DIN does not match</string>
+    <string name="scan_ndc_toast_ca">Scan DIN</string>
+    <string name="rescan_ndc_does_not_match_toast_ca">Rescan — DIN does not match</string>
+    <string name="ndcs_label_ca">DINs</string>
+    <string name="total_ndc_count_ca">TOTAL DIN COUNT</string>
+    <string name="pdf_ndc_label_ca">DIN</string>
+    <string name="batch_stock_count_scanned_drug_details_ca">SCANNED DIN DETAILS</string>
+    <string name="batch_stock_count_label_ndc_ca">DIN Number</string>
+    <string name="batch_stock_count_total_ndcs_ca">Total DINs</string>
+    <string name="batch_stock_count_drug_not_found_ca">Invalid DIN %1$s</string>
+    <string name="batch_stock_count_ndc_not_in_request_ca">DIN %1$s is not part of this inventory request</string>
+    <string name="photo_label_requested_ndc_ca">Requested DIN</string>
+    <string name="photo_label_dispensed_ndc_ca">Dispensed DIN</string>
+    <string name="hl7_notification_drug_not_found_api_failed_ca">DIN %1$s could not be resolved. API request failed.</string>
+    <string name="hl7_notification_drug_not_found_no_drug_ca">No drug found for DIN %1$s.</string>
+    <string name="hl7_notification_edit_rx_drug_not_found_ca">Rx %1$s update failed: drug DIN %2$s not found.</string>
+    <string name="hl7_notification_new_rx_ndc_missing_ca">New order for Rx %1$s ignored — DIN missing in RXE-2</string>
+    <string name="hl7_notification_refill_ndc_or_qty_missing_ca">Refill for Rx %1$s ignored — DIN or quantity missing/invalid</string>
+    <string name="setting_group_controlled_drug_ca">DISPENSE CONTROLLED / TARGETED SUBSTANCE</string>
+    <string name="setting_group_hazardous_ca">CYTOTOXIC PILL COUNTING</string>
+    <string name="setting_hazardous_drug_ca">Cytotoxic Drug</string>
+    <string name="tray_classification_message_ca">The %s colored tray is not classified. Mark it as a cytotoxic tray?</string>
+    <string name="hazardous_tray_warning_ca">Warning: You are using a cytotoxic tray. Please use a non-cytotoxic tray.</string>
+    <string name="non_hazardous_tray_warning_ca">This is not the cytotoxic tray. Please use the cytotoxic tray.</string>
+    <string name="clear_tray_color_lists_confirm_ca">Are you sure you want to clear the cytotoxic tray color classification?</string>
 </resources>

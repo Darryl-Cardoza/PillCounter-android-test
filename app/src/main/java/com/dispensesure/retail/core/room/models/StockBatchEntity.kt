@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.room.models
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.di.StockBatchConverters
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 
@@ -21,6 +22,7 @@ import com.dispensesure.retail.core.room.models.enums.BatchStatus
  * @property bucketId Optional reference to a container/bucket ID associated with this batch.
  * @property createdAt Creation timestamp (epoch millis).
  * @property updatedAt Last update timestamp (epoch millis).
+ * @property region Region the batch belongs to.
  */
 @Entity(
     tableName = "stock_batch"
@@ -56,5 +58,8 @@ data class StockBatchEntity(
     val totalNdcs: Int? = null,
 
     /** Display name of the user who ran the count. */
-    val userName: String? = null
+    val userName: String? = null,
+
+    /** Region of the user who started it; lists only show the logged-in region's batches. */
+    val region: Region = Region.US,
 )

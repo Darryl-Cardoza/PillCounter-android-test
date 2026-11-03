@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.unsyncedTransaction.presentation.viewmod
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
@@ -33,6 +34,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
     private val stockBatchDao: StockBatchDao,
     private val stockHl7Repository: StockHl7Repository,
     private val hl7EventHandler: Hl7EventHandler,
+    private val regionProvider: RegionProvider,
 ) : ViewModel() {
 
     private val _unsyncedTransactionUiState = MutableStateFlow(UnsyncedTransactionUiState())
@@ -51,6 +53,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
     private fun observeUnsyncedDispense() {
         viewModelScope.launch {
             dispenseTxnDao.observeUnsyncedDispenses(
+                region = regionProvider.current,
                 step = StepState.TARGET_VERIFICATION.toString()
             )
                 .map { txns -> txns.map { it.toCountItem() } }
@@ -63,7 +66,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
 
     private fun observeUnsyncedBatches() {
         viewModelScope.launch {
-            stockBatchDao.observeUnsyncedCompletedBatches()
+            stockBatchDao.observeUnsyncedCompletedBatches(regionProvider.current)
                 .map { dtos ->
                     dtos.map { dto ->
                         BatchSummary(
@@ -107,7 +110,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
         bucketId = bucketId,
         target = targetCount ?: 0,
         bottlesJson = bottlesJson,
-        date = createdAt.toFormattedDate(),
+        date = createdAt.toFormattedDate(regionProvider.current),
         isComingFromHL7 = isComingFromHL7,
         isNdcVerified = isNdcVerified,
         strength = strength,

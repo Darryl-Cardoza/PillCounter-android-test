@@ -22,6 +22,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.tourguide.BUCKET_STEP_ID
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
 import com.dispensesure.retail.core.tourguide.TourDialogHost
@@ -182,9 +184,12 @@ fun DashboardScreen(
             )
         }
     }
-    val onInventoryQuickAction = remember {
+    val loggedInRegion = LocalRegion.current
+    val onInventoryQuickAction = remember(loggedInRegion, navController) {
         {
-            showBucketSelectDialog = true
+            // Canada has no buckets: open stock count straight away.
+            if (loggedInRegion.showsBucket) showBucketSelectDialog = true
+            else navController.navigate(Screen.StockCount.createRoute())
         }
     }
     val onRecentDispenseClick = remember(navController) {
@@ -236,7 +241,7 @@ fun DashboardScreen(
         tourState = tourState,
     )
 
-    val inTourBucketStep = tourState.isActive && tourState.currentStep?.id == "s_bucket"
+    val inTourBucketStep = tourState.isActive && tourState.currentStep?.id == BUCKET_STEP_ID
     if (showBucketSelectDialog || inTourBucketStep) {
         val bucketList = viewModel.getBucketList()
         // Default the selection to "Normal" (case-insensitive); fall back to the
@@ -294,13 +299,15 @@ fun DashboardScreen(
         }
 
         // The bucket step is drawn by its own dialog window (TourDialogHost).
-        if (tourState.currentStep?.id != "s_bucket") {
+        if (tourState.currentStep?.id != BUCKET_STEP_ID) {
             TourGuideOverlay(
                 state = tourState,
                 modifier = Modifier.fillMaxSize(),
                 onNext = {
                     when (tourState.currentStep?.id) {
                         "d_card" -> onDispenseQuickAction()
+                        // Without a bucket step, the stock-count card opens stock count itself.
+                        "s_card" -> if (!loggedInRegion.showsBucket) navController.navigate(Screen.StockCount.createRoute())
                     }
                 },
             )
@@ -317,7 +324,12 @@ fun DashboardScreen(
             onConfirm = {
                 TourGuidePrefs.markSeen(context, localId)
                 showTourOffer = false
-                FtueController.start(TourSection.entries, viewModel.isHl7Enabled(), preferenceHelper.getShowNotesDialogSetting())
+                FtueController.start(
+                    TourSection.entries,
+                    viewModel.isHl7Enabled(),
+                    preferenceHelper.getShowNotesDialogSetting(),
+                    bucketsEnabled = loggedInRegion.showsBucket,
+                )
             },
             onCancel = {
                 TourGuidePrefs.markSeen(context, localId)

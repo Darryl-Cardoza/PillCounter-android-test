@@ -3,13 +3,14 @@ package com.dispensesure.retail.core.room.models
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.dispensesure.retail.core.region.Region
 
 /**
  * Entity representing the master record of a drug in the local Room database.
  *
  * @property drugId       Auto-generated unique identifier for each drug.
  * @property drugName     Display name of the drug.
- * @property ndc          National Drug Code (unique identifier per drug).
+ * @property ndc          National Drug Code (US) or DIN (Canada); unique per region.
  * @property drugType     Type/classification of the drug (e.g., tablet, capsule).
  * @property createdAt    Timestamp (epoch millis) when the record was created.
  * @property drugImagePath Absolute local path to the downloaded drug image (.webp).
@@ -18,7 +19,7 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "drug_master",
-    indices = [Index(value = ["ndc"], unique = true)]
+    indices = [Index(value = ["ndc", "region"], unique = true)]
 )
 data class DrugMasterEntity(
     @PrimaryKey(autoGenerate = true)
@@ -36,4 +37,6 @@ data class DrugMasterEntity(
     val dosageForm: String? = null,
     /** Absolute local path to the downloaded drug image (.webp). Null if never downloaded. */
     val drugImagePath: String? = null,
+    /** Region of the user who saved it; lookups by code only see their own region. */
+    val region: Region = Region.US,
 )

@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.tourguide
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
@@ -65,8 +66,8 @@ class TutorialDataCleanerTest {
         assertNotNull(db.dispenseTxnDao().getById(realTxn))
         assertNull(db.stockBatchDao().getById(10L))
         assertNotNull(db.stockBatchDao().getById(11L))
-        assertNull(db.drugMasterDao().getDrugByNdc(TutorialData.DEMO_NDC))
-        assertNotNull(db.drugMasterDao().getDrugByNdc("1234"))
+        assertNull(db.drugMasterDao().getDrugByNdc(TutorialData.DEMO_NDC, Region.US))
+        assertNotNull(db.drugMasterDao().getDrugByNdc("1234", Region.US))
         assertNotNull(db.stockTxnDao().findByDrugInBatch(11L, realDrugId))
     }
 

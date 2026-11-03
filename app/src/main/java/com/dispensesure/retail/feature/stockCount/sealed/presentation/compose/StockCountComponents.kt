@@ -39,6 +39,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.formatExpiry
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
@@ -46,7 +49,6 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.drugDisplayName
-import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.core.utils.compose.repeatWhileHeld
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.ActiveNdc
 import com.dispensesure.retail.feature.stockCount.sealed.domain.model.RecentBatchRow
@@ -246,7 +248,7 @@ private fun ScannedDetailsHeaderRow(onEdit: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = stringResource(R.string.batch_stock_count_scanned_drug_details),
+            text = regionStringResource(R.string.batch_stock_count_scanned_drug_details),
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = responsiveSp(8.sp),
             fontWeight = FontWeight.SemiBold,
@@ -303,11 +305,13 @@ internal fun ScannedDrugCard(
                 value = drugDisplayName(active.drugName),
                 modifier = Modifier.weight(2f),
             )
-            DetailField(
-                label = stringResource(R.string.batch_stock_count_label_bucket),
-                value = active.bucket,
-                modifier = Modifier.weight(1f),
-            )
+            if (LocalRegion.current.showsBucket) {
+                DetailField(
+                    label = stringResource(R.string.batch_stock_count_label_bucket),
+                    value = active.bucket,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
         HorizontalDivider(
             color = AppTheme.extendedColors.primaryBackground,
@@ -317,7 +321,7 @@ internal fun ScannedDrugCard(
         // Row 2: NDC (1.2x — wider so the formatted number never wraps) | Batch | Expiry.
         Row(modifier = Modifier.fillMaxWidth()) {
             DetailField(
-                label = stringResource(R.string.batch_stock_count_label_ndc),
+                label = regionStringResource(R.string.batch_stock_count_label_ndc),
                 value = active.ndc,
                 modifier = Modifier.weight(1.2f),
             )
@@ -328,7 +332,7 @@ internal fun ScannedDrugCard(
             )
             DetailField(
                 label = stringResource(R.string.batch_stock_count_label_expiry),
-                value = formatDateToUSFormat(active.expiry),
+                value = LocalRegion.current.formatExpiry(active.expiry),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -564,7 +568,7 @@ internal fun ScannedDrugDetailsPortrait(
         )
 
         DetailField(
-            label = stringResource(R.string.batch_stock_count_label_ndc),
+            label = regionStringResource(R.string.batch_stock_count_label_ndc),
             value = active.ndc,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -581,14 +585,16 @@ internal fun ScannedDrugDetailsPortrait(
             )
             DetailField(
                 label = stringResource(R.string.batch_stock_count_label_expiry),
-                value = formatDateToUSFormat(active.expiry),
+                value = LocalRegion.current.formatExpiry(active.expiry),
                 modifier = Modifier.weight(1f),
             )
-            DetailField(
-                label = stringResource(R.string.batch_stock_count_label_bucket),
-                value = active.bucket,
-                modifier = Modifier.weight(1f),
-            )
+            if (LocalRegion.current.showsBucket) {
+                DetailField(
+                    label = stringResource(R.string.batch_stock_count_label_bucket),
+                    value = active.bucket,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
         HorizontalDivider(
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.12f),
@@ -685,11 +691,13 @@ internal fun ScannedDrugDetailsPhone(
                 value = drugDisplayName(active.drugName),
                 modifier = Modifier.weight(2f),
             )
-            DetailField(
-                label = stringResource(R.string.batch_stock_count_label_bucket),
-                value = active.bucket,
-                modifier = Modifier.weight(1f),
-            )
+            if (LocalRegion.current.showsBucket) {
+                DetailField(
+                    label = stringResource(R.string.batch_stock_count_label_bucket),
+                    value = active.bucket,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
         HorizontalDivider(
             color = AppTheme.extendedColors.primaryBackground,
@@ -699,7 +707,7 @@ internal fun ScannedDrugDetailsPhone(
         // Row 2: NDC (1.2x) | Batch No. | Expiry Date.
         Row(modifier = Modifier.fillMaxWidth()) {
             DetailField(
-                label = stringResource(R.string.batch_stock_count_label_ndc),
+                label = regionStringResource(R.string.batch_stock_count_label_ndc),
                 value = active.ndc,
                 modifier = Modifier.weight(1.2f),
             )
@@ -710,7 +718,7 @@ internal fun ScannedDrugDetailsPhone(
             )
             DetailField(
                 label = stringResource(R.string.batch_stock_count_label_expiry),
-                value = formatDateToUSFormat(active.expiry),
+                value = LocalRegion.current.formatExpiry(active.expiry),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -789,7 +797,7 @@ internal fun ScannedSummaryRow(
             // Stats take their natural width on the left; the END COUNT pill gets
             // the remaining room and a min width so its label never wraps.
             SummaryStat(
-                label = stringResource(R.string.batch_stock_count_total_ndcs),
+                label = regionStringResource(R.string.batch_stock_count_total_ndcs),
                 value = totalNdcs.toString(),
                 modifier = Modifier.weight(1f)
             )
@@ -837,7 +845,7 @@ internal fun ScannedSummaryCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SummaryStat(
-                label = stringResource(R.string.batch_stock_count_total_ndcs),
+                label = regionStringResource(R.string.batch_stock_count_total_ndcs),
                 value = totalNdcs.toString(),
                 modifier = Modifier.weight(1f)
             )

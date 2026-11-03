@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.compose.cardSelectionShadow
@@ -218,7 +219,7 @@ private fun KpiTitle(
     textAlign: TextAlign = TextAlign.Start,
 ) {
     Text(
-        text = stringResource(titleRes),
+        text = regionStringResource(titleRes),
         fontSize = responsiveSp(DashboardBaseSizes.KpiTitleText),
         color = extendedColors.textColor,
         fontWeight = FontWeight.SemiBold,
@@ -232,7 +233,7 @@ private fun KpiTitle(
 @Composable
 private fun KpiSubtitle(@StringRes subtitleRes: Int, textAlign: TextAlign = TextAlign.Start) {
     Text(
-        text = stringResource(subtitleRes),
+        text = regionStringResource(subtitleRes),
         fontSize = responsiveSp(DashboardBaseSizes.KpiSubtitleText),
         color = extendedColors.textColor,
         textAlign = textAlign,

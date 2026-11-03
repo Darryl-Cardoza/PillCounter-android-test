@@ -7,7 +7,7 @@ import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 sealed interface DispenseFlowAction {
     // ── Scans, as DispenseBarcodeRouting routes them ──
     data class RxLabelScanned(val rawValue: String) : DispenseFlowAction
-    data class ContainerScanned(val gtin14: String, val firstBottle: DispenseBottle) : DispenseFlowAction
+    data class ContainerScanned(val scannedCode: String, val firstBottle: DispenseBottle) : DispenseFlowAction
     data object RxLabelScannedOnContainerStep : DispenseFlowAction
     data class VialLabelScanned(val rawValue: String) : DispenseFlowAction
 

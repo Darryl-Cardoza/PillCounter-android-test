@@ -1,41 +1,51 @@
 package com.dispensesure.retail.core.models
 
-import org.junit.Assert.assertArrayEquals
+import com.dispensesure.retail.core.region.Region
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScheduleCodeTest {
 
     @Test
-    fun values_containsAllConstantsInOrder() {
-        val expected = arrayOf(
-            ScheduleCode.CII,
-            ScheduleCode.CIII,
-            ScheduleCode.CIV,
-            ScheduleCode.CV,
-            ScheduleCode.CVI
+    fun `US schedules are CII to CVI in order`() {
+        assertEquals(
+            listOf(ScheduleCode.CII, ScheduleCode.CIII, ScheduleCode.CIV, ScheduleCode.CV, ScheduleCode.CVI),
+            ScheduleCode.forRegion(Region.US),
         )
-        assertArrayEquals(expected, ScheduleCode.values())
-        assertEquals(5, ScheduleCode.values().size)
     }
 
     @Test
-    fun valueOf_eachConstant() {
-        assertEquals(ScheduleCode.CII, ScheduleCode.valueOf("CII"))
-        assertEquals(ScheduleCode.CIII, ScheduleCode.valueOf("CIII"))
-        assertEquals(ScheduleCode.CIV, ScheduleCode.valueOf("CIV"))
-        assertEquals(ScheduleCode.CV, ScheduleCode.valueOf("CV"))
-        assertEquals(ScheduleCode.CVI, ScheduleCode.valueOf("CVI"))
+    fun `canada schedules are C, N and TS in order`() {
+        assertEquals(listOf(ScheduleCode.C, ScheduleCode.N, ScheduleCode.TS), ScheduleCode.forRegion(Region.CA))
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun valueOf_invalid_throws() {
+    fun `valueOf an unknown name throws`() {
         ScheduleCode.valueOf("UNKNOWN")
     }
 
     @Test
-    fun ordinals_areSequential() {
-        assertEquals(0, ScheduleCode.CII.ordinal)
-        assertEquals(4, ScheduleCode.CVI.ordinal)
+    fun `US drug types match US schedules only, ignoring case and spaces`() {
+        assertTrue(isControlledDrugType(" cii ", Region.US))
+        assertFalse(isControlledDrugType("N", Region.US))
+        assertFalse(isControlledDrugType("TS", Region.US))
+    }
+
+    @Test
+    fun `canada drug types match canada schedules only`() {
+        assertTrue(isControlledDrugType("C", Region.CA))
+        assertTrue(isControlledDrugType("n", Region.CA))
+        assertTrue(isControlledDrugType("TS", Region.CA))
+        assertFalse(isControlledDrugType("CII", Region.CA))
+        assertFalse(isControlledDrugType("NA", Region.CA))
+    }
+
+    @Test
+    fun `missing or other drug types are not controlled`() {
+        assertFalse(isControlledDrugType(null, Region.US))
+        assertFalse(isControlledDrugType("", Region.CA))
+        assertFalse(isControlledDrugType("TABLET", Region.CA))
     }
 }

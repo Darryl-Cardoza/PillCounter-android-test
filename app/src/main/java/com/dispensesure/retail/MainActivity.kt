@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +42,8 @@ import com.dispensesure.retail.core.health.domain.model.HealthState
 import com.dispensesure.retail.core.health.logic.ConnectivityCallback
 import com.dispensesure.retail.core.health.logic.ExpiryWatcher
 import com.dispensesure.retail.core.health.logic.SessionHealthController
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.security.RuntimeUnit
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourEvent
@@ -112,6 +115,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var authEventBus: AuthEventBus
+
+    @Inject
+    lateinit var regionProvider: RegionProvider
 
     @Inject
     lateinit var connectivityCallback: ConnectivityCallback
@@ -353,29 +359,32 @@ class MainActivity : ComponentActivity() {
                                             previous = current
                                         }
                                     }
-                                    AppNavGraph(
-                                        navController    = navController as NavHostController,
-                                        startDestination = startDestination,
-                                        onLogin          = {
-                                            settingsViewModel.onUserLoginOrLogOut()
-                                            // Enrolled operators verify their face before reaching the
-                                            // dashboard, but only after the permission chain finishes.
-                                            lockAfterPermissionChain = true
-                                            sessionLockController.setLockPending(true)
-                                            if (!permissionChainInProgress) {
-                                                permissionChainInProgress = true
-                                                requestNotificationPermission()
+                                    val loggedInRegion by regionProvider.region.collectAsStateWithLifecycle()
+                                    CompositionLocalProvider(LocalRegion provides (loggedInRegion ?: regionProvider.current)) {
+                                        AppNavGraph(
+                                            navController    = navController as NavHostController,
+                                            startDestination = startDestination,
+                                            onLogin          = {
+                                                settingsViewModel.onUserLoginOrLogOut()
+                                                // Enrolled operators verify their face before reaching the
+                                                // dashboard, but only after the permission chain finishes.
+                                                lockAfterPermissionChain = true
+                                                sessionLockController.setLockPending(true)
+                                                if (!permissionChainInProgress) {
+                                                    permissionChainInProgress = true
+                                                    requestNotificationPermission()
+                                                }
+                                            },
+                                            onLogOut         = {
+                                                FtueController.end()
+                                                // The Ended event has no collector once logged out; purge now.
+                                                settingsViewModel.purgeTutorialDataAsync()
+                                                FtueController.drainEvents()
+                                                sessionLockController.setLockPending(false)
+                                                settingsViewModel.onUserLoginOrLogOut()
                                             }
-                                        },
-                                        onLogOut         = {
-                                            FtueController.end()
-                                            // The Ended event has no collector once logged out; purge now.
-                                            settingsViewModel.purgeTutorialDataAsync()
-                                            FtueController.drainEvents()
-                                            sessionLockController.setLockPending(false)
-                                            settingsViewModel.onUserLoginOrLogOut()
-                                        }
-                                    )
+                                        )
+                                    }
 
                                     // The tour ends (done, skipped, locked, logged out) or moves to its next
                                     // section: purge tutorial data first, then show the Dashboard.

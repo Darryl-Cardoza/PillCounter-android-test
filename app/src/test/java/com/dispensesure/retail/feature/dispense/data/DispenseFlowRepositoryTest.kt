@@ -2,6 +2,8 @@ package com.dispensesure.retail.feature.dispense.data
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
@@ -11,6 +13,8 @@ import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.feature.dispense.domain.model.StandaloneRxDraft
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -26,6 +30,8 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DispenseFlowRepositoryTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     private lateinit var db: AppDatabase
     private lateinit var repository: DispenseFlowRepository
 
@@ -35,7 +41,7 @@ class DispenseFlowRepositoryTest {
             ApplicationProvider.getApplicationContext(),
             AppDatabase::class.java
         ).allowMainThreadQueries().build()
-        repository = DispenseFlowRepository(db.dispenseTxnDao(), db.drugMasterDao())
+        repository = DispenseFlowRepository(db.dispenseTxnDao(), db.drugMasterDao(), regionProvider)
         db.userDao().insertIgnore(UserEntity(localId = 1L, userId = "user-1"))
         db.userDao().insertIgnore(UserEntity(localId = 2L, userId = "user-2"))
         db.drugMasterDao().insertIgnore(
@@ -229,7 +235,7 @@ class DispenseFlowRepositoryTest {
         val substituteDrug = DrugMasterEntity(ndc = "SUBNDC", drugName = "Generic")
 
         assertFalse(repository.markContainerVerified(999L, isSubstitute = true, substituteDrug = substituteDrug, firstBottle = null))
-        assertNull(db.drugMasterDao().getDrugByNdc("SUBNDC"))
+        assertNull(db.drugMasterDao().getDrugByNdc("SUBNDC", Region.US))
     }
 
     // ───────────────────────── queue ─────────────────────────
@@ -260,5 +266,23 @@ class DispenseFlowRepositoryTest {
         assertTrue(queueItem.isHighPriority)
         // CII is a controlled schedule.
         assertTrue(queueItem.isControlled)
+    }
+
+    @Test
+    fun `canada substitute drug is saved as a canada drug`() = runTest {
+        every { regionProvider.current } returns Region.CA
+        val txnId = db.dispenseTxnDao().upsertPreservingId(
+            DispenseTxnEntity(userLocalId = 1L, drugId = 10L, status = CountStatus.PARTIAL)
+        )
+
+        repository.markContainerVerified(
+            txnId = txnId,
+            isSubstitute = true,
+            substituteDrug = DrugMasterEntity(ndc = "00013285", drugName = "Valium"),
+            firstBottle = null,
+        )
+
+        assertEquals("Valium", db.drugMasterDao().getDrugByNdc("00013285", Region.CA)?.drugName)
+        assertNull(db.drugMasterDao().getDrugByNdc("00013285", Region.US))
     }
 }

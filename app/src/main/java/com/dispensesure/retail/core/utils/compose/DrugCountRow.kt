@@ -39,6 +39,9 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.isControlledDrugType
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
@@ -67,6 +70,7 @@ private const val IdentifierLineSeparator = "  •  "
 // Second line of a drug row: "Rx 7654321-2  •  340B  •  CII".
 // NDC stands in when there is no Rx number; missing parts are dropped.
 internal fun DrugCountRowData.buildIdentifierLine(
+    region: Region,
     rxLabel: (String) -> String,
     ndcLabel: (String) -> String,
 ): String {
@@ -77,9 +81,10 @@ internal fun DrugCountRowData.buildIdentifierLine(
         ndcValue != null -> ndcLabel(ndcValue)
         else -> null
     }
-    // Only DEA schedule codes (CII–CVI) render; drugType can hold other values.
-    val scheduleCode = drugType.trimmedOrNull()?.uppercase()?.takeIf { isControlledDrugType(it) }
-    return listOfNotNull(id, bucketId.trimmedOrNull(), scheduleCode).joinToString(IdentifierLineSeparator)
+    // Only the region's schedule codes render (CII–CVI, or C/N/TS); drugType can hold other values.
+    val scheduleCode = drugType.trimmedOrNull()?.uppercase()?.takeIf { isControlledDrugType(it, region) }
+    val bucket = bucketId.trimmedOrNull()?.takeIf { region.showsBucket }
+    return listOfNotNull(id, bucket, scheduleCode).joinToString(IdentifierLineSeparator)
 }
 
 // Trimmed value, or null when missing or blank.
@@ -88,9 +93,11 @@ private fun String?.trimmedOrNull(): String? = this?.trim()?.takeIf { it.isNotEm
 @Composable
 fun DrugCountRowData.identifierLine(): String {
     val resources = LocalResources.current
+    val loggedInRegion = LocalRegion.current
     return buildIdentifierLine(
+        region = loggedInRegion,
         rxLabel = { resources.getString(R.string.rx_value, it) },
-        ndcLabel = { resources.getString(R.string.ndc_value, it) },
+        ndcLabel = { resources.getString(loggedInRegion.wording(R.string.ndc_value), it) },
     )
 }
 

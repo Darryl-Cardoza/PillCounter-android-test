@@ -4,6 +4,8 @@ import android.content.Context
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isControlledDrugType
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
@@ -60,6 +62,7 @@ class DispenseHl7Repository @Inject constructor(
     private val drugResolver: DrugResolver,
     private val notifier: Hl7Notifier,
     private val hl7ConfigProvider: Hl7ConfigProvider,
+    private val regionProvider: RegionProvider,
 ) {
 
     private val logger = AppLogger.create<DispenseHl7Repository>()
@@ -154,7 +157,7 @@ class DispenseHl7Repository @Inject constructor(
             pharmacistFamilyName = txn.operatorLastName,
             pharmacistGivenName = txn.operatorFirstName,
             location = location,
-            isControlledSubstance = isControlledDrugType(drug.drugType),
+            isControlledSubstance = isControlledDrugType(drug.drugType, drug.region),
             isHazardousDrug = drug.isHazardous,
             config = hl7ConfigProvider.current()
         )
@@ -336,7 +339,7 @@ class DispenseHl7Repository @Inject constructor(
             is DrugLookup.Failed -> {
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                    message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
+                    message = context.getString(regionProvider.current.wording(R.string.hl7_notification_drug_not_found_api_failed), hl7Ndc)
                 )
                 return
             }
@@ -344,7 +347,7 @@ class DispenseHl7Repository @Inject constructor(
                 logger.w("No drug name resolved for NDC: $hl7Ndc")
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                    message = context.getString(R.string.hl7_notification_drug_not_found_no_drug, hl7Ndc)
+                    message = context.getString(regionProvider.current.wording(R.string.hl7_notification_drug_not_found_no_drug), hl7Ndc)
                 )
                 return
             }
@@ -424,7 +427,7 @@ class DispenseHl7Repository @Inject constructor(
             is DrugLookup.Failed -> {
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                    message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
+                    message = context.getString(regionProvider.current.wording(R.string.hl7_notification_drug_not_found_api_failed), hl7Ndc)
                 )
                 return
             }
@@ -432,7 +435,7 @@ class DispenseHl7Repository @Inject constructor(
                 logger.w("No drug name resolved for NDC: $hl7Ndc")
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                    message = context.getString(R.string.hl7_notification_drug_not_found_no_drug, hl7Ndc)
+                    message = context.getString(regionProvider.current.wording(R.string.hl7_notification_drug_not_found_no_drug), hl7Ndc)
                 )
                 return
             }
@@ -571,7 +574,7 @@ class DispenseHl7Repository @Inject constructor(
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_edit_rx_title),
                     message = context.getString(
-                        R.string.hl7_notification_edit_rx_drug_not_found,
+                        regionProvider.current.wording(R.string.hl7_notification_edit_rx_drug_not_found),
                         rxNo,
                         hl7Ndc
                     )

@@ -1,5 +1,6 @@
 package com.dispensesure.retail.core.scanning.data
 
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
@@ -19,6 +20,7 @@ class DrugResolver @Inject constructor(
     private val drugMasterDao: DrugMasterDao,
     private val drugRepository: IDrugRepository,
     private val drugImageDownloader: DrugImageDownloader,
+    private val regionProvider: RegionProvider,
 ) {
 
     private val logger = AppLogger.create<DrugResolver>()
@@ -40,7 +42,11 @@ class DrugResolver @Inject constructor(
         allowNoName: Boolean = false,
         scannedGtin: String? = null,
     ): DrugLookup {
-        val saved = listOfNotNull(drugMasterDao.getDrugByGtin(code), drugMasterDao.getDrugByNdc(code))
+        val loggedInRegion = regionProvider.current
+        val saved = listOfNotNull(
+            drugMasterDao.getDrugByGtin(code, loggedInRegion),
+            drugMasterDao.getDrugByNdc(code, loggedInRegion),
+        )
             .firstOrNull { allowNoName || !it.drugName.isNullOrBlank() }
         if (saved != null && (expectedNdc.isNullOrBlank() || saved.ndc == expectedNdc)) {
             return DrugLookup.Found(saved, fromServer = false)
@@ -102,6 +108,9 @@ class DrugResolver @Inject constructor(
         return DrugLookup.Found(drug, fromServer = true)
     }
 
-    private suspend fun save(drug: DrugMasterEntity): DrugMasterEntity =
-        drug.copy(drugId = drugMasterDao.upsertPreservingId(drug))
+    // Every saved drug belongs to the logged-in user's region.
+    private suspend fun save(drug: DrugMasterEntity): DrugMasterEntity {
+        val regionDrug = drug.copy(region = regionProvider.current)
+        return regionDrug.copy(drugId = drugMasterDao.upsertPreservingId(regionDrug))
+    }
 }

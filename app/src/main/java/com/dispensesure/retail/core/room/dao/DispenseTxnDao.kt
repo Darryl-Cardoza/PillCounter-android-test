@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
@@ -799,11 +800,13 @@ interface DispenseTxnDao {
       AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)
       AND txn.isSynced = 0
       AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
+      AND IFNULL(drug.region, 'US') = :region
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
     )
     fun observeUnsyncedDispenses(
+        region: Region,
         completeStatus: CountStatus = CountStatus.COMPLETED,
         forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED,
         step: String
@@ -812,15 +815,19 @@ interface DispenseTxnDao {
     @Query(
         """
     SELECT COUNT(*)
-    FROM dispense_txn
-    WHERE isDeleted = 0
-      AND (status = :completeStatus OR status = :forceCompleteStatus)
-      AND isSynced = 0
-      AND isComingFromHL7 = 1
-      AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
+    FROM dispense_txn AS txn
+    LEFT JOIN drug_master AS drug
+           ON txn.drugId = drug.drugId
+    WHERE txn.isDeleted = 0
+      AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)
+      AND txn.isSynced = 0
+      AND txn.isComingFromHL7 = 1
+      AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
+      AND IFNULL(drug.region, 'US') = :region
     """
     )
     fun getTotalCompletedTransactionCount(
+        region: Region,
         completeStatus: CountStatus = CountStatus.COMPLETED,
         forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED
     ): Flow<Int>

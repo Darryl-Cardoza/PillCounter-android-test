@@ -4,6 +4,8 @@ import android.util.Log
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.ApiResponse
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
@@ -61,6 +63,8 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DashboardViewModelTest {
+
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
 
     private val testDispatcher = StandardTestDispatcher()
 
@@ -128,13 +132,13 @@ class DashboardViewModelTest {
         every { operatorNameProvider.observe() } returns flowOf(OperatorName(null, null))
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 5L
         every { dispenseTxnDao.observePartialDispenses(any(), any(), any()) } returns flowOf(emptyList())
-        every { stockBatchDao.observeInProgressBatchSummaries(any()) } returns flowOf(emptyList())
-        every { stockBatchDao.observeInProgressBatchKpiCounts(any()) } returns flowOf(InventoryKpiCountsDto(0, 0))
+        every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns flowOf(emptyList())
+        every { stockBatchDao.observeInProgressBatchKpiCounts(any(), any()) } returns flowOf(InventoryKpiCountsDto(0, 0))
         every {
             dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any())
         } returns flowOf(emptyList())
-        every { stockBatchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
-        coEvery { stockBatchDao.getLatest() } returns null
+        every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(emptyList())
+        coEvery { stockBatchDao.getLatest(any()) } returns null
     }
 
     @After
@@ -156,6 +160,7 @@ class DashboardViewModelTest {
         sessionHealthController,
         mockk(relaxed = true),
         testDispatcher,
+        regionProvider,
     )
 
     // ─────────────────────────────── helpers ───────────────────────────────
@@ -459,10 +464,10 @@ class DashboardViewModelTest {
         advanceUntilIdle()
 
         verify(exactly = 1) { dispenseTxnDao.observePartialDispenses(any(), 1L, any()) }
-        verify(exactly = 1) { stockBatchDao.observeInProgressBatchKpiCounts(any()) }
-        verify(exactly = 0) { stockBatchDao.observeInProgressBatchSummaries(any()) }
+        verify(exactly = 1) { stockBatchDao.observeInProgressBatchKpiCounts(any(), any()) }
+        verify(exactly = 0) { stockBatchDao.observeInProgressBatchSummaries(any(), any()) }
         verify(exactly = 0) { dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any()) }
-        verify(exactly = 0) { stockBatchDao.getBatchSummaries(any(), any()) }
+        verify(exactly = 0) { stockBatchDao.getBatchSummaries(any(), any(), any()) }
     }
 
     @Test
@@ -477,13 +482,13 @@ class DashboardViewModelTest {
         advanceUntilIdle()
 
         verify(exactly = 0) { dispenseTxnDao.observePartialDispenses(any(), any(), any()) }
-        verify(exactly = 0) { stockBatchDao.observeInProgressBatchSummaries(any()) }
-        verify(exactly = 0) { stockBatchDao.getBatchSummaries(any(), any()) }
+        verify(exactly = 0) { stockBatchDao.observeInProgressBatchSummaries(any(), any()) }
+        verify(exactly = 0) { stockBatchDao.getBatchSummaries(any(), any(), any()) }
     }
 
     @Test
     fun `inventory tab subscribes once on first visit and stays live`() = runTest(testDispatcher) {
-        every { stockBatchDao.observeInProgressBatchSummaries(any()) } returns MutableStateFlow(emptyList())
+        every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns MutableStateFlow(emptyList())
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -493,7 +498,7 @@ class DashboardViewModelTest {
         vm.onTabSelected(DashboardTab.INVENTORY_QUEUE)
         advanceUntilIdle()
 
-        verify(exactly = 1) { stockBatchDao.observeInProgressBatchSummaries(any()) }
+        verify(exactly = 1) { stockBatchDao.observeInProgressBatchSummaries(any(), any()) }
     }
 
     @Test
@@ -501,7 +506,7 @@ class DashboardViewModelTest {
         every {
             dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any())
         } returns MutableStateFlow(emptyList())
-        every { stockBatchDao.getBatchSummaries(any(), any()) } returns MutableStateFlow(emptyList())
+        every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns MutableStateFlow(emptyList())
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -511,7 +516,7 @@ class DashboardViewModelTest {
         vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
         advanceUntilIdle()
 
-        verify(exactly = 1) { stockBatchDao.getBatchSummaries(any(), any()) }
+        verify(exactly = 1) { stockBatchDao.getBatchSummaries(any(), any(), any()) }
     }
 
     // ─────────────────────────────── loaded state ───────────────────────────────
@@ -532,7 +537,7 @@ class DashboardViewModelTest {
     @Test
     fun `tab stays loading until its source emits`() = runTest(testDispatcher) {
         val batches = MutableSharedFlow<List<BatchSummaryDto>>()
-        every { stockBatchDao.observeInProgressBatchSummaries(any()) } returns batches
+        every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns batches
         val vm = createViewModel()
         advanceUntilIdle()
 
@@ -552,7 +557,7 @@ class DashboardViewModelTest {
         runTest(testDispatcher) {
             every { dispenseTxnDao.observePartialDispenses(any(), any(), any()) } returns
                 flow { throw RuntimeException("db boom") }
-            every { stockBatchDao.observeInProgressBatchSummaries(any()) } returns flowOf(emptyList())
+            every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns flowOf(emptyList())
 
             val vm = createViewModel()
             advanceUntilIdle()
@@ -569,7 +574,7 @@ class DashboardViewModelTest {
         vm.onTabVisible(DashboardTab.INVENTORY_QUEUE)
         advanceUntilIdle()
 
-        verify(exactly = 1) { stockBatchDao.observeInProgressBatchSummaries(any()) }
+        verify(exactly = 1) { stockBatchDao.observeInProgressBatchSummaries(any(), any()) }
         assertEquals(DashboardTab.DISPENSE_QUEUE, vm.uiState.value.activeTab)
         assertTrue(DashboardTab.INVENTORY_QUEUE in vm.uiState.value.loadedTabs)
     }
@@ -584,13 +589,13 @@ class DashboardViewModelTest {
                 dispenseTxn(txnId = 1, createdAt = 1, isHazardous = true),
             )
         )
-        every { stockBatchDao.observeInProgressBatchSummaries(any()) } returns flowOf(
+        every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns flowOf(
             listOf(
                 batchSummary(batchId = 11, createdAt = 4, requestIdFromPMS = null),
                 batchSummary(batchId = 10, createdAt = 2, requestIdFromPMS = "pms-1"),
             )
         )
-        every { stockBatchDao.observeInProgressBatchKpiCounts(any()) } returns flowOf(InventoryKpiCountsDto(1, 1))
+        every { stockBatchDao.observeInProgressBatchKpiCounts(any(), any()) } returns flowOf(InventoryKpiCountsDto(1, 1))
     }
 
     @Test
@@ -702,7 +707,7 @@ class DashboardViewModelTest {
         every {
             dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any())
         } returns flowOf(listOf(txnWithDrug(txnId = 1, createdAt = 5, drugType = "CIV")))
-        every { stockBatchDao.getBatchSummaries(any(), any()) } returns flowOf(
+        every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(
             listOf(
                 batchSummary(batchId = 20, createdAt = 6, status = BatchStatus.COMPLETED.name),
                 batchSummary(batchId = 21, createdAt = 7, status = BatchStatus.INPROGRESS.name),
@@ -727,7 +732,7 @@ class DashboardViewModelTest {
             every {
                 dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
             } returns flow { throw RuntimeException("db boom") }
-            every { stockBatchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
+            every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(emptyList())
 
             val vm = createViewModel()
             advanceUntilIdle()
@@ -753,7 +758,7 @@ class DashboardViewModelTest {
         every {
             dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any())
         } returns flowOf(completedDispense)
-        every { stockBatchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
+        every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(emptyList())
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -771,7 +776,7 @@ class DashboardViewModelTest {
     @Test
     fun `unchanged dispense list keeps its instance when inventory changes`() = runTest(testDispatcher) {
         val batches = MutableStateFlow(listOf(batchSummary(batchId = 10, createdAt = 2)))
-        every { stockBatchDao.observeInProgressBatchSummaries(any()) } returns batches
+        every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns batches
         every { dispenseTxnDao.observePartialDispenses(any(), any(), any()) } returns
             flowOf(listOf(dispenseTxn(txnId = 1)))
         val vm = createViewModel()

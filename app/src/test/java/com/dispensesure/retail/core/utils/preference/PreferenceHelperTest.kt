@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.utils.preference
 
 import android.content.Context
 import android.util.Log
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
 import com.dispensesure.retail.feature.hl7.util.Hl7Format
 import com.dispensesure.retail.feature.settings.domain.model.ColorSettings
@@ -143,6 +144,31 @@ class PreferenceHelperTest {
         helper.setStandaloneMode(true)
         helper.clearTokens()
         assertFalse(helper.isStandaloneMode())
+    }
+
+    @Test
+    fun `getRegion is null until a region is saved`() {
+        assertNull(helper.getRegion())
+    }
+
+    @Test
+    fun `setRegion persists the region`() {
+        helper.setRegion(Region.CA)
+        assertEquals(Region.CA, helper.getRegion())
+    }
+
+    @Test
+    fun `clearTokens clears the region so the next user doesn't inherit it`() {
+        helper.setRegion(Region.CA)
+        helper.clearTokens()
+        assertNull(helper.getRegion())
+    }
+
+    @Test
+    fun `clearTokens keeps the last region for PMS requests that arrive after logout`() {
+        helper.setRegion(Region.CA)
+        helper.clearTokens()
+        assertEquals(Region.CA, helper.getLastRegion())
     }
 
     @Test
@@ -403,26 +429,47 @@ class PreferenceHelperTest {
 
     @Test
     fun `getControlDrugTypes returns empty set when unset`() {
-        assertEquals(emptySet<String>(), helper.getControlDrugTypes())
+        assertEquals(emptySet<String>(), helper.getControlDrugTypes(Region.US))
     }
 
     @Test
     fun `isControlDrugTypesInitialized defaults to false`() {
-        assertFalse(helper.isControlDrugTypesInitialized())
+        assertFalse(helper.isControlDrugTypesInitialized(Region.US))
     }
 
     @Test
     fun `setControlDrugTypes stores set and marks initialized`() {
-        helper.setControlDrugTypes(setOf("C2", "C3"))
-        assertEquals(setOf("C2", "C3"), helper.getControlDrugTypes())
-        assertTrue(helper.isControlDrugTypesInitialized())
+        helper.setControlDrugTypes(Region.US, setOf("C2", "C3"))
+        assertEquals(setOf("C2", "C3"), helper.getControlDrugTypes(Region.US))
+        assertTrue(helper.isControlDrugTypesInitialized(Region.US))
     }
 
     @Test
     fun `setControlDrugTypes with empty set still marks initialized`() {
-        helper.setControlDrugTypes(emptySet())
-        assertEquals(emptySet<String>(), helper.getControlDrugTypes())
-        assertTrue(helper.isControlDrugTypesInitialized())
+        helper.setControlDrugTypes(Region.US, emptySet())
+        assertEquals(emptySet<String>(), helper.getControlDrugTypes(Region.US))
+        assertTrue(helper.isControlDrugTypesInitialized(Region.US))
+    }
+
+    @Test
+    fun `control drug types are stored separately per region`() {
+        helper.setControlDrugTypes(Region.US, setOf("CII"))
+        helper.setControlDrugTypes(Region.CA, setOf("TS"))
+
+        assertEquals(setOf("CII"), helper.getControlDrugTypes(Region.US))
+        assertEquals(setOf("TS"), helper.getControlDrugTypes(Region.CA))
+    }
+
+    @Test
+    fun `canada selection starts uninitialized even when US is set`() {
+        helper.setControlDrugTypes(Region.US, setOf("CII"))
+        assertFalse(helper.isControlDrugTypesInitialized(Region.CA))
+    }
+
+    @Test
+    fun `US selection keeps using the original pref key`() {
+        store["key_control_drug_types"] = "[\"CIV\"]"
+        assertEquals(setOf("CIV"), helper.getControlDrugTypes(Region.US))
     }
 
     @Test
@@ -664,7 +711,7 @@ class PreferenceHelperTest {
     @Test
     fun `getControlDrugTypes returns empty set on corrupted json instead of throwing`() {
         store["key_control_drug_types"] = "not-json"
-        assertEquals(emptySet<String>(), helper.getControlDrugTypes())
+        assertEquals(emptySet<String>(), helper.getControlDrugTypes(Region.US))
     }
 
     @Test
@@ -698,9 +745,9 @@ class PreferenceHelperTest {
 
     @Test
     fun `setControlDrugTypes overwrites previous set entirely rather than merging`() {
-        helper.setControlDrugTypes(setOf("C2"))
-        helper.setControlDrugTypes(setOf("C4", "C5"))
-        assertEquals(setOf("C4", "C5"), helper.getControlDrugTypes())
+        helper.setControlDrugTypes(Region.US, setOf("C2"))
+        helper.setControlDrugTypes(Region.US, setOf("C4", "C5"))
+        assertEquals(setOf("C4", "C5"), helper.getControlDrugTypes(Region.US))
     }
 
     @Test

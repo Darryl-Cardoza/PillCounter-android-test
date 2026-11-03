@@ -126,6 +126,7 @@
     <string name="error_email_invalid">Por favor, introduce una dirección de correo válida.</string>
     <string name="error_unknown">Algo salió mal.</string>
     <string name="error_invalid_otp">PIN inválido.</string>
+    <string name="error_unsupported_region">El país de su cuenta no es compatible con esta aplicación. Comuníquese con soporte.</string>
     <string name="error_phone_invalid">Número de teléfono inválido</string>
     <string name="error_name_invalid">El nombre no puede contener números</string>
     <string name="error_name_required">Este campo es obligatorio</string>
@@ -360,7 +361,6 @@
 <!--    StockCount-->
     <string name="scan_open_pills">Escanear pastillas sueltas</string>
     <string name="camera_permission_required">Se requiere permiso de cámara para escanear. Permita el acceso a la cámara.</string>
-    <string name="scan_ndc_to_count">Escanee el NDC para contar pastillas</string>
 
 
 <!--    partial count screen -->
@@ -657,4 +657,44 @@
     <string name="tour_title_stock_count_tap">Iniciar un conteo de existencias</string>
     <string name="tour_title_verify_rx_proceed">Confirmar y contar</string>
     <string name="tour_ended_locked">El recorrido terminó porque la sesión se bloqueó.</string>
+
+    <!-- Canada wording (Region.wording) -->
+    <string name="queue_tab_controlled_ca">CONTROLADO / SUSTANCIA ESPECÍFICA</string>
+    <string name="queue_tab_hazardous_ca">CITOTÓXICO</string>
+    <string name="kpi_cont_drugs_ca">Controlados / Sustancias específicas</string>
+    <string name="kpi_hazardous_ca">Citotóxicos</string>
+    <string name="tour_desc_kpi_dispense_ca">Conteos de Alta prioridad, Controlados / Sustancias específicas y Citotóxicos de sus dispensaciones. Toque una tarjeta para filtrar la cola.</string>
+    <string name="tour_desc_scan_container_ca">Apunte la cámara al código QR o al código de barras DIN del envase.</string>
+    <string name="tour_desc_inv_camera_preview_ca">Apunte la cámara al código de barras DIN de un frasco para empezar a contarlo.</string>
+    <string name="tour_desc_inv_edit_actions_ca">Cancele para descartar los cambios, o guarde para actualizar los conteos de este DIN.</string>
+    <string name="tour_desc_inv_end_count_ca">Toque Finalizar conteo cuando se haya contado cada DIN de este lote. Siguiente abre la pantalla de notas.</string>
+    <string name="ndc_value_ca">DIN %1$s</string>
+    <string name="ndc_ca">DIN</string>
+    <string name="ndc_gtin14_ca">DIN/GTIN14</string>
+    <string name="ndc_number_ca">Número DIN</string>
+    <string name="the_scanned_ndc_does_not_match_ca">El DIN escaneado no coincide</string>
+    <string name="scan_ndc_toast_ca">Escanear DIN</string>
+    <string name="rescan_ndc_does_not_match_toast_ca">Reescanear — el DIN no coincide</string>
+    <string name="ndcs_label_ca">DINs</string>
+    <string name="total_ndc_count_ca">CONTEO TOTAL DE DIN</string>
+    <string name="pdf_ndc_label_ca">DIN</string>
+    <string name="batch_stock_count_scanned_drug_details_ca">DETALLES DEL DIN ESCANEADO</string>
+    <string name="batch_stock_count_label_ndc_ca">Número DIN</string>
+    <string name="batch_stock_count_total_ndcs_ca">Total de DINs</string>
+    <string name="batch_stock_count_drug_not_found_ca">DIN inválido %1$s</string>
+    <string name="batch_stock_count_ndc_not_in_request_ca">El DIN %1$s no forma parte de esta solicitud de inventario</string>
+    <string name="photo_label_requested_ndc_ca">DIN solicitado</string>
+    <string name="photo_label_dispensed_ndc_ca">DIN dispensado</string>
+    <string name="hl7_notification_drug_not_found_api_failed_ca">No se pudo resolver el DIN %1$s. La solicitud a la API falló.</string>
+    <string name="hl7_notification_drug_not_found_no_drug_ca">No se encontró ningún medicamento para el DIN %1$s.</string>
+    <string name="hl7_notification_edit_rx_drug_not_found_ca">Falló la actualización de Rx %1$s: DIN %2$s del medicamento no encontrado.</string>
+    <string name="hl7_notification_new_rx_ndc_missing_ca">Nuevo pedido para Rx %1$s ignorado — falta el DIN en RXE-2</string>
+    <string name="hl7_notification_refill_ndc_or_qty_missing_ca">Resurtido de Rx %1$s ignorado — DIN o cantidad faltantes o no válidos</string>
+    <string name="setting_group_controlled_drug_ca">DISPENSACIÓN DE SUSTANCIAS CONTROLADAS / ESPECÍFICAS</string>
+    <string name="setting_group_hazardous_ca">CONTEO DE PÍLDORAS CITOTÓXICAS</string>
+    <string name="setting_hazardous_drug_ca">Medicamento citotóxico</string>
+    <string name="tray_classification_message_ca">La bandeja de color %s no está clasificada. ¿Marcarla como bandeja citotóxica?</string>
+    <string name="hazardous_tray_warning_ca">Advertencia: Está utilizando una bandeja citotóxica. Utilice una bandeja no citotóxica.</string>
+    <string name="non_hazardous_tray_warning_ca">Esta no es la bandeja citotóxica. Utilice la bandeja citotóxica.</string>
+    <string name="clear_tray_color_lists_confirm_ca">¿Está seguro de que desea borrar la clasificación de color de bandeja citotóxica?</string>
 </resources>

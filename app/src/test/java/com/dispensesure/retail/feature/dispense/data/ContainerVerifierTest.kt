@@ -43,6 +43,23 @@ class ContainerVerifierTest {
     }
 
     @Test
+    fun `a DIN is looked up as scanned and not saved as a GTIN`() = runTest {
+        resolvesTo(DrugLookup.Found(drug(ndc = "00013285"), fromServer = true))
+
+        verifier.verify("00013285", expectedNdc = null)
+
+        coVerify {
+            drugResolver.resolve(
+                code = "00013285",
+                expectedNdc = null,
+                allowNoName = true,
+                nameIfUnknown = null,
+                scannedGtin = null,
+            )
+        }
+    }
+
+    @Test
     fun `a saved drug record is trusted as it is`() = runTest {
         val savedDrug = drug()
         resolvesTo(DrugLookup.Found(savedDrug, fromServer = false))

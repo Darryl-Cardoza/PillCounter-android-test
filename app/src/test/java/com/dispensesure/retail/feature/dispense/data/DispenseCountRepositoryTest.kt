@@ -6,6 +6,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
@@ -43,6 +45,8 @@ private const val ORDERED_GTIN = "00300930058123"
 
 @RunWith(RobolectricTestRunner::class)
 class DispenseCountRepositoryTest {
+
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
 
     @get:Rule
     val temporaryFolder = TemporaryFolder()
@@ -83,6 +87,7 @@ class DispenseCountRepositoryTest {
             drugMasterDao = db.drugMasterDao(),
             operatorNameProvider = operatorNameProvider,
             dispenseHl7Repository = dispenseHl7Repository,
+            regionProvider = regionProvider,
         )
 
     private suspend fun insertTxn(

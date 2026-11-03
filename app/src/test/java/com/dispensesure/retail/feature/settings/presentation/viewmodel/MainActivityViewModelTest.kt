@@ -7,6 +7,8 @@ import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.models.ApiResponse
 import com.dispensesure.retail.core.models.ScheduleCode
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
@@ -49,6 +51,8 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainActivityViewModelTest {
+
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
 
     private val testDispatcher = StandardTestDispatcher()
 
@@ -145,8 +149,8 @@ class MainActivityViewModelTest {
         every { preferenceHelper.isSoundOverride() } returns false
         every { preferenceHelper.isHazardousDrugEnabled() } returns false
         every { preferenceHelper.getThemeColors() } returns null
-        every { preferenceHelper.isControlDrugTypesInitialized() } returns false
-        every { preferenceHelper.getControlDrugTypes() } returns emptySet()
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.US) } returns false
+        every { preferenceHelper.getControlDrugTypes(Region.US) } returns emptySet()
         every { preferenceHelper.isHl7Enabled() } returns false
         every { preferenceHelper.isHl7ConfigFetched() } returns false
         every { preferenceHelper.isUserLoggedIn() } returns false
@@ -180,6 +184,7 @@ class MainActivityViewModelTest {
         mockk(relaxed = true),
         sessionHealthController,
         testDispatcher,
+        regionProvider,
     )
 
     // ─────────────────────────── init / theme loading ───────────────────────────
@@ -213,18 +218,55 @@ class MainActivityViewModelTest {
     }
 
     @Test
-    fun `init seeds default schedules when not initialized`() = runTest(testDispatcher) {
+    fun `init seeds the US schedules when not initialized`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        assertEquals(ScheduleCode.entries.toSet(), vm.selectedSchedules.value)
-        verify { preferenceHelper.setControlDrugTypes(ScheduleCode.entries.map { it.name }.toSet()) }
+        val usSchedules = ScheduleCode.forRegion(Region.US)
+        assertEquals(usSchedules.toSet(), vm.selectedSchedules.value)
+        verify { preferenceHelper.setControlDrugTypes(Region.US, usSchedules.map { it.name }.toSet()) }
+    }
+
+    @Test
+    fun `canada user gets C, N and TS seeded under the canada keys`() = runTest(testDispatcher) {
+        every { regionProvider.current } returns Region.CA
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.CA) } returns false
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(setOf(ScheduleCode.C, ScheduleCode.N, ScheduleCode.TS), vm.selectedSchedules.value)
+        verify { preferenceHelper.setControlDrugTypes(Region.CA, setOf("C", "N", "TS")) }
+    }
+
+    @Test
+    fun `canada saved selection drops US names`() = runTest(testDispatcher) {
+        every { regionProvider.current } returns Region.CA
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.CA) } returns true
+        every { preferenceHelper.getControlDrugTypes(Region.CA) } returns setOf("TS", "CII")
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(setOf(ScheduleCode.TS), vm.selectedSchedules.value)
+    }
+
+    @Test
+    fun `canada updateSchedules saves under the canada keys`() = runTest(testDispatcher) {
+        every { regionProvider.current } returns Region.CA
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.CA) } returns true
+        every { preferenceHelper.getControlDrugTypes(Region.CA) } returns emptySet()
+        val vm = createViewModel()
+
+        vm.updateSchedules(setOf(ScheduleCode.N))
+
+        verify { preferenceHelper.setControlDrugTypes(Region.CA, setOf("N")) }
     }
 
     @Test
     fun `init parses saved schedules and skips invalid names`() = runTest(testDispatcher) {
-        every { preferenceHelper.isControlDrugTypesInitialized() } returns true
-        every { preferenceHelper.getControlDrugTypes() } returns setOf("CII", "CIV", "BOGUS")
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.US) } returns true
+        every { preferenceHelper.getControlDrugTypes(Region.US) } returns setOf("CII", "CIV", "BOGUS")
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -737,8 +779,8 @@ class MainActivityViewModelTest {
 
     @Test
     fun `updateSchedules writes the chosen set to state and prefs`() = runTest(testDispatcher) {
-        every { preferenceHelper.isControlDrugTypesInitialized() } returns true
-        every { preferenceHelper.getControlDrugTypes() } returns emptySet()
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.US) } returns true
+        every { preferenceHelper.getControlDrugTypes(Region.US) } returns emptySet()
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -746,13 +788,13 @@ class MainActivityViewModelTest {
         vm.updateSchedules(setOf(ScheduleCode.CII, ScheduleCode.CIV))
 
         assertEquals(setOf(ScheduleCode.CII, ScheduleCode.CIV), vm.selectedSchedules.value)
-        verify { preferenceHelper.setControlDrugTypes(setOf("CII", "CIV")) }
+        verify { preferenceHelper.setControlDrugTypes(Region.US, setOf("CII", "CIV")) }
     }
 
     @Test
     fun `updateSchedules allows an empty set`() = runTest(testDispatcher) {
-        every { preferenceHelper.isControlDrugTypesInitialized() } returns true
-        every { preferenceHelper.getControlDrugTypes() } returns setOf("CII")
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.US) } returns true
+        every { preferenceHelper.getControlDrugTypes(Region.US) } returns setOf("CII")
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -760,7 +802,7 @@ class MainActivityViewModelTest {
         vm.updateSchedules(emptySet())
 
         assertTrue(vm.selectedSchedules.value.isEmpty())
-        verify { preferenceHelper.setControlDrugTypes(emptySet()) }
+        verify { preferenceHelper.setControlDrugTypes(Region.US, emptySet()) }
     }
 
     @Test
