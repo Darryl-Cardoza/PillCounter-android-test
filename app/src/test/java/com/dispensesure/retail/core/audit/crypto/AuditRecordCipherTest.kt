@@ -2,7 +2,9 @@ package com.dispensesure.retail.core.audit.crypto
 
 import com.dispensesure.retail.core.audit.AuditLogConfig
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Base64
@@ -47,5 +49,17 @@ class AuditRecordCipherTest {
     @Test(expected = IllegalArgumentException::class)
     fun `line without the version prefix is rejected`() {
         cipher.decrypt("garbage")
+    }
+
+    @Test
+    fun `isReadable is false for a cut-off line`() {
+        assertFalse(cipher.isReadable(cipher.encrypt("{}").dropLast(10)))
+    }
+
+    @Test
+    fun `isReadable throws when the key cannot load`() {
+        assertThrows(IllegalStateException::class.java) {
+            AuditRecordCipher { error("keystore") }.isReadable("v1:AAAA")
+        }
     }
 }

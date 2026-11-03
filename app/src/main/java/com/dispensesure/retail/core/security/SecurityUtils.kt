@@ -21,12 +21,18 @@ object SecurityUtils {
 
     private val logger = AppLogger.create<SecurityUtils>()
 
-    /**
-     * Checks the device and app environment for known violations.
-     *
-     * @param context The application context.
-     * @return A list of localized violation messages (empty if all clear).
-     */
+    /** Names of the integrity checks, shared by the dialog path, the audit event and the old audit log. */
+    object CheckName {
+        const val ADB_ENABLED = "ADB_ENABLED"
+        const val SCREEN_OVERLAY_ACTIVE = "SCREEN_OVERLAY_ACTIVE"
+        const val ROOTED = "ROOTED"
+        const val DEBUGGER_ATTACHED = "DEBUGGER_ATTACHED"
+        const val EMULATOR = "EMULATOR"
+        const val DEBUGGABLE_BUILD = "DEBUGGABLE_BUILD"
+        const val SIGNATURE_INVALID = "SIGNATURE_INVALID"
+        const val NOT_FROM_PLAYSTORE = "NOT_FROM_PLAYSTORE"
+    }
+
     // libsecurity.so isn't packaged yet; without it ROOTED / DEBUGGER_ATTACHED report "not checked".
     private val isNativeLibraryLoaded: Boolean = try {
         System.loadLibrary("security")
@@ -42,6 +48,12 @@ object SecurityUtils {
 
     private var appContext: Context? = null
 
+    /**
+     * Checks the device and app environment for known violations.
+     *
+     * @param context The application context.
+     * @return A list of localized violation messages (empty if all clear).
+     */
     fun getSecurityViolations(context: Context): List<String> {
         appContext = context.applicationContext
         val violations = mutableListOf<String>()
@@ -58,14 +70,14 @@ object SecurityUtils {
             if (isViolation) violations.add(context.getString(violationStringRes))
         }
 
-        check("ADB_ENABLED",        isAdbEnabled(context),      R.string.violation_adb_enabled)
-        check("SCREEN_OVERLAY_ACTIVE",        isScreenOverlayActive(context),      R.string.violation_screen_overlay)
-        check("ROOTED",             nativeIsRooted(),            R.string.violation_rooted)
-        check("DEBUGGER_ATTACHED",  nativeIsDebuggerAttached(),  R.string.violation_debugger_attached)
-        check("EMULATOR",           isRunningOnEmulator(),       R.string.violation_emulator)
-        check("DEBUGGABLE_BUILD",   isAppDebuggable(context),    R.string.violation_debuggable_build)
-        check("SIGNATURE_INVALID",  !isSignatureValid(context),  R.string.violation_signature_mismatch)
-        check("NOT_FROM_PLAYSTORE", !isFromPlayStore(context),   R.string.violation_not_from_playstore,
+        check(CheckName.ADB_ENABLED,        isAdbEnabled(context),      R.string.violation_adb_enabled)
+        check(CheckName.SCREEN_OVERLAY_ACTIVE,        isScreenOverlayActive(context),      R.string.violation_screen_overlay)
+        check(CheckName.ROOTED,             isNativeLibraryLoaded && nativeIsRooted(),            R.string.violation_rooted)
+        check(CheckName.DEBUGGER_ATTACHED,  isNativeLibraryLoaded && nativeIsDebuggerAttached(),  R.string.violation_debugger_attached)
+        check(CheckName.EMULATOR,           isRunningOnEmulator(),       R.string.violation_emulator)
+        check(CheckName.DEBUGGABLE_BUILD,   isAppDebuggable(context),    R.string.violation_debuggable_build)
+        check(CheckName.SIGNATURE_INVALID,  !isSignatureValid(context),  R.string.violation_signature_mismatch)
+        check(CheckName.NOT_FROM_PLAYSTORE, !isFromPlayStore(context),   R.string.violation_not_from_playstore,
             detail = getInstallerName(context)) // log actual installer for audit trail
 
         // Write all events in one pass
@@ -84,6 +96,7 @@ object SecurityUtils {
 
     /** Runs every integrity check for the audit log only: nothing is blocked. Call off the main thread. */
     fun runIntegrityChecks(context: Context): IntegrityCheckReport {
+        appContext = context.applicationContext
         val overlayPackages = try {
             overlayAppPackages(context)
         } catch (e: Exception) {
@@ -93,14 +106,14 @@ object SecurityUtils {
         val installer = getInstallerName(context)
         // null = could not run (native library missing).
         val violationByCheckName: Map<String, Boolean?> = linkedMapOf(
-            "ADB_ENABLED" to isAdbEnabled(context),
-            "SCREEN_OVERLAY_ACTIVE" to overlayPackages.isNotEmpty(),
-            "ROOTED" to if (isNativeLibraryLoaded) nativeIsRooted() else null,
-            "DEBUGGER_ATTACHED" to if (isNativeLibraryLoaded) nativeIsDebuggerAttached() else null,
-            "EMULATOR" to isRunningOnEmulator(),
-            "DEBUGGABLE_BUILD" to isAppDebuggable(context),
-            "SIGNATURE_INVALID" to !isSignatureValid(context),
-            "NOT_FROM_PLAYSTORE" to !isFromPlayStore(context)
+            CheckName.ADB_ENABLED to isAdbEnabled(context),
+            CheckName.SCREEN_OVERLAY_ACTIVE to overlayPackages.isNotEmpty(),
+            CheckName.ROOTED to if (isNativeLibraryLoaded) nativeIsRooted() else null,
+            CheckName.DEBUGGER_ATTACHED to if (isNativeLibraryLoaded) nativeIsDebuggerAttached() else null,
+            CheckName.EMULATOR to isRunningOnEmulator(),
+            CheckName.DEBUGGABLE_BUILD to isAppDebuggable(context),
+            CheckName.SIGNATURE_INVALID to !isSignatureValid(context),
+            CheckName.NOT_FROM_PLAYSTORE to !isFromPlayStore(context)
         )
         return IntegrityCheckReport(
             failedChecks = violationByCheckName.filterValues { it == true }.keys.toList(),
@@ -168,7 +181,7 @@ object SecurityUtils {
                     // Log which apps have overlay permission for audit trail
                     SecurityAuditLogger.log(context, AuditEvent(
                         timestampMs = System.currentTimeMillis(),
-                        checkName   = "SCREEN_OVERLAY",
+                        checkName   = CheckName.SCREEN_OVERLAY_ACTIVE,
                         passed      = false,
                         detail      = overlayApps.joinToString(",")
                     ))

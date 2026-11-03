@@ -2,7 +2,6 @@ package com.dispensesure.retail.core.audit.store
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -58,8 +57,18 @@ class AuditLogFileStoreTest {
     }
 
     @Test
-    fun `first line is null when there is no file`() {
-        assertNull(fileStore.firstLineOfCurrentFile())
+    fun `hasNoLines is true with no files and false after an append`() {
+        assertTrue(fileStore.hasNoLines())
+        fileStore.append("v1:aaaaa")
+        assertFalse(fileStore.hasNoLines())
+    }
+
+    @Test
+    fun `anyLine checks rotated files when the current file has no match`() {
+        // line0 and line1 end up in the rotated file, line2 in the current one.
+        repeat(3) { fileStore.append("v1:line$it") }
+        assertTrue(fileStore.anyLine { it == "v1:line0" })
+        assertFalse(fileStore.anyLine { it == "v1:none" })
     }
 
     @Test
@@ -68,5 +77,14 @@ class AuditLogFileStoreTest {
         fileStore.markAllUnreadable()
         assertTrue(fileStore.readableFilesOldestFirst().isEmpty())
         assertEquals(2, fileStore.unreadableFiles().size)
+    }
+
+    @Test
+    fun `mark all unreadable keeps only the newest set`() {
+        repeat(3) { fileStore.append("v1:line$it") }
+        fileStore.markAllUnreadable() // 2 files aside
+        fileStore.append("v1:next")
+        fileStore.markAllUnreadable() // 1 file aside, the older 2 deleted
+        assertEquals(1, fileStore.unreadableFiles().size)
     }
 }

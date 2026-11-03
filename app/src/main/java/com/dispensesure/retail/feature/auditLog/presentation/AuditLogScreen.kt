@@ -23,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -62,7 +61,7 @@ fun AuditLogScreen(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp)
+                .padding(bottom = dimens.pagePadding)
         ) {
             BackButton(navController = navController)
             Text(
@@ -84,7 +83,7 @@ fun AuditLogScreen(
         } else {
             LazyColumn(
                 contentPadding = PaddingValues(dimens.pagePadding),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(dimens.small)
             ) {
                 items(formattedEntries) { formattedEntry ->
                     Text(

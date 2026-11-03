@@ -43,6 +43,7 @@ class AuditLogger @Inject constructor(
     private val logger = AppLogger.create<AuditLogger>()
     private val pendingEvents = Channel<PendingAuditEvent>(Channel.UNLIMITED)
     private val writerScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private var filesPrepared = false
 
     init {
         writerScope.launch { writePendingEvents() }
@@ -55,14 +56,14 @@ class AuditLogger @Inject constructor(
                 event = event,
                 timestamp = Instant.now(),
                 sessionId = LoggerConfig.sessionId,
-                operatorProfileId = sessionLockController.get().verifiedFaceProfileId.value
+                operatorProfileId = runCatching { sessionLockController.get().verifiedFaceProfileId.value }.getOrNull()
             )
         )
     }
 
     private suspend fun writePendingEvents() {
-        prepareFiles()
         for (pending in pendingEvents) {
+            if (!filesPrepared) filesPrepared = prepareFiles()
             try {
                 fileStore.append(cipher.encrypt(AuditJson.encodeRecord(buildRecord(pending))))
             } catch (e: CancellationException) {
@@ -73,18 +74,20 @@ class AuditLogger @Inject constructor(
         }
     }
 
-    // Once per process: close a line cut by a kill, and move aside files from an older DEK.
-    private fun prepareFiles() {
+    // Before the first write, and again until the key loads: close a line cut by a kill, and move aside files from an older DEK.
+    // Only a key that loads but reads no line at all counts as a key change. Returns false to retry.
+    private fun prepareFiles(): Boolean =
         try {
             fileStore.endIncompleteLine()
-            val firstLine = fileStore.firstLineOfCurrentFile() ?: return
-            if (runCatching { cipher.decrypt(firstLine) }.isSuccess) return
-            logger.e("Audit key changed; old audit files kept as unreadable", event = LogEvent.AUDIT_TRAIL_KEY_CHANGED)
-            fileStore.markAllUnreadable()
+            if (!fileStore.hasNoLines() && !fileStore.anyLine(cipher::isReadable)) {
+                logger.e("Audit key changed; old audit files kept as unreadable", event = LogEvent.AUDIT_TRAIL_KEY_CHANGED)
+                fileStore.markAllUnreadable()
+            }
+            true
         } catch (e: Exception) {
             logger.e("Audit file check failed", e, event = LogEvent.AUDIT_TRAIL_WRITE_FAILED)
+            false
         }
-    }
 
     private suspend fun buildRecord(pending: PendingAuditEvent): AuditRecord {
         val (tag, data) = AuditJson.tagAndData(pending.event)

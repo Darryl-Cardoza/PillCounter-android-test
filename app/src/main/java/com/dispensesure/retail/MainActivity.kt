@@ -234,8 +234,8 @@ class MainActivity : ComponentActivity() {
 //            runtimeUnit.revokeClearance()
 //        }
 
-        // Log-only integrity check, once per fresh launch and off the main thread.
-        if (savedInstanceState == null) {
+        // Log-only integrity check, once per fresh launch of a release build and off the main thread.
+        if (savedInstanceState == null && !BuildConfig.DEBUG) {
             lifecycleScope.launch(Dispatchers.IO) { logFailedIntegrityChecks() }
         }
 

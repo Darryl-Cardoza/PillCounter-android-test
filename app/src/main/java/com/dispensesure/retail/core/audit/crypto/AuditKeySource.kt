@@ -24,7 +24,7 @@ class DekAuditKeySource(private val context: Context) : AuditKeySource {
         cachedKey ?: synchronized(this) { cachedKey ?: deriveKey().also { cachedKey = it } }
 
     private fun deriveKey(): SecretKey {
-        val dek = DatabaseKeyProvider.getOrCreateDatabasePassphrase(context)
+        val dek = DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(context)
         try {
             val keyBytes = Hkdf.deriveSha256(
                 inputKeyMaterial = dek,

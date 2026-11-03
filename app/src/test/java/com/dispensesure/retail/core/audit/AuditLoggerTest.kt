@@ -57,9 +57,12 @@ class AuditLoggerTest {
 
     private val integrityEvent = DeviceIntegrityCheckFailed(listOf("EMULATOR"), emptyList(), "unknown", emptyList())
 
-    private fun createLogger(recordCipher: AuditRecordCipher = cipher) = AuditLogger(
+    private fun createLogger(
+        recordCipher: AuditRecordCipher = cipher,
+        sessionLockProvider: Provider<SessionLockController> = Provider { sessionLockController }
+    ) = AuditLogger(
         fileStore, recordCipher, sequenceCounter, preferenceHelper, deviceKeyProvider,
-        Provider { sessionLockController }, writerDispatcher
+        sessionLockProvider, writerDispatcher
     )
 
     private fun awaitUntil(description: String, condition: () -> Boolean) {
@@ -138,5 +141,47 @@ class AuditLoggerTest {
         awaitUntil("old file moved aside") { AuditLogFileStore(directory).unreadableFiles().size == 1 }
         val newRecord = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single()))
         assertEquals("DEVICE_INTEGRITY_CHECK_FAILED", newRecord.tag)
+    }
+
+    @Test
+    fun `a cut-off current line with readable rotated files moves nothing aside`() {
+        directory.mkdirs()
+        File(directory, "audit-logs-1.log").writeText(cipher.encrypt("{}") + "\n")
+        // Killed mid-write: no newline at the end.
+        File(directory, "audit-logs.log").writeText(cipher.encrypt("{}").dropLast(10))
+
+        createLogger().log(integrityEvent)
+
+        awaitLines(2)
+        assertTrue(AuditLogFileStore(directory).unreadableFiles().isEmpty())
+        assertTrue(File(directory, "audit-logs-1.log").exists())
+    }
+
+    @Test
+    fun `a cut-off only line still lets the next record write`() {
+        directory.mkdirs()
+        File(directory, "audit-logs.log").writeText(cipher.encrypt("{}").dropLast(10))
+
+        createLogger().log(integrityEvent)
+
+        awaitUntil("new record") { currentFileLines().any { runCatching { cipher.decrypt(it) }.isSuccess } }
+    }
+
+    @Test
+    fun `a key that fails to load moves nothing aside`() {
+        AuditLogFileStore(directory).append(cipher.encrypt("{}"))
+        var keyCalls = 0
+        val flakyCipher = AuditRecordCipher { if (keyCalls++ == 0) error("keystore") else testKey }
+
+        createLogger(flakyCipher).log(integrityEvent)
+
+        awaitLines(2)
+        assertTrue(AuditLogFileStore(directory).unreadableFiles().isEmpty())
+    }
+
+    @Test
+    fun `an operator id that cannot be read is left out`() {
+        createLogger(sessionLockProvider = Provider { error("not ready") }).log(integrityEvent)
+        assertEquals(null, AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).operatorId)
     }
 }

@@ -69,6 +69,20 @@ object DatabaseKeyProvider {
         return generateAndBootstrapWrapDek(prefs)
     }
 
+    /**
+     * For callers that must never wipe the DB (the audit key): same as [getOrCreateDatabasePassphrase],
+     * but an unwrap failure throws instead of re-keying and deleting the database.
+     */
+    fun getOrCreatePassphraseWithoutReset(context: Context): ByteArray = synchronized(lock) {
+        val prefs = SecurePreferences(context, PREFS_NAME)
+        val wrappedB64 = prefs.getString(KEY_DEK_WRAPPED)
+        val kekId = prefs.getString(KEY_KEK_ID)
+        if (wrappedB64 != null && kekId != null) {
+            return KeystoreAesGcm.unwrap(aliasFor(kekId), Base64.decode(wrappedB64, Base64.NO_WRAP))
+        }
+        return generateAndBootstrapWrapDek(prefs)
+    }
+
     private fun generateAndBootstrapWrapDek(prefs: SecurePreferences): ByteArray {
         val dek = ByteArray(32).also { SecureRandom().nextBytes(it) }
         val wrapped = KeystoreAesGcm.wrap(BOOTSTRAP_KEK_ALIAS, dek)

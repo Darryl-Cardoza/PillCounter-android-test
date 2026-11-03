@@ -39,11 +39,17 @@ class AuditLogFileStore(
         if (lastByte != '\n'.code) FileOutputStream(file, true).use { it.write('\n'.code) }
     }
 
-    fun firstLineOfCurrentFile(): String? =
-        currentFile.takeIf { it.exists() }?.bufferedReader()?.use { it.readLine() }?.takeIf { it.isNotBlank() }
+    fun hasNoLines(): Boolean = !anyLine { true }
 
-    /** Used when the key changed: old lines can't be read any more, so keep them aside. */
+    /** Checks non-blank lines from the current file back to the oldest; stops at the first match. */
+    fun anyLine(predicate: (String) -> Boolean): Boolean =
+        readableFilesOldestFirst().asReversed().any { file ->
+            file.useLines { lines -> lines.any { it.isNotBlank() && predicate(it) } }
+        }
+
+    /** Used when the key changed: old lines can't be read any more, so keep them aside. Only the newest set is kept. */
     fun markAllUnreadable() {
+        unreadableFiles().forEach { it.delete() }
         val stamp = System.currentTimeMillis()
         readableFilesOldestFirst().forEach { file ->
             file.renameTo(File(directory, "${file.nameWithoutExtension}-$stamp.${AuditLogConfig.UNREADABLE_EXTENSION}"))
