@@ -197,10 +197,11 @@ class SessionLockController @Inject constructor(
 
     private fun engageLock(startOnScan: Boolean, reason: ScreenLockReason): Boolean {
         if (!hasEnabledProfile.value) return false
+        // Set before the early return so a post-login lock still switches an idle lock to the camera.
+        _startOnScan.value = startOnScan
         if (_isLocked.value && currentLockLogged) return true
         currentLockLogged = true
         auditLogger.log(ScreenLocked(reason))
-        _startOnScan.value = startOnScan
         _isLocked.value = true
         clearVerifiedOperator()
         return true

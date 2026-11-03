@@ -99,6 +99,21 @@ class SessionLockControllerTest {
     }
 
     @Test
+    fun `a post-login lock onto an already-up lock switches to the camera without logging again`() {
+        // E.g. the idle timer locked while the post-login permission dialogs were open.
+        val controller = controller(hasEnabledProfile = true, isLoggedIn = true)
+        controller.unlock()
+        controller.lockNow()
+        assertFalse(controller.startOnScan.value)
+
+        assertTrue(controller.lockNow(startOnScan = true))
+
+        assertTrue(controller.isLocked.value)
+        assertTrue(controller.startOnScan.value)
+        verify(exactly = 1) { auditLogger.log(any()) }
+    }
+
+    @Test
     fun `the cold-start lock is logged once by the first onAppLaunch`() {
         val controller = controller(hasEnabledProfile = true, isLoggedIn = true)
 
