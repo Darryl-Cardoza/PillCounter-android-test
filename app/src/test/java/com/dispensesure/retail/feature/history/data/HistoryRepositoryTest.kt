@@ -1,5 +1,6 @@
 package com.dispensesure.retail.feature.history.data
 
+import androidx.room.withTransaction
 import app.cash.turbine.test
 import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.audit.model.BatchDeleted
@@ -7,6 +8,7 @@ import com.dispensesure.retail.core.audit.model.HistoryBulkDeleted
 import com.dispensesure.retail.core.room.models.dtos.RecordSyncState
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
@@ -17,7 +19,10 @@ import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkAll
+import io.mockk.verify
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -43,12 +48,27 @@ class HistoryRepositoryTest {
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
 
     private val auditLogger: AuditLogger = mockk(relaxed = true)
+    private val appDatabase: AppDatabase = mockk()
+
+    // Runs the withTransaction block for real and records which DAO calls happened inside it.
+    private var inTransaction = false
+    private val callsOutsideTransaction = mutableListOf<String>()
+    private fun stubTransaction() {
+        mockkStatic("androidx.room.RoomDatabaseKt")
+        val block = slot<suspend () -> Any?>()
+        coEvery { appDatabase.withTransaction(capture(block)) } coAnswers {
+            inTransaction = true
+            try { block.captured.invoke() } finally { inTransaction = false }
+        }
+    }
+    private fun track(name: String) { if (!inTransaction) callsOutsideTransaction += name }
 
     private lateinit var repository: HistoryRepository
 
     @Before
     fun setup() {
-        repository = HistoryRepository(dispenseTxnDao, stockBatchDao, stockTxnDao, regionProvider, auditLogger)
+        stubTransaction()
+        repository = HistoryRepository(dispenseTxnDao, stockBatchDao, stockTxnDao, regionProvider, auditLogger, appDatabase)
     }
 
     @Test
@@ -171,6 +191,19 @@ class HistoryRepositoryTest {
 
         coVerify { stockBatchDao.softDeleteBatchesByDate(any(), any(), null, any(), any(), any()) }
         coVerify { stockTxnDao.deleteByBatchIds(batchIds) }
+    }
+
+    @Test
+    fun `bulk batch delete reads and deletes inside one transaction`() = runTest {
+        coEvery { stockBatchDao.getBatchIdsByDate(any(), any(), any(), any(), any(), any()) } coAnswers { track("getBatchIdsByDate"); listOf(100L) }
+        coEvery { stockBatchDao.getSyncStatesByIds(any(), any()) } coAnswers { track("getSyncStatesByIds"); emptyList() }
+        coEvery { stockBatchDao.softDeleteBatchesByDate(any(), any(), any(), any(), any(), any()) } coAnswers { track("softDeleteBatchesByDate") }
+        coEvery { stockTxnDao.deleteByBatchIds(any()) } coAnswers { track("deleteByBatchIds") }
+
+        repository.deleteBatchesForDateRange(today, today, null, 1L)
+
+        coVerify { stockTxnDao.deleteByBatchIds(listOf(100L)) }
+        assertEquals(emptyList<String>(), callsOutsideTransaction)
     }
 
     // HIST_REPO_007

@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class ResumeSource { QUEUE, RX_SCAN }
+enum class ResumeSource { QUEUE, RX_SCAN, NOTIFICATION }
 
 @Serializable
 enum class TxnSource { PMS, STANDALONE }

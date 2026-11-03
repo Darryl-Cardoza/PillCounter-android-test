@@ -218,6 +218,24 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
+    fun `opening an order from a notification logs DISPENSE_RESUMED at SCAN`() = runTest {
+        coEvery { dispenseFlowRepository.loadTxn(9L) } returns txn(txnId = 9L, isNdcVerified = true)
+
+        createViewModel(txnId = 9L, fromHl7 = true)
+        advanceUntilIdle()
+
+        coVerify { auditLogger.logOutsideTour(DispenseResumed(9L, ResumeSource.NOTIFICATION, StepState.SCAN.name)) }
+    }
+
+    @Test
+    fun `a notification for a txn that no longer exists logs nothing`() = runTest {
+        createViewModel(txnId = 9L, fromHl7 = true)
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { auditLogger.logOutsideTour(any()) }
+    }
+
+    @Test
     fun `an HL7 entry loads the order onto the container step`() = runTest {
         coEvery { dispenseFlowRepository.loadTxn(7L) } returns txn(bucketId = "B9")
         coEvery { dispenseFlowRepository.loadDrug(10L) } returns drug(isHazardous = true, drugImagePath = "/images/aspirin.webp")

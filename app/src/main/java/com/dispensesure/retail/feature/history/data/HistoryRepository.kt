@@ -1,10 +1,12 @@
 package com.dispensesure.retail.feature.history.data
 
+import androidx.room.withTransaction
 import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.audit.model.BatchDeleted
 import com.dispensesure.retail.core.audit.model.HistoryBulkDeleted
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
@@ -25,6 +27,7 @@ class HistoryRepository @Inject constructor(
     private val stockTxnDao: StockTxnDao,
     private val regionProvider: RegionProvider,
     private val auditLogger: AuditLogger,
+    private val appDatabase: AppDatabase,
 ) {
 
     private fun LocalDate.toEpochRange(): Pair<Long, Long> {
@@ -69,11 +72,16 @@ class HistoryRepository @Inject constructor(
         val startMillis = startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
         val endMillis = endDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
 
-        val batchIds = stockBatchDao.getBatchIdsByDate(startMillis, endMillis, isCompleted, regionProvider.current)
-        if (batchIds.isNotEmpty()) {
-            val rowsToDelete = stockBatchDao.getSyncStatesByIds(batchIds)
+        // Read and delete in one transaction so the event names exactly the batches removed.
+        val (batchIds, rowsToDelete) = appDatabase.withTransaction {
+            val ids = stockBatchDao.getBatchIdsByDate(startMillis, endMillis, isCompleted, regionProvider.current)
+            if (ids.isEmpty()) return@withTransaction ids to emptyList()
+            val syncStates = stockBatchDao.getSyncStatesByIds(ids)
             stockBatchDao.softDeleteBatchesByDate(startMillis, endMillis, isCompleted, regionProvider.current)
-            stockTxnDao.deleteByBatchIds(batchIds)
+            stockTxnDao.deleteByBatchIds(ids)
+            ids to syncStates
+        }
+        if (batchIds.isNotEmpty()) {
             auditLogger.log(
                 BatchDeleted(
                     batchIds = batchIds,

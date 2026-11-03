@@ -55,6 +55,7 @@ import org.rite.hl7.model.segment.ZINSegment
 import org.rite.hl7.model.segment.ZNISegment
 import org.rite.hl7.model.segment.ZPRSegment
 import org.rite.hl7.model.segment.ZUISegment
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -92,6 +93,10 @@ class DispenseHl7Repository @Inject constructor(
     // resent unchanged on every one of those reconnects, forever. In-memory only
     // (no DB): cleared on app restart, not persisted.
     private val rejectedTxnIds = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
+
+    // Txns just completed, not yet sent. Whichever path sends one first logs FIRST_SEND, the
+    // same as StockHl7Repository.firstSendBatchIds; any later attempt is AUTO_RESEND.
+    private val firstSendTxnIds: MutableSet<Long> = ConcurrentHashMap.newKeySet()
 
     companion object {
         /**
@@ -221,15 +226,18 @@ class DispenseHl7Repository @Inject constructor(
      */
     fun sendDispenseNow(txnId: Long) {
         if (preferenceHelper.isHl7Enabled()) {
+            // Marked before the launch, so a resend sweep that wins the lock still logs FIRST_SEND.
+            firstSendTxnIds.add(txnId)
             scope.launch {
                 try {
                     if (txnId in dispenseTxnDao.getTutorialTxnIds()) {
+                        firstSendTxnIds.remove(txnId)
                         logger.i("Tutorial entry — never sending to PMS, txnId=$txnId")
                         return@launch
                     }
                     logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
                     resendMutex.withLock {
-                        sendDispense(txnId = txnId, trigger = SendTrigger.FIRST_SEND)
+                        sendDispense(txnId = txnId, trigger = triggerFor(txnId))
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -264,7 +272,7 @@ class DispenseHl7Repository @Inject constructor(
                 }
                 logger.i("Resending ${pendingTxn.size} pending HL7 transactions")
                 for (txn in pendingTxn) {
-                    sendDispense(txnId = txn.txnId)
+                    sendDispense(txnId = txn.txnId, trigger = triggerFor(txn.txnId))
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -275,6 +283,9 @@ class DispenseHl7Repository @Inject constructor(
             }
         }
     }
+
+    private fun triggerFor(txnId: Long): SendTrigger =
+        if (firstSendTxnIds.remove(txnId)) SendTrigger.FIRST_SEND else SendTrigger.AUTO_RESEND
 
     /**
      * Marks [txnId] synced. Called only on a success ACK for the exact message that
@@ -315,7 +326,8 @@ class DispenseHl7Repository @Inject constructor(
             DispenseBottleJson.decode(txn?.bottlesJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
             filesToDelete.addAll(dispenseTxnDao.getTransactionDetailsImages(txnId))
 
-            dispenseTxnDao.deleteTransaction(txnId)
+            // Already gone (e.g. the dashboard cleanup got it first): nothing to purge or log.
+            if (dispenseTxnDao.deleteTransaction(txnId) == 0) return
             auditLogger.log(DataPurged(PurgeReason.LOCAL_STORAGE_NOT_ALLOWED, count = 1, txnIds = listOf(txnId), unsyncedIds = emptyList()))
 
             filesToDelete.forEach { path ->
@@ -655,12 +667,16 @@ class DispenseHl7Repository @Inject constructor(
             FieldChange("priority", existingTxn.priority?.name, newPriority?.name),
             FieldChange("status", existingTxn.status.name, (newStatus ?: existingTxn.status).name)
         ).filter { it.old != it.new }
-        auditLogger.log(OrderEdited(txnId = existingTxn.txnId, changes = orderChanges, restored = restored))
+        // An identical XO resend changes nothing, so it isn't logged.
+        if (orderChanges.isNotEmpty() || restored) {
+            auditLogger.log(OrderEdited(txnId = existingTxn.txnId, changes = orderChanges, restored = restored))
+        }
 
         // 5. If status is CA, soft-delete after applying the edit
         if (orderStatusRaw == "CA") {
             logger.i("ORC|XO with status=CA — soft-deleting txnId=${existingTxn.txnId} after update")
-            auditLogger.log(OrderCancelled(txnIds = dispenseTxnDao.cancelActiveTxnsByRxNo(rxNo)))
+            val cancelledTxnIds = dispenseTxnDao.cancelActiveTxnsByRxNo(rxNo)
+            if (cancelledTxnIds.isNotEmpty()) auditLogger.log(OrderCancelled(txnIds = cancelledTxnIds))
             return
         }
 

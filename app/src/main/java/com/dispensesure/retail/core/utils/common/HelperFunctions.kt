@@ -136,7 +136,7 @@ object HelperFunctions {
 
     // Local-only logout: tokens, login flag, session start time, local user id and HL7 config.
     // Resetting the local id stops the next user's Dashboard showing the previous user's data.
-    private fun clearLocalSession(preferenceHelper: PreferenceHelper) {
+    fun clearLocalSession(preferenceHelper: PreferenceHelper) {
         preferenceHelper.clearTokens()
         preferenceHelper.setUserLoggedIn(false)
         preferenceHelper.clearLoggedInAt()

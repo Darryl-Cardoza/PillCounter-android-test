@@ -521,12 +521,8 @@ class DashboardViewModel @Inject constructor(
                                 }
 
                                 if (claimedTerminal != null) {
-                                    logServerConfigChange(
-                                        ServerSetting.TERMINAL,
-                                        preferenceHelper.getSelectedTerminalId(),
-                                        claimedTerminal.terminalId
-                                    )
                                     claimedTerminal.terminalId?.let { id ->
+                                        logServerConfigChange(ServerSetting.TERMINAL, preferenceHelper.getSelectedTerminalId(), id)
                                         preferenceHelper.saveSelectedTerminalId(id)
                                     }
                                     claimedTerminal.terminalName?.let { name ->
@@ -653,8 +649,7 @@ class DashboardViewModel @Inject constructor(
                 filesToDelete.addAll(dispenseTxnDao.getTransactionDetailsImages(txn.txnId))
 
                 // Delete transaction (cascade deletes details)
-                dispenseTxnDao.deleteTransaction(txn.txnId)
-                purgedTxnIds.add(txn.txnId)
+                if (dispenseTxnDao.deleteTransaction(txn.txnId) > 0) purgedTxnIds.add(txn.txnId)
 
                 filesToDelete.forEach { path ->
                     val file = File(path)

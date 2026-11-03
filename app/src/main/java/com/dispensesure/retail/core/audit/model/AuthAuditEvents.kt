@@ -8,7 +8,7 @@ import java.net.SocketTimeoutException
 
 /** App-defined reason a login request failed; never the server's own message. */
 @Serializable
-enum class AuthErrorCode { HTTP_REJECTED, NETWORK_UNAVAILABLE, TIMEOUT, UNKNOWN }
+enum class AuthErrorCode { HTTP_REJECTED, NETWORK_UNAVAILABLE, TIMEOUT, UNKNOWN, DEVICE_KEY_UNAVAILABLE, UNSUPPORTED_REGION }
 
 @Serializable
 enum class LogoutMode { SERVER, LOCAL }

@@ -16,13 +16,16 @@ import com.dispensesure.retail.core.audit.model.TerminalChanged
 import com.dispensesure.retail.core.models.ErrorResponse
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.UserEntity
+import com.dispensesure.retail.core.utils.common.HelperFunctions
 import com.dispensesure.retail.core.utils.common.NetworkUtils
 import com.dispensesure.retail.core.utils.constants.AppConstants
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.utils.validator.CredentialsValidator
 import com.dispensesure.retail.feature.dashboard.data.TerminalRepository
@@ -72,7 +75,8 @@ class ProfileViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val auditLogger: AuditLogger,
     private val dispenseTxnDao: DispenseTxnDao,
-    private val stockBatchDao: StockBatchDao
+    private val stockBatchDao: StockBatchDao,
+    private val sessionHealthController: SessionHealthController
 ) : ViewModel() {
 
     private val logger = AppLogger.create<ProfileViewModel>()
@@ -639,6 +643,7 @@ class ProfileViewModel @Inject constructor(
                     .onSuccess {
                         logger.i("Profile delete success")
                         logAccountDeleted()
+                        endSession()
                         _deleteUiState.value = ProfileDeleteUiState.Success
                     }
                     .onFailure { e ->
@@ -651,20 +656,31 @@ class ProfileViewModel @Inject constructor(
 
     // Records left on the device that never reached the PMS go on the audit event.
     private suspend fun logAccountDeleted() {
-        try {
-            auditLogger.log(
-                AccountDeleted(
-                    userId = preferenceHelper.getUserId(),
-                    email = email.ifBlank { preferenceHelper.getLoggedInEmail() },
-                    unsyncedDispenseIds = dispenseTxnDao.getPendingHl7TxnOnce().map { it.txnId },
-                    unsyncedBatchIds = stockBatchDao.getUnsyncedCompletedBatchesOnce().map { it.batchId }
-                )
-            )
+        val (unsyncedDispenseIds, unsyncedBatchIds) = try {
+            dispenseTxnDao.getPendingHl7TxnOnce().map { it.txnId } to
+                stockBatchDao.getUnsyncedCompletedBatchesOnce().map { it.batchId }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logger.e("Failed to read unsynced records for the account-deleted audit event", e, event = LogEvent.AUDIT_TRAIL_WRITE_FAILED)
+            emptyList<Long>() to emptyList<Long>()
         }
+        auditLogger.log(
+            AccountDeleted(
+                userId = preferenceHelper.getUserId(),
+                email = email.ifBlank { preferenceHelper.getLoggedInEmail() },
+                unsyncedDispenseIds = unsyncedDispenseIds,
+                unsyncedBatchIds = unsyncedBatchIds
+            )
+        )
+    }
+
+    // The deleted account is logged out like a Menu logout: offline period closed, session ended, prefs cleared.
+    private fun endSession() {
+        sessionHealthController.markLoggedOut()
+        auditLogger.onSessionEnded()
+        LoggerConfig.newSession()
+        HelperFunctions.clearLocalSession(preferenceHelper)
     }
 
     // Runs before the local save overwrites the old values. A failed read only costs the audit event.

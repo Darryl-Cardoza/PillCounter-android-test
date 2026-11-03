@@ -8,6 +8,7 @@ import com.google.gson.Gson
 import com.dispensesure.retail.BuildConfig
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.AuthErrorCode
 import com.dispensesure.retail.core.audit.model.LoginSucceeded
 import com.dispensesure.retail.core.audit.model.OtpVerifyFailed
 import com.dispensesure.retail.core.audit.model.authErrorCodeOf
@@ -96,6 +97,7 @@ class VerifyPinViewModel @Inject constructor(
             val deviceKey = deviceKeyProvider.getDeviceKey()
             if (deviceKey == null) {
                 logger.e("OTP verification aborted: device key unavailable", event = LogEvent.OTP_VERIFICATION_FAILED)
+                auditLogger.log(OtpVerifyFailed(email, httpStatus = null, errorCode = AuthErrorCode.DEVICE_KEY_UNAVAILABLE))
                 _uiState.value = VerifyPinUiState.Error(
                     context.getString(R.string.error_server_unavailable)
                 )
@@ -116,6 +118,7 @@ class VerifyPinViewModel @Inject constructor(
                     val loggedInRegion = Region.fromCountryCode(user?.country)
                     if (loggedInRegion == null) {
                         logger.w("OTP verification blocked: unsupported country '${user?.country}'")
+                        auditLogger.log(OtpVerifyFailed(email, httpStatus = null, errorCode = AuthErrorCode.UNSUPPORTED_REGION))
                         _uiState.value = VerifyPinUiState.Error(context.getString(R.string.error_unsupported_region))
                         return@onSuccess
                     }

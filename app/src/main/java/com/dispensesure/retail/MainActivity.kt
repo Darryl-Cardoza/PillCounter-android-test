@@ -564,10 +564,11 @@ class MainActivity : ComponentActivity() {
         }
         FtueController.end()
         try {
+            // Closes the offline period first, so it is logged under the user who is leaving.
+            sessionHealthController.markLoggedOut()
             logSessionEnded(reason)
             preferenceHelper.clearTokens()
             preferenceHelper.setUserLoggedIn(false)
-            sessionHealthController.markLoggedOut()
             LoggerConfig.newSession()
             sessionLockController.unlock()
             if (::navController.isInitialized) {

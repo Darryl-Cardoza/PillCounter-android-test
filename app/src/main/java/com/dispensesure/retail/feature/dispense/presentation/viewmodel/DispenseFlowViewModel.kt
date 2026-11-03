@@ -12,6 +12,7 @@ import com.dispensesure.retail.core.audit.model.ResumeSource
 import com.dispensesure.retail.core.audit.model.RxScanned
 import com.dispensesure.retail.core.audit.model.SubstituteAccepted
 import com.dispensesure.retail.core.audit.model.TxnSource
+import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
@@ -166,6 +167,8 @@ class DispenseFlowViewModel @Inject constructor(
                     return@launch
                 }
                 val drug = dispenseFlowRepository.loadDrug(txn.drugId)
+                // This entry always lands on the container scan, whatever the order's progress.
+                auditLogger.logOutsideTour(DispenseResumed(txn.txnId, ResumeSource.NOTIFICATION, StepState.SCAN.name))
                 _uiState.update {
                     it.withOrder(txn, drug).copy(stage = DispenseStage.PRE_NDC, isResolvingEntry = false)
                 }

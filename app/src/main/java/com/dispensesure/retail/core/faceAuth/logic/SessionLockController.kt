@@ -71,6 +71,10 @@ class SessionLockController @Inject constructor(
     )
     val isLocked: StateFlow<Boolean> = _isLocked.asStateFlow()
 
+    // False until the cold-start lock above is logged; the first onAppLaunch logs it.
+    @Volatile
+    private var currentLockLogged = !_isLocked.value
+
     // True from login until the permission chain ends and the lock is (or isn't) applied.
     private val _lockPending = MutableStateFlow(false)
     val lockPending: StateFlow<Boolean> = _lockPending.asStateFlow()
@@ -145,6 +149,7 @@ class SessionLockController @Inject constructor(
         val timeoutMs = preferenceHelper.getFaceLockTimeoutMinutes() * 60_000L
         if (System.currentTimeMillis() - lastActivityAt.get() >= timeoutMs) {
             auditLogger.log(ScreenLocked(ScreenLockReason.IDLE_TIMEOUT))
+            currentLockLogged = true
             _isLocked.value = true
             clearVerifiedOperator()
         }
@@ -192,6 +197,8 @@ class SessionLockController @Inject constructor(
 
     private fun engageLock(startOnScan: Boolean, reason: ScreenLockReason): Boolean {
         if (!hasEnabledProfile.value) return false
+        if (_isLocked.value && currentLockLogged) return true
+        currentLockLogged = true
         auditLogger.log(ScreenLocked(reason))
         _startOnScan.value = startOnScan
         _isLocked.value = true
@@ -204,11 +211,13 @@ class SessionLockController @Inject constructor(
      * Returns true if the lock engaged.
      */
     fun onAppLaunch(): Boolean {
+        // Lock (and log) first so SCREEN_LOCKED still names the operator it clears.
+        val locked = preferenceHelper.isUserLoggedIn() &&
+            engageLock(startOnScan = false, reason = ScreenLockReason.APP_LAUNCH)
         // Cleared unconditionally: a foreground service keeps this singleton alive across an
         // app kill, so a relaunch would otherwise inherit the previous session's operator.
         clearVerifiedOperator()
-        if (!preferenceHelper.isUserLoggedIn()) return false
-        return engageLock(startOnScan = false, reason = ScreenLockReason.APP_LAUNCH)
+        return locked
     }
 
     /** Clears the lock after a successful verify and resets the idle clock. */

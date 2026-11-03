@@ -11,6 +11,7 @@ import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
+import com.dispensesure.retail.core.room.models.dtos.OrderReleaseResult
 import com.dispensesure.retail.core.room.models.dtos.RecordSyncState
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
@@ -283,8 +284,16 @@ interface DispenseTxnDao {
     }
 
     /** Status of an order's active txns before a release changes it, for ORDER_RELEASED. */
-    @Query("SELECT status FROM dispense_txn WHERE transactionOrderId = :orderId AND isDeleted = 0 LIMIT 1")
+    @Query("SELECT status FROM dispense_txn WHERE transactionOrderId = :orderId AND isDeleted = 0 AND status IN ('PARTIAL', 'ON_HOLD') LIMIT 1")
     suspend fun getActiveStatusByOrderId(orderId: String): CountStatus?
+
+    /** Reads the status and releases the order's PARTIAL / ON_HOLD rows in one go, for ORDER_RELEASED. */
+    @Transaction
+    suspend fun releaseOrder(orderId: String, now: Long = System.currentTimeMillis()): OrderReleaseResult {
+        val oldStatus = getActiveStatusByOrderId(orderId)
+        val rowsChanged = updateStatusByOrderIdIfPartialOrOnHold(orderId, CountStatus.PARTIAL, now)
+        return OrderReleaseResult(oldStatus, rowsChanged)
+    }
 
     @Query(
         """
@@ -726,7 +735,7 @@ interface DispenseTxnDao {
      * @param txnId The transaction ID to delete.
      */
     @Query("DELETE FROM dispense_txn WHERE txnId = :txnId")
-    suspend fun deleteTransaction(txnId: Long)
+    suspend fun deleteTransaction(txnId: Long): Int
 
     /** Tutorial txns by durable marker: demo drug, or Rx prefix (survives the drug row being gone). */
     @Query(

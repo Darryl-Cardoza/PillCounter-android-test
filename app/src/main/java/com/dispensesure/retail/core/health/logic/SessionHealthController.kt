@@ -409,8 +409,10 @@ class SessionHealthController @Inject constructor(
     /**
      * Clears the login-success anchor. Called on logout or expiry teardown so the next
      * offline period only counts against the fresh anchor of the next session.
+     * Also resets the state, so the next user's first offline drop is logged.
      */
     fun markLoggedOut() {
+        _state.value = HealthState.UNKNOWN
         _loggedInAt.value = 0L
         preferenceHelper.clearLoggedInAt()
         closeOfflinePeriod(OfflineEndedBy.LOGGED_OUT)

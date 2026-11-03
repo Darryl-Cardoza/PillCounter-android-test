@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.settings.presentation.viewmodel
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import androidx.room.withTransaction
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.models.ApiResponse
@@ -10,9 +11,11 @@ import com.dispensesure.retail.core.models.ScheduleCode
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DataPurged
 import com.dispensesure.retail.core.audit.model.LocalDataCleared
 import com.dispensesure.retail.core.audit.model.SecuritySetting
 import com.dispensesure.retail.core.audit.model.SettingChanged
+import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
@@ -35,6 +38,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
@@ -67,6 +71,20 @@ class MainActivityViewModelTest {
     private lateinit var stockTxnDao: StockTxnDao
     private lateinit var stockBottleInfoDao: StockBottleInfoDao
     private val auditLogger = mockk<AuditLogger>(relaxed = true)
+    private val appDatabase = mockk<AppDatabase>()
+
+    // Runs the withTransaction block for real and records which DAO calls happened inside it.
+    private var inTransaction = false
+    private val callsOutsideTransaction = mutableListOf<String>()
+    private fun stubTransaction() {
+        mockkStatic("androidx.room.RoomDatabaseKt")
+        val block = slot<suspend () -> Any?>()
+        coEvery { appDatabase.withTransaction(capture(block)) } coAnswers {
+            inTransaction = true
+            try { block.captured.invoke() } finally { inTransaction = false }
+        }
+    }
+    private fun track(name: String) { if (!inTransaction) callsOutsideTransaction += name }
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var hl7EventHandler: Hl7EventHandler
     private lateinit var sessionHealthController: SessionHealthController
@@ -121,6 +139,7 @@ class MainActivityViewModelTest {
 
     @Before
     fun setup() {
+        stubTransaction()
         mockkStatic(android.util.Log::class)
         every { android.util.Log.d(any(), any()) } returns 0
         every { android.util.Log.d(any(), any(), any()) } returns 0
@@ -191,6 +210,7 @@ class MainActivityViewModelTest {
         testDispatcher,
         regionProvider,
         auditLogger,
+        appDatabase,
     )
 
     @Test
@@ -692,6 +712,21 @@ class MainActivityViewModelTest {
     }
 
     @Test
+    fun `retention purge lists only the txns it deleted`() = runTest(testDispatcher) {
+        coEvery { dispenseTxnDao.getTransactionsBefore(any()) } returns listOf(
+            DispenseTxnEntity(txnId = 5L, status = CountStatus.COMPLETED),
+            DispenseTxnEntity(txnId = 6L, status = CountStatus.COMPLETED),
+        )
+        coEvery { dispenseTxnDao.deleteTransaction(5L) } returns 0
+        coEvery { dispenseTxnDao.deleteTransaction(6L) } returns 1
+
+        createViewModel()
+        advanceUntilIdle()
+
+        verify { auditLogger.log(match { it is DataPurged && it.txnIds == listOf(6L) && it.count == 1 }) }
+    }
+
+    @Test
     fun `deleteOldTransactions handles exception`() = runTest(testDispatcher) {
         coEvery { dispenseTxnDao.getTransactionsBefore(any()) } throws RuntimeException("db error")
 
@@ -804,6 +839,24 @@ class MainActivityViewModelTest {
 
         coVerify { dispenseTxnDao.deleteAllTransactions() }
         coVerify { stockBatchDao.deleteAll() }
+    }
+
+    @Test
+    fun `clear all reads and deletes inside one transaction`() = runTest(testDispatcher) {
+        coEvery { dispenseTxnDao.getAllSyncStates() } coAnswers { track("dispense getAllSyncStates"); emptyList() }
+        coEvery { stockBatchDao.getAllSyncStates(any()) } coAnswers { track("batch getAllSyncStates"); emptyList() }
+        coEvery { dispenseTxnDao.deleteAllTransactions() } coAnswers { track("dispense_txn"); 0 }
+        coEvery { stockBottleInfoDao.deleteAll() } coAnswers { track("stock_bottle_info"); 0 }
+        coEvery { stockTxnDao.deleteAll() } coAnswers { track("stock_txn"); 0 }
+        coEvery { stockBatchDao.deleteAll() } coAnswers { track("stock_batch"); 0 }
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.deleteAllTransaction()
+        advanceUntilIdle()
+
+        coVerify { stockBatchDao.deleteAll() }
+        assertEquals(emptyList<String>(), callsOutsideTransaction)
     }
 
     @Test

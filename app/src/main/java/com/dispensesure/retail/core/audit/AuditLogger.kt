@@ -7,6 +7,7 @@ import com.dispensesure.retail.core.audit.model.AuditLogEvent
 import com.dispensesure.retail.core.audit.model.AuditRecord
 import com.dispensesure.retail.core.audit.store.AuditLogFileStore
 import com.dispensesure.retail.core.audit.store.AuditSequenceCounter
+import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
@@ -39,6 +40,7 @@ class AuditLogger @Inject constructor(
     private val deviceKeyProvider: DeviceKeyProvider,
     // Provider: SessionLockController logs audit events too, which would otherwise be a DI cycle.
     private val sessionLockController: Provider<SessionLockController>,
+    private val operatorNameProvider: Provider<OperatorNameProvider>,
     ioDispatcher: CoroutineDispatcher
 ) {
     private val logger = AppLogger.create<AuditLogger>()
@@ -48,6 +50,7 @@ class AuditLogger @Inject constructor(
     private var currentIdentity: AuditIdentity? = null
 
     init {
+        loadLoggedInUser()
         writerScope.launch { writePendingItems() }
     }
 
@@ -59,7 +62,7 @@ class AuditLogger @Inject constructor(
                 timestamp = Instant.now(),
                 sessionId = LoggerConfig.sessionId,
                 operatorProfileId = runCatching { sessionLockController.get().operatorProfileId.value }.getOrNull(),
-                operatorName = LoggerConfig.operatorName
+                localId = runCatching { preferenceHelper.getLocalId() }.getOrDefault(0L)
             )
         )
     }
@@ -81,7 +84,6 @@ class AuditLogger @Inject constructor(
     }
 
     private suspend fun writePendingItems() {
-        loadLoggedInUser()
         for (item in pendingItems) {
             when (item) {
                 is AuditQueueItem.SessionStarted -> currentIdentity = item.identity
@@ -144,7 +146,7 @@ class AuditLogger @Inject constructor(
             // Before login only the email is known.
             email = if (identity?.userId == null) identity?.email else null,
             operatorProfileId = queuedEvent.operatorProfileId,
-            operatorName = queuedEvent.operatorName,
+            operatorName = operatorNameOf(queuedEvent),
             deviceKey = deviceKeyProvider.getDeviceKey(),
             terminalId = preferenceHelper.getSelectedTerminalId(),
             appVersion = APP_VERSION,
@@ -153,6 +155,17 @@ class AuditLogger @Inject constructor(
             data = data
         )
     }
+
+    // Looked up from the ids captured in log(), so the name always belongs to operator_id.
+    private suspend fun operatorNameOf(queuedEvent: AuditQueueItem.QueuedEvent): String? =
+        try {
+            operatorNameProvider.get().nameFor(queuedEvent.operatorProfileId, queuedEvent.localId).display()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("Audit operator name lookup failed", e, event = LogEvent.AUDIT_TRAIL_WRITE_FAILED)
+            null
+        }
 
     private data class AuditIdentity(val userId: String?, val email: String?)
 
@@ -163,7 +176,7 @@ class AuditLogger @Inject constructor(
             val timestamp: Instant,
             val sessionId: String,
             val operatorProfileId: Long?,
-            val operatorName: String?
+            val localId: Long
         ) : AuditQueueItem
 
         data class SessionStarted(val identity: AuditIdentity) : AuditQueueItem

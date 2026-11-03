@@ -14,6 +14,7 @@ import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.dtos.OrderReleaseResult
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
@@ -92,12 +93,47 @@ class Hl7OrderProcessorTest {
 
     @Test
     fun `RL logs the status it released from`() = runTest {
-        coEvery { dispenseTxnDao.getActiveStatusByOrderId(ORDER_ID) } returns CountStatus.ON_HOLD
-        coEvery { dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold(ORDER_ID, CountStatus.PARTIAL, any()) } returns 1
+        coEvery { dispenseTxnDao.releaseOrder(ORDER_ID, any()) } returns OrderReleaseResult(CountStatus.ON_HOLD, 1)
 
         processor.process(Hl7OrderAction.Release(ORDER_ID)).join()
 
         verify { auditLogger.log(OrderReleased(orderId = ORDER_ID, oldStatus = "ON_HOLD", rowsChanged = 1)) }
+    }
+
+    @Test
+    fun `RL that releases nothing logs nothing`() = runTest {
+        coEvery { dispenseTxnDao.releaseOrder(ORDER_ID, any()) } returns OrderReleaseResult(null, 0)
+
+        processor.process(Hl7OrderAction.Release(ORDER_ID)).join()
+
+        verify(exactly = 0) { auditLogger.log(any()) }
+    }
+
+    @Test
+    fun `HD that holds nothing logs nothing`() = runTest {
+        coEvery { dispenseTxnDao.updateStatusByOrderIdIfPartial(ORDER_ID, CountStatus.ON_HOLD, any()) } returns 0
+
+        processor.process(Hl7OrderAction.Hold(ORDER_ID)).join()
+
+        verify(exactly = 0) { auditLogger.log(any()) }
+    }
+
+    @Test
+    fun `DC that removes nothing logs nothing`() = runTest {
+        coEvery { dispenseTxnDao.softDeleteByOrderId(ORDER_ID, any()) } returns 0
+
+        processor.process(Hl7OrderAction.Discontinue(ORDER_ID)).join()
+
+        verify(exactly = 0) { auditLogger.log(any()) }
+    }
+
+    @Test
+    fun `CA for an unknown Rx logs nothing`() = runTest {
+        coEvery { dispenseTxnDao.cancelActiveTxnsByRxNo(RX) } returns emptyList()
+
+        processor.process(Hl7OrderAction.Cancel(RX)).join()
+
+        verify(exactly = 0) { auditLogger.log(any()) }
     }
 
     @Test
@@ -350,9 +386,7 @@ class Hl7OrderProcessorTest {
     fun `RL uses the PARTIAL-or-ON_HOLD status update`() = runTest {
         processor.process(Hl7OrderAction.Release(ORDER_ID)).join()
 
-        coVerify(exactly = 1) {
-            dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold(ORDER_ID, CountStatus.PARTIAL, any())
-        }
+        coVerify(exactly = 1) { dispenseTxnDao.releaseOrder(ORDER_ID, any()) }
     }
 
     // ───────────────────────── helpers ─────────────────────────

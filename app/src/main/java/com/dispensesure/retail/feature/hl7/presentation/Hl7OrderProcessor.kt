@@ -272,26 +272,28 @@ class Hl7OrderProcessor @Inject constructor(
     private suspend fun handleCancel(rxNo: String) {
         logger.i("ORC|CA for rxNo=$rxNo — soft-deleting transaction")
         // The audit event names the cancelled txns, never the Rx itself.
-        auditLogger.log(OrderCancelled(txnIds = dispenseTxnDao.cancelActiveTxnsByRxNo(rxNo)))
+        val cancelledTxnIds = dispenseTxnDao.cancelActiveTxnsByRxNo(rxNo)
+        if (cancelledTxnIds.isNotEmpty()) auditLogger.log(OrderCancelled(txnIds = cancelledTxnIds))
     }
 
     private suspend fun handleHold(orderId: String) {
         logger.i("ORC|HD for orderId=$orderId — marking ON_HOLD")
         val rowsChanged = dispenseTxnDao.updateStatusByOrderIdIfPartial(orderId, CountStatus.ON_HOLD)
-        auditLogger.log(OrderHeld(orderId = orderId, rowsChanged = rowsChanged))
+        if (rowsChanged > 0) auditLogger.log(OrderHeld(orderId = orderId, rowsChanged = rowsChanged))
     }
 
     private suspend fun handleRelease(orderId: String) {
         logger.i("ORC|RL for orderId=$orderId — restoring to PARTIAL")
-        val oldStatus = dispenseTxnDao.getActiveStatusByOrderId(orderId)
-        val rowsChanged = dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold(orderId, CountStatus.PARTIAL)
-        auditLogger.log(OrderReleased(orderId = orderId, oldStatus = oldStatus?.name, rowsChanged = rowsChanged))
+        val release = dispenseTxnDao.releaseOrder(orderId)
+        if (release.rowsChanged > 0) {
+            auditLogger.log(OrderReleased(orderId = orderId, oldStatus = release.oldStatus?.name, rowsChanged = release.rowsChanged))
+        }
     }
 
     private suspend fun handleDiscontinue(orderId: String) {
         logger.i("ORC|DC for orderId=$orderId — soft-deleting (discontinued)")
         val rowsChanged = dispenseTxnDao.softDeleteByOrderId(orderId)
-        auditLogger.log(OrderDiscontinued(orderId = orderId, rowsChanged = rowsChanged))
+        if (rowsChanged > 0) auditLogger.log(OrderDiscontinued(orderId = orderId, rowsChanged = rowsChanged))
     }
 
     private suspend fun resolveDrug(ndc: String, fallbackName: String): DrugMasterEntity? {

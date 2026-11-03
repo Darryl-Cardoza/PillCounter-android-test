@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.settings.presentation.viewmodel
 import android.content.SharedPreferences
 import android.os.Build
 import androidx.lifecycle.ViewModel
+import androidx.room.withTransaction
 import com.dispensesure.retail.R
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.audit.AuditLogger
@@ -16,6 +17,7 @@ import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.hl7.service.HL7Config
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.models.ApiResponse
+import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
@@ -81,6 +83,7 @@ class MainActivityViewModel @Inject constructor(
     private val ioDispatcher: CoroutineDispatcher,
     private val regionProvider: RegionProvider,
     private val auditLogger: AuditLogger,
+    private val appDatabase: AppDatabase,
 ) : ViewModel(), IApplicationSettingsViewModel {
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
@@ -482,8 +485,7 @@ class MainActivityViewModel @Inject constructor(
                     filesToDelete.addAll(detailImages)
 
                     // Delete transaction (assumes cascade deletes details)
-                    dispenseTxnDao.deleteTransaction(txn.txnId)
-                    purgedTransactions.add(txn)
+                    if (dispenseTxnDao.deleteTransaction(txn.txnId) > 0) purgedTransactions.add(txn)
 
                     // Delete files from storage
                     filesToDelete.forEach { path ->
@@ -725,17 +727,21 @@ class MainActivityViewModel @Inject constructor(
     fun deleteAllTransaction() {
         viewModelScope.launch {
             try {
-                // Read what is about to go, for LOCAL_DATA_CLEARED.
-                val unsyncedDispenseIds = dispenseTxnDao.getAllSyncStates().unsyncedIds()
-                val unsyncedBatchIds = stockBatchDao.getAllSyncStates().unsyncedIds()
-                // Each delete returns its row count; the deletes run in this order.
-                val rowsDeleted = mapOf(
-                    "dispense_txn" to dispenseTxnDao.deleteAllTransactions(),
-                    "stock_bottle_info" to stockBottleInfoDao.deleteAll(),
-                    "stock_txn" to stockTxnDao.deleteAll(),
-                    "stock_batch" to stockBatchDao.deleteAll()
-                )
-                auditLogger.log(LocalDataCleared(rowsDeleted, unsyncedDispenseIds, unsyncedBatchIds))
+                // One transaction, so the ids read are exactly the rows the deletes remove.
+                val cleared = appDatabase.withTransaction {
+                    // Read what is about to go, for LOCAL_DATA_CLEARED.
+                    val unsyncedDispenseIds = dispenseTxnDao.getAllSyncStates().unsyncedIds()
+                    val unsyncedBatchIds = stockBatchDao.getAllSyncStates().unsyncedIds()
+                    // Each delete returns its row count; the deletes run in this order.
+                    val rowsDeleted = mapOf(
+                        "dispense_txn" to dispenseTxnDao.deleteAllTransactions(),
+                        "stock_bottle_info" to stockBottleInfoDao.deleteAll(),
+                        "stock_txn" to stockTxnDao.deleteAll(),
+                        "stock_batch" to stockBatchDao.deleteAll()
+                    )
+                    LocalDataCleared(rowsDeleted, unsyncedDispenseIds, unsyncedBatchIds)
+                }
+                auditLogger.log(cleared)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

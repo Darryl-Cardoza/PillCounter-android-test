@@ -127,7 +127,8 @@ fun AppNavGraph(
 
         composable(route = Screen.Profile.route) {
             ProfileScreen(
-                navController = navController
+                navController = navController,
+                onLogOut = onLogOut
             )
         }
 

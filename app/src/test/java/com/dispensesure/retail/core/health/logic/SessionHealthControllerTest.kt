@@ -141,6 +141,19 @@ class SessionHealthControllerTest {
     }
 
     @Test
+    fun markLoggedOut_resetsOfflineState_soNextDropIsLogged() = runTest {
+        coEvery { healthRepository.checkHealth() } returns Result.failure(IOException("no net"))
+        val controller = newController()
+        controller.checkHealth(force = true)
+
+        controller.markLoggedOut()
+
+        assertEquals(HealthState.UNKNOWN, controller.state.value)
+        controller.checkHealth(force = true)
+        verify(exactly = 2) { auditLogger.log(match { it is OfflineModeEntered }) }
+    }
+
+    @Test
     fun aPeriodLeftOpenByAKill_isClosedAtStartup() {
         every { preferenceHelper.getOfflineStartedAt() } returns System.currentTimeMillis() - 30_000L
 

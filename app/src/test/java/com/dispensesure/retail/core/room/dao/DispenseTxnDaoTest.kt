@@ -10,6 +10,7 @@ import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.UserEntity
+import com.dispensesure.retail.core.room.models.dtos.OrderReleaseResult
 import com.dispensesure.retail.core.room.models.dtos.unsyncedIds
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
@@ -538,6 +539,13 @@ class DispenseTxnDaoTest {
     fun `getTransactionDetailsImages returns empty list when none exist`() = runTest {
         val txnId = dispenseTxnDao.insertIgnore(baseTxn())
         assertTrue(dispenseTxnDao.getTransactionDetailsImages(txnId).isEmpty())
+    }
+
+    @Test
+    fun `deleteTransaction returns 1 then 0 for the same txn`() = runTest {
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
+        assertEquals(1, dispenseTxnDao.deleteTransaction(id))
+        assertEquals(0, dispenseTxnDao.deleteTransaction(id))
     }
 
     @Test
@@ -1136,6 +1144,23 @@ class DispenseTxnDaoTest {
         assertEquals(CountStatus.PARTIAL, dispenseTxnDao.getById(heldId)?.status)
         assertEquals(CountStatus.COMPLETED, dispenseTxnDao.getById(completedId)?.status)
         assertEquals(CountStatus.FORCE_COMPLETED, dispenseTxnDao.getById(forcedId)?.status)
+    }
+
+    @Test
+    fun `releaseOrder reads the held status and ignores finished rows`() = runTest {
+        // The finished row goes in first, so an unfiltered LIMIT 1 would read it.
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED).copy(transactionOrderId = "ORD1"))
+        val heldId = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.ON_HOLD).copy(transactionOrderId = "ORD1"))
+
+        assertEquals(OrderReleaseResult(CountStatus.ON_HOLD, 1), dispenseTxnDao.releaseOrder("ORD1"))
+        assertEquals(CountStatus.PARTIAL, dispenseTxnDao.getById(heldId)?.status)
+    }
+
+    @Test
+    fun `releaseOrder with only finished rows changes nothing`() = runTest {
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED).copy(transactionOrderId = "ORD1"))
+
+        assertEquals(OrderReleaseResult(null, 0), dispenseTxnDao.releaseOrder("ORD1"))
     }
 
     @Test

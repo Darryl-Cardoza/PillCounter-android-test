@@ -22,6 +22,7 @@ import com.dispensesure.retail.core.utils.validator.CredentialsValidator
 import com.dispensesure.retail.feature.login.domain.model.LoginUiState
 import com.dispensesure.retail.feature.login.domain.model.LogoutUiState
 import com.google.gson.Gson
+import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.hl7.service.Hl7serviceHandler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -55,7 +56,8 @@ class LoginViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     val preferenceHelper: PreferenceHelper,
     val serviceManager: Hl7serviceHandler,
-    private val auditLogger: AuditLogger
+    private val auditLogger: AuditLogger,
+    private val sessionHealthController: SessionHealthController
 ) : ViewModel() {
 
     private val logger = AppLogger.create<LoginViewModel>()
@@ -163,6 +165,7 @@ class LoginViewModel @Inject constructor(
 
     // Logged before the session id changes, so LOGOUT belongs to the session it ends.
     private fun logLogout(mode: LogoutMode) {
+        sessionHealthController.markLoggedOut()
         auditLogger.log(Logout(userId = preferenceHelper.getUserId(), mode = mode))
         auditLogger.onSessionEnded()
     }

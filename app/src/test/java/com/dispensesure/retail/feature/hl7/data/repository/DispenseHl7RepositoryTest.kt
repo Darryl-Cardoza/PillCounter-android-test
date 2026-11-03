@@ -2,9 +2,12 @@ package com.dispensesure.retail.feature.hl7.data.repository
 
 import android.content.Context
 import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DataPurged
 import com.dispensesure.retail.core.audit.model.DispenseSyncAbandoned
 import com.dispensesure.retail.core.audit.model.Hl7DispenseSent
 import com.dispensesure.retail.core.audit.model.Hl7SendOutcome
+import com.dispensesure.retail.core.audit.model.OrderCancelled
+import com.dispensesure.retail.core.audit.model.OrderEdited
 import com.dispensesure.retail.core.audit.model.SendTrigger
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
@@ -44,6 +47,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.rite.hl7.model.HL7Message
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
 
 /**
  * The SUT creates its own `CoroutineScope(Dispatchers.IO)` at construction and launches its
@@ -195,6 +200,57 @@ class DispenseHl7RepositoryTest {
         repo.sendDispense(1L)
 
         verify { auditLogger.log(match { it is Hl7DispenseSent && it.outcome == Hl7SendOutcome.FAILED }) }
+    }
+
+    @Test
+    fun `a completed txn picked up by the resend loop first is still FIRST_SEND`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        stubSendableTxn("MSH|^~\\&|A|B|C|D|20240101||ACK|1|P|2.5\rMSA|AE|1|rejected\r")
+        every { preferenceHelper.isHl7Enabled() } returns true
+        coEvery { dispenseTxnDao.getPendingHl7TxnOnce() } returns listOf(txnEntity())
+        // Hold sendDispenseNow at its tutorial check so the resend loop takes the lock first.
+        val sendNowHeld = CountDownLatch(1)
+        coEvery { dispenseTxnDao.getTutorialTxnIds() } coAnswers { sendNowHeld.await(); emptyList() }
+        val triggers = Collections.synchronizedList(mutableListOf<SendTrigger>())
+        every { auditLogger.log(any()) } answers { (firstArg<Any>() as? Hl7DispenseSent)?.let { triggers += it.trigger } }
+
+        repo.sendDispenseNow(1L)
+        repo.resendPendingDispenses()
+        verify(timeout = 3_000) { auditLogger.log(match { it is Hl7DispenseSent }) }
+        sendNowHeld.countDown()
+        verify(timeout = 3_000, exactly = 2) { auditLogger.log(match { it is Hl7DispenseSent }) }
+
+        assertEquals(listOf(SendTrigger.FIRST_SEND, SendTrigger.AUTO_RESEND), triggers.toList())
+    }
+
+    @Test
+    fun `a retry after the first send is AUTO_RESEND`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        stubSendableTxn("MSH|^~\\&|A|B|C|D|20240101||ACK|1|P|2.5\rMSA|AE|1|rejected\r")
+        every { preferenceHelper.isHl7Enabled() } returns true
+        coEvery { dispenseTxnDao.getTutorialTxnIds() } returns emptyList()
+        coEvery { dispenseTxnDao.getPendingHl7TxnOnce() } returns listOf(txnEntity())
+
+        repo.sendDispenseNow(1L)
+        verify(timeout = 3_000) { auditLogger.log(match { it is Hl7DispenseSent && it.trigger == SendTrigger.FIRST_SEND }) }
+        repo.resendPendingDispenses()
+
+        verify(timeout = 3_000) { auditLogger.log(match { it is Hl7DispenseSent && it.trigger == SendTrigger.AUTO_RESEND }) }
+    }
+
+    @Test
+    fun `post-ACK delete logs nothing when the txn was already gone`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        stubSendableTxn("MSH|^~\\&|A|B|C|D|20240101||ACK|1|P|2.5\rMSA|AA|1\r")
+        every { preferenceHelper.isAllowLocalStorage() } returns false
+        coEvery { dispenseTxnDao.deleteTransaction(1L) } returns 0
+
+        repo.sendDispense(1L)
+
+        // The delete runs on the repo's own IO scope after a 2s grace delay.
+        coVerify(timeout = 5_000) { dispenseTxnDao.deleteTransaction(1L) }
+        Thread.sleep(200)
+        verify(exactly = 0) { auditLogger.log(match { it is DataPurged }) }
     }
 
     // ─────────────────────────────── message builders ───────────────────────────────
@@ -571,6 +627,36 @@ class DispenseHl7RepositoryTest {
         repo.handleOrderEdit(editMessage())
 
         coVerify(timeout = 3000) { dispenseTxnDao.updateFromHl7Edit(any(), eq(9L), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `handleOrderEdit identical resend logs no ORDER_EDITED`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        // Same drug (5), qty (10), no priority and PARTIAL (IP) as the incoming XO.
+        coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity().copy(targetCount = 10)
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
+            DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
+        coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
+
+        repo.handleOrderEdit(editMessage())
+
+        coVerify(timeout = 3000) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
+        verify(exactly = 0) { auditLogger.log(match { it is OrderEdited }) }
+    }
+
+    @Test
+    fun `handleOrderEdit CA for an already-cancelled txn logs no ORDER_CANCELLED`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
+        coEvery { drugMasterDao.getDrugByNdc("12345", Region.US) } returns
+            DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
+        coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
+        coEvery { dispenseTxnDao.cancelActiveTxnsByRxNo("RX1") } returns emptyList()
+
+        repo.handleOrderEdit(editMessage(orderStatus = "CA"))
+
+        coVerify(timeout = 3000) { dispenseTxnDao.cancelActiveTxnsByRxNo("RX1") }
+        verify(exactly = 0) { auditLogger.log(match { it is OrderCancelled }) }
     }
 
     @Test
