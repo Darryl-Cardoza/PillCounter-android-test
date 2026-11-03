@@ -49,7 +49,7 @@ class AuditFilePreparer @Inject constructor(
             chainLastHash = AuditHashChain.lastHash(lines),
             dekKeyId = dekKeyId,
             dekVersion = dekVersion,
-            eventCount = records.size,
+            eventCount = lines.size,
             firstEventAt = records.firstOrNull()?.timestamp,
             lastEventAt = records.lastOrNull()?.timestamp
         )

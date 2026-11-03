@@ -72,7 +72,7 @@ class AuditLogUploaderTest {
     fun dek() {
         mockkObject(DatabaseKeyProvider)
         // A fresh copy each call: the uploader wipes it after preparing.
-        every { DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(any()) } answers { ByteArray(32) { 5 } }
+        every { DatabaseKeyProvider.unwrapCurrentDek(any()) } answers { ByteArray(32) { 5 } }
     }
 
     @After
@@ -166,6 +166,18 @@ class AuditLogUploaderTest {
     }
 
     @Test
+    fun `an unreadable dek seals nothing but the outbox still uploads`() {
+        every { DatabaseKeyProvider.unwrapCurrentDek(any()) } throws IllegalStateException("Keystore key not found")
+        outbox.put(SegmentId(LocalDate.parse("2026-10-20"), 1), byteArrayOf(9), AuditTestData.sampleMeta)
+        closedFile(1)
+        answerUploads { reply(201, null) }
+        runUpload()
+        assertEquals(setOf("1"), sentSequences())
+        assertEquals(1, fileStore.closedFilesOldestFirst().size)
+        verify(exactly = 0) { DatabaseKeyProvider.getOrCreateDatabasePassphrase(any()) }
+    }
+
+    @Test
     fun `the wrap is recorded before registering`() {
         runUpload()
         coVerifyOrder {
@@ -211,6 +223,28 @@ class AuditLogUploaderTest {
     }
 
     @Test
+    fun `after a refile, a lost reply resends to the saved slot, not the old one`() {
+        closedFile(1)
+        answerUploads { sequence ->
+            if (sequence == "1") reply(409, "slot_occupied", ""","next_free_sequence":4""") else throw IOException("reply lost")
+        }
+        runUpload()
+        sentForms.clear()
+        runUpload()
+        assertEquals(setOf("4"), sentSequences())
+    }
+
+    @Test
+    fun `a drain sends failed files again after an app update`() {
+        outbox.put(SegmentId(LocalDate.parse("2026-10-20"), 1), byteArrayOf(9), AuditTestData.sampleMeta)
+        outbox.moveToFailed(outbox.segmentsOldestFirst().single())
+        answerUploads { reply(201, null) }
+        runUpload()
+        assertEquals(0, outbox.failedCount())
+        assertTrue(outboxSequences().isEmpty())
+    }
+
+    @Test
     fun `a rejected file moves to failed while the others still go`() {
         closedFile(1)
         closedFile(2)
@@ -241,15 +275,5 @@ class AuditLogUploaderTest {
         answerUploads { reply(201, null) }
         runUpload()
         verify(exactly = 0) { DatabaseKeyProvider.getOrCreateDatabasePassphrase(any()) }
-    }
-
-    @Test
-    fun `a dek that can't be unwrapped keeps the files for a retry`() {
-        every { DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(any()) } throws IllegalStateException("keystore")
-        closedFile(1)
-        answerUploads { reply(201, null) }
-        runUpload()
-        assertTrue(sentForms.isEmpty())
-        assertEquals(1, fileStore.closedFilesOldestFirst().size)
     }
 }

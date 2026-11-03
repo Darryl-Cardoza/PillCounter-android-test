@@ -72,13 +72,14 @@ class AuditFilePreparerTest {
     }
 
     @Test
-    fun `a line cut by a kill is chained but not counted`() {
+    fun `every hashed line is counted, an unreadable one too`() {
         closedFile(line1, "{cut by a kill")
         preparer.prepareClosedFiles(dek, "dek-dev-1", 3)
 
         val meta = outbox.segmentsOldestFirst().single().meta
         assertEquals(AuditHashChain.lastHash(listOf(line1, "{cut by a kill")), meta.chainLastHash)
-        assertEquals(1, meta.eventCount)
+        assertEquals(2, meta.eventCount)
+        assertEquals("2026-10-21T10:00:00Z", meta.lastEventAt)
     }
 
     @Test

@@ -12,5 +12,7 @@ data class AuditSegmentMeta(
     @SerialName("dek_version") val dekVersion: Int,
     @SerialName("event_count") val eventCount: Int,
     @SerialName("first_event_at") val firstEventAt: String?,
-    @SerialName("last_event_at") val lastEventAt: String?
+    @SerialName("last_event_at") val lastEventAt: String?,
+    // Local only, never sent: the slot a refile moved this file to.
+    @SerialName("upload_sequence") val uploadSequence: Int? = null
 )

@@ -44,12 +44,23 @@ class AuditLogFileStore(
         return true
     }
 
-    /** A kill mid-write leaves a line with no newline; close it so the next record starts clean. */
-    fun endIncompleteLine() {
-        val file = segmentSlot.load()?.let(::localFile) ?: return
-        if (!file.exists() || file.length() == 0L) return
-        val lastByte = RandomAccessFile(file, "r").use { it.seek(file.length() - 1); it.read() }
-        if (lastByte != '\n'.code) FileOutputStream(file, true).use { it.write('\n'.code) }
+    /** A kill mid-write leaves half a line; cut it off so the file holds only whole records. True when it cut. */
+    fun dropIncompleteLine(): Boolean {
+        val file = segmentSlot.load()?.let(::localFile) ?: return false
+        if (!file.exists() || file.length() == 0L) return false
+        RandomAccessFile(file, "rw").use { access ->
+            var end = access.length()
+            access.seek(end - 1)
+            if (access.read() == '\n'.code) return false
+            // Walk back to the last newline; everything after it is the half line.
+            while (end > 0) {
+                access.seek(end - 1)
+                if (access.read() == '\n'.code) break
+                end--
+            }
+            access.setLength(end)
+        }
+        return true
     }
 
     fun readableFilesOldestFirst(): List<File> = localSegmentsOldestFirst().map { it.second }

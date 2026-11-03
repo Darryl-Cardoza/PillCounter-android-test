@@ -31,6 +31,12 @@ class AuditUploadOutcomeTest {
     }
 
     @Test
+    fun `rate limited and timed out retry later`() {
+        assertEquals(RETRY_LATER, outcome(429))
+        assertEquals(RETRY_LATER, outcome(408))
+    }
+
+    @Test
     fun `slot occupied refiles only with a next free sequence`() {
         assertEquals(REFILE, outcome(409, "slot_occupied", nextFreeSequence = 2))
         assertEquals(REJECT, outcome(409, "slot_occupied"))

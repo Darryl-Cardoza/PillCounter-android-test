@@ -5,8 +5,6 @@ import com.dispensesure.retail.core.audit.AuditLogConfig
 import com.dispensesure.retail.core.room.dao.DekVersionDao
 import com.dispensesure.retail.core.room.models.DekVersionEntity
 import com.dispensesure.retail.core.security.DatabaseKeyProvider
-import com.dispensesure.retail.core.utils.logger.AppLogger
-import com.dispensesure.retail.core.utils.logger.LogEvent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -19,20 +17,12 @@ class DekVersionRecorder @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dekVersionDao: DekVersionDao
 ) {
-    private val logger = AppLogger.create<DekVersionRecorder>()
-
     // The dashboard and the audit drain both record; one at a time, or both could add the same wrap.
     private val recordMutex = Mutex()
 
     suspend fun recordCurrentWrap(deviceKey: String) = recordMutex.withLock {
         // Creates the DEK if missing: debug builds don't open Room with it, so nothing else may have yet.
-        // Never the wiping getter: the DB is open here. A DEK that can't be unwrapped skips this round.
-        try {
-            DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(context).fill(0)
-        } catch (e: Exception) {
-            logger.e("DEK unavailable; wrap not recorded", e, event = LogEvent.DEK_REGISTER_FAILED)
-            return@withLock
-        }
+        DatabaseKeyProvider.createDekIfMissing(context)
         val currentWrap = DatabaseKeyProvider.currentWrap(context) ?: return@withLock
         val activeRow = dekVersionDao.getActive()
         if (activeRow != null && activeRow.wrappedDek.contentEquals(currentWrap.wrappedDek)) return@withLock

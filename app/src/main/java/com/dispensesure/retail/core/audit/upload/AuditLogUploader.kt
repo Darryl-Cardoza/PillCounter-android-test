@@ -94,6 +94,7 @@ class AuditLogUploader @Inject constructor(
     private suspend fun drain() {
         // A day that ended with no later write is still the writer's file; the writer closes it and asks again.
         auditLogger.get().closeFileForUpload(onlyIfDayEnded = true)
+        outbox.retryFailedOnce(AuditLogger.APP_VERSION)
         val deviceKey = deviceKeyProvider.getDeviceKey() ?: return
         dekVersionRecorder.recordCurrentWrap(deviceKey)
         if (!preferenceHelper.isUserLoggedIn()) return
@@ -108,8 +109,13 @@ class AuditLogUploader @Inject constructor(
 
     // The DEK is held only while sealing and wiped right after.
     private fun prepareClosedFiles(registeredDek: DekVersionEntity) {
-        // Never the wiping getter: the DB is open. An unwrap failure throws to drain's catch, which retries.
-        val dek = DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(context)
+        val dek = try {
+            DatabaseKeyProvider.unwrapCurrentDek(context)
+        } catch (e: Exception) {
+            // Closed files wait unsealed; the outbox still uploads below.
+            logger.e("DEK unwrap failed, nothing sealed", e, event = LogEvent.AUDIT_PREPARE_FAILED)
+            return
+        }
         try {
             preparer.prepareClosedFiles(dek, registeredDek.dekKeyId, registeredDek.version)
         } finally {
@@ -127,7 +133,8 @@ class AuditLogUploader @Inject constructor(
     }
 
     private suspend fun uploadUntilSettled(segment: OutboxSegment, deviceKey: String): UploadResult {
-        var sequence = segment.id.sequence
+        // A slot saved by an earlier refile may already hold these bytes, so never go back to the old one.
+        var sequence = segment.meta.uploadSequence ?: segment.id.sequence
         repeat(MAX_REFILES + 1) {
             val accessToken = preferenceHelper.getAccessToken() ?: return UploadResult.PARKED
             val reply = try {
@@ -141,7 +148,10 @@ class AuditLogUploader @Inject constructor(
                     outbox.delete(segment)
                     return UploadResult.SETTLED
                 }
-                AuditUploadOutcome.REFILE -> sequence = checkNotNull(reply.nextFreeSequence)
+                AuditUploadOutcome.REFILE -> {
+                    sequence = checkNotNull(reply.nextFreeSequence)
+                    outbox.saveUploadSequence(segment, sequence)
+                }
                 AuditUploadOutcome.REJECT -> {
                     logger.e(
                         "Audit file ${segment.id.fileName} rejected: ${reply.httpStatus} ${reply.code}",

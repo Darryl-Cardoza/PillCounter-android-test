@@ -121,6 +121,58 @@ class DatabaseKeyProviderTest {
         verify(exactly = 1) { anyConstructed<SecurePreferences>().putString("dek_kek_id", "local-bootstrap") }
     }
 
+    // ---- createDekIfMissing / unwrapCurrentDek: never re-key ----
+
+    @Test
+    fun `createDekIfMissing makes a bootstrap-wrapped DEK when none is stored`() {
+        stubPrefs(wrapped = null, kekId = null)
+        every { KeystoreAesGcm.wrapPcwrp(any(), any()) } answers { secondArg() }
+
+        DatabaseKeyProvider.createDekIfMissing(context)
+
+        verify(exactly = 1) { KeystoreAesGcm.wrapPcwrp("com.dispensesure.retail.dek_bootstrap_kek", any()) }
+        verify(exactly = 1) { anyConstructed<SecurePreferences>().putString("dek_kek_id", "local-bootstrap") }
+    }
+
+    @Test
+    fun `createDekIfMissing leaves a stored DEK alone`() {
+        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(1)), kekId = "kek-abc")
+
+        DatabaseKeyProvider.createDekIfMissing(context)
+
+        verify(exactly = 0) { KeystoreAesGcm.unwrapPcwrp(any(), any()) }
+        verify(exactly = 0) { KeystoreAesGcm.wrapPcwrp(any(), any()) }
+        verify(exactly = 0) { anyConstructed<SecurePreferences>().putString(any(), any()) }
+        verify(exactly = 0) { anyConstructed<SecurePreferences>().clear() }
+    }
+
+    @Test
+    fun `unwrapCurrentDek returns the stored DEK`() {
+        val dek = ByteArray(32) { it.toByte() }
+        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(9)), kekId = "kek-abc")
+        every { KeystoreAesGcm.unwrapPcwrp("com.dispensesure.retail.server_kek_kek-abc", any()) } returns dek
+
+        assertArrayEquals(dek, DatabaseKeyProvider.unwrapCurrentDek(context))
+    }
+
+    @Test
+    fun `unwrapCurrentDek failure throws and never clears prefs or deletes the DB`() {
+        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(1)), kekId = "local-bootstrap")
+        every { KeystoreAesGcm.unwrapPcwrp(any(), any()) } throws IllegalStateException("Keystore key not found")
+
+        assertThrows(IllegalStateException::class.java) { DatabaseKeyProvider.unwrapCurrentDek(context) }
+
+        verify(exactly = 0) { anyConstructed<SecurePreferences>().clear() }
+        verify(exactly = 0) { context.deleteDatabase(any()) }
+        verify(exactly = 0) { KeystoreAesGcm.wrapPcwrp(any(), any()) }
+    }
+
+    @Test
+    fun `unwrapCurrentDek throws when no DEK is stored`() {
+        stubPrefs(wrapped = null, kekId = null)
+        assertThrows(IllegalStateException::class.java) { DatabaseKeyProvider.unwrapCurrentDek(context) }
+    }
+
     // ---- rotateKekIfNewer ----
 
     @Test

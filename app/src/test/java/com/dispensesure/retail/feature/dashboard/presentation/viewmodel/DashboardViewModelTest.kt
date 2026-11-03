@@ -11,22 +11,23 @@ import com.dispensesure.retail.core.audit.model.ServerSetting
 import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
+import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.models.ApiResponse
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
-import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
-import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
+import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
-import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.security.DatabaseKeyProvider
+import com.dispensesure.retail.core.security.DekWrap
 import com.dispensesure.retail.core.security.KekInfo
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -39,9 +40,9 @@ import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
 import com.dispensesure.retail.feature.dashboard.domain.model.UserDetail
 import com.dispensesure.retail.feature.dashboard.domain.model.UserProfile
 import com.dispensesure.retail.feature.dashboard.domain.model.UserSettings
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
-import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.coVerifyOrder
@@ -926,6 +927,7 @@ class DashboardViewModelTest {
         coEvery { userDetailRepository.getUserDetail("tok") } returns
             Result.success(ApiResponse(200, true, "ok", null, userDetail().copy(kek = kekInfo)))
         mockkObject(DatabaseKeyProvider)
+        every { DatabaseKeyProvider.currentWrap(any()) } returns DekWrap(byteArrayOf(1), "local-bootstrap", 0, "AES-256-GCM")
         every { DatabaseKeyProvider.rotateKekIfNewer(any(), any()) } returns Unit
 
         createViewModel()
@@ -937,6 +939,47 @@ class DashboardViewModelTest {
             DatabaseKeyProvider.rotateKekIfNewer(any(), kekInfo)
             auditLogUploader.requestUpload()
         }
+    }
+
+    @Test
+    fun `a failing dek wrap record still rotates the kek and requests an upload`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-A"
+        val kekInfo = KekInfo(keyId = "kek-1", version = 1, algorithm = "AES-256-GCM", keyMaterial = "abcd")
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail().copy(kek = kekInfo)))
+        mockkObject(DatabaseKeyProvider)
+        every { DatabaseKeyProvider.currentWrap(any()) } returns DekWrap(byteArrayOf(1), "local-bootstrap", 0, "AES-256-GCM")
+        every { DatabaseKeyProvider.rotateKekIfNewer(any(), any()) } returns Unit
+        coEvery { dekVersionRecorder.recordCurrentWrap(any()) } throws IllegalStateException("db closed")
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        verify { DatabaseKeyProvider.rotateKekIfNewer(any(), kekInfo) }
+        verify { auditLogUploader.requestUpload() }
+        assertNull(vm.uiState.value.userDetailError)
+    }
+
+    @Test
+    fun `an unchanged kek version does not record the dek wrap`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-A"
+        val kekInfo = KekInfo(keyId = "kek-1", version = 1, algorithm = "AES-256-GCM", keyMaterial = "abcd")
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail().copy(kek = kekInfo)))
+        mockkObject(DatabaseKeyProvider)
+        every { DatabaseKeyProvider.currentWrap(any()) } returns DekWrap(byteArrayOf(1), "kek-1", 1, "AES-256-GCM")
+        every { DatabaseKeyProvider.rotateKekIfNewer(any(), any()) } returns Unit
+        // Counted by hand: coVerify(exactly = 0) trips on the mocked Dispatchers (see the note above).
+        var recordCalls = 0
+        coEvery { dekVersionRecorder.recordCurrentWrap(any()) } answers { recordCalls += 1 }
+
+        createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(0, recordCalls)
+        verify { DatabaseKeyProvider.rotateKekIfNewer(any(), kekInfo) }
     }
 
     @Test

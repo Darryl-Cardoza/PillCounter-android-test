@@ -36,7 +36,7 @@ class DekVersionRecorderTest {
         dao = db.dekVersionDao()
         recorder = DekVersionRecorder(mockk(relaxed = true), dao)
         mockkObject(DatabaseKeyProvider)
-        every { DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(any()) } answers { ByteArray(32) }
+        every { DatabaseKeyProvider.createDekIfMissing(any()) } returns Unit
     }
 
     @After
@@ -54,9 +54,17 @@ class DekVersionRecorderTest {
         storedWrap(byteArrayOf(1))
         recorder.recordCurrentWrap("dev-1")
         verifyOrder {
-            DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(any())
+            DatabaseKeyProvider.createDekIfMissing(any())
             DatabaseKeyProvider.currentWrap(any())
         }
+    }
+
+    @Test
+    fun `recording never unwraps or re-keys the dek`() = runTest {
+        storedWrap(byteArrayOf(1))
+        recorder.recordCurrentWrap("dev-1")
+        verify(exactly = 0) { DatabaseKeyProvider.getOrCreateDatabasePassphrase(any()) }
+        verify(exactly = 0) { DatabaseKeyProvider.unwrapCurrentDek(any()) }
     }
 
     @Test
@@ -114,16 +122,5 @@ class DekVersionRecorderTest {
         recorder.recordCurrentWrap("dev-1")
 
         assertEquals(false, dao.getActive()!!.isRegistered)
-    }
-
-    @Test
-    fun `a dek that can't be unwrapped records nothing and never wipes`() = runTest {
-        every { DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(any()) } throws IllegalStateException("keystore")
-        storedWrap(byteArrayOf(1))
-
-        recorder.recordCurrentWrap("dev-1")
-
-        assertTrue(dao.getAll().isEmpty())
-        verify(exactly = 0) { DatabaseKeyProvider.getOrCreateDatabasePassphrase(any()) }
     }
 }

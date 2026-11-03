@@ -1,11 +1,8 @@
 package com.dispensesure.retail.core.audit.upload
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonObject
+import com.dispensesure.retail.core.audit.ReplyEnvelope
+import com.dispensesure.retail.core.audit.intField
+import com.dispensesure.retail.core.audit.stringField
 import okhttp3.ResponseBody
 import retrofit2.Response
 
@@ -16,20 +13,15 @@ data class AuditApiReply(
     val nextFreeSequence: Int? = null
 ) {
     companion object {
-        fun from(response: Response<ResponseBody>): AuditApiReply {
-            val body = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }
-            return parse(response.code(), body)
-        }
+        fun from(response: Response<ResponseBody>): AuditApiReply = parse(response.code(), ReplyEnvelope.bodyOf(response))
 
         /** A 413 may come back without the usual envelope, so anything unreadable gives just the status. */
         fun parse(httpStatus: Int, body: String?): AuditApiReply {
-            val data = body
-                ?.let { runCatching { Json.parseToJsonElement(it).jsonObject["data"] as? JsonObject }.getOrNull() }
-                ?: return AuditApiReply(httpStatus)
+            val data = ReplyEnvelope.dataOf(body) ?: return AuditApiReply(httpStatus)
             return AuditApiReply(
                 httpStatus = httpStatus,
-                code = (data["code"] as? JsonPrimitive)?.contentOrNull,
-                nextFreeSequence = (data["next_free_sequence"] as? JsonPrimitive)?.intOrNull
+                code = data.stringField("code"),
+                nextFreeSequence = data.intField("next_free_sequence")
             )
         }
     }

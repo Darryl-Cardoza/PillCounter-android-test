@@ -43,6 +43,32 @@ class AuditOutboxTest {
     }
 
     @Test
+    fun `a saved upload sequence is read back, and none reads as null`() {
+        outbox.put(segmentId("2026-10-21", 1), byteArrayOf(1), AuditTestData.sampleMeta)
+        assertEquals(null, outbox.segmentsOldestFirst().single().meta.uploadSequence)
+        outbox.saveUploadSequence(outbox.segmentsOldestFirst().single(), 5)
+        assertEquals(5, outbox.segmentsOldestFirst().single().meta.uploadSequence)
+    }
+
+    @Test
+    fun `a new app version moves failed files back with their meta`() {
+        outbox.put(segmentId("2026-10-21", 1), byteArrayOf(1), AuditTestData.sampleMeta)
+        outbox.moveToFailed(outbox.segmentsOldestFirst().single())
+        outbox.retryFailedOnce("2.5.0 (250)")
+        assertEquals(0, outbox.failedCount())
+        assertEquals(AuditTestData.sampleMeta, outbox.segmentsOldestFirst().single().meta)
+    }
+
+    @Test
+    fun `the same app version moves nothing a second time`() {
+        outbox.retryFailedOnce("2.5.0 (250)")
+        outbox.put(segmentId("2026-10-21", 1), byteArrayOf(1), AuditTestData.sampleMeta)
+        outbox.moveToFailed(outbox.segmentsOldestFirst().single())
+        outbox.retryFailedOnce("2.5.0 (250)")
+        assertEquals(1, outbox.failedCount())
+    }
+
+    @Test
     fun `no temp files are left behind`() {
         outbox.put(segmentId("2026-10-21", 1), byteArrayOf(1), AuditTestData.sampleMeta)
         assertTrue(File(directory, "outbox").listFiles().orEmpty().none { it.name.endsWith(".tmp") })

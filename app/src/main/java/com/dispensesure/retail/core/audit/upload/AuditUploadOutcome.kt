@@ -23,6 +23,8 @@ enum class AuditUploadOutcome {
                 if (reply.nextFreeSequence != null) REFILE else REJECT
             reply.httpStatus == 401 || reply.httpStatus == 403 -> PARK
             reply.httpStatus == 409 && reply.code == "pharmacy_id_not_claimed" -> PARK
+            // Rate limited or timed out: the file is fine, so try again later.
+            reply.httpStatus == 408 || reply.httpStatus == 429 -> RETRY_LATER
             reply.httpStatus in 400..499 -> REJECT
             // 202, 5xx, the 599 offline gate, anything unexpected.
             else -> RETRY_LATER

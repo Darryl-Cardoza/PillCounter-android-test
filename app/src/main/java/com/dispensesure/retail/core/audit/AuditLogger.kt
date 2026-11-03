@@ -133,10 +133,12 @@ class AuditLogger @Inject constructor(
         }
     }
 
-    // Once per process: close a line cut by a kill.
+    // Once per process: cut a line left half-written by a kill.
     private fun prepareFiles() {
         try {
-            fileStore.endIncompleteLine()
+            if (fileStore.dropIncompleteLine()) {
+                logger.w("Dropped a partial audit record cut by a kill", event = LogEvent.AUDIT_TRAIL_WRITE_FAILED)
+            }
         } catch (e: Exception) {
             logger.e("Audit file check failed", e, event = LogEvent.AUDIT_TRAIL_WRITE_FAILED)
         }

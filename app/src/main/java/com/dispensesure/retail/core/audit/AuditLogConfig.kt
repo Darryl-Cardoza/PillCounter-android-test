@@ -8,6 +8,7 @@ object AuditLogConfig {
     const val FILE_EXTENSION = "log"
     const val META_FILE_SUFFIX = ".meta.json"
     const val TEMP_FILE_SUFFIX = ".tmp"
+    const val FAILED_RETRIED_MARKER_NAME = "failed-retried-for"
     const val EXPORT_FILE_NAME = "audit-logs.log"
 
     const val MAX_FILE_BYTES = 256L * 1024

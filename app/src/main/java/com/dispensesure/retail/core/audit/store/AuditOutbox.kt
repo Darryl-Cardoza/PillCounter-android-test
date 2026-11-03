@@ -5,6 +5,8 @@ import com.dispensesure.retail.core.audit.model.AuditSegmentMeta
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 data class OutboxSegment(val id: SegmentId, val sealedFile: File, val meta: AuditSegmentMeta)
 
@@ -13,6 +15,7 @@ class AuditOutbox(auditDirectory: File) {
 
     private val outboxDirectory = File(auditDirectory, AuditLogConfig.OUTBOX_DIRECTORY_NAME)
     private val failedDirectory = File(auditDirectory, AuditLogConfig.FAILED_DIRECTORY_NAME)
+    private val failedRetriedMarker = File(auditDirectory, AuditLogConfig.FAILED_RETRIED_MARKER_NAME)
 
     fun contains(segmentId: SegmentId): Boolean = File(outboxDirectory, segmentId.fileName).exists()
 
@@ -23,8 +26,25 @@ class AuditOutbox(auditDirectory: File) {
     /** Meta first, sealed bytes last, each via a temp file: a sealed file in the outbox is always complete. */
     fun put(segmentId: SegmentId, sealedBytes: ByteArray, meta: AuditSegmentMeta) {
         outboxDirectory.mkdirs()
-        writeAtomically(metaFile(outboxDirectory, segmentId), Json.encodeToString(AuditSegmentMeta.serializer(), meta).toByteArray())
+        writeMeta(segmentId, meta)
         writeAtomically(File(outboxDirectory, segmentId.fileName), sealedBytes)
+    }
+
+    /** Remembers the slot a refile moved this file to, so a lost reply never sends it to the old slot again. */
+    fun saveUploadSequence(segment: OutboxSegment, sequence: Int) {
+        writeMeta(segment.id, segment.meta.copy(uploadSequence = sequence))
+    }
+
+    /** Once per app version, sends `failed/` files again: a new build may fix why they were refused. */
+    fun retryFailedOnce(appVersion: String) {
+        if (failedRetriedMarker.exists() && failedRetriedMarker.readText() == appVersion) return
+        outboxDirectory.mkdirs()
+        failedDirectory.listFiles().orEmpty().mapNotNull { SegmentId.fromFileName(it.name) }.forEach { segmentId ->
+            // Meta first, as in put: a sealed file in the outbox always has its meta.
+            metaFile(failedDirectory, segmentId).renameTo(metaFile(outboxDirectory, segmentId))
+            File(failedDirectory, segmentId.fileName).renameTo(File(outboxDirectory, segmentId.fileName))
+        }
+        writeAtomically(failedRetriedMarker, appVersion.toByteArray())
     }
 
     fun segmentsOldestFirst(): List<OutboxSegment> =
@@ -53,6 +73,9 @@ class AuditOutbox(auditDirectory: File) {
             Json.decodeFromString(AuditSegmentMeta.serializer(), metaFile(outboxDirectory, segmentId).readText())
         }.getOrNull()
 
+    private fun writeMeta(segmentId: SegmentId, meta: AuditSegmentMeta) =
+        writeAtomically(metaFile(outboxDirectory, segmentId), Json.encodeToString(AuditSegmentMeta.serializer(), meta).toByteArray())
+
     private fun metaFile(directory: File, segmentId: SegmentId) =
         File(directory, segmentId.fileName + AuditLogConfig.META_FILE_SUFFIX)
 
@@ -62,6 +85,7 @@ class AuditOutbox(auditDirectory: File) {
             output.write(bytes)
             output.fd.sync()
         }
-        check(tempFile.renameTo(target)) { "Could not move ${tempFile.name} into place" }
+        // Replaces an existing target in one step; File.renameTo can't overwrite on every platform.
+        Files.move(tempFile.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
     }
 }

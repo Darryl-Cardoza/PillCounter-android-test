@@ -14,18 +14,18 @@ import com.dispensesure.retail.core.audit.model.ServerSetting
 import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.di.DefaultDispatcher
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
-import com.dispensesure.retail.core.region.RegionProvider
-import com.dispensesure.retail.core.room.dao.StockBatchDao
-import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.dao.UserDao
-import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.models.UserEntity
-import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
-import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.health.logic.SessionHealthController
+import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.UserDao
+import com.dispensesure.retail.core.room.models.UserEntity
+import com.dispensesure.retail.core.room.models.enums.CountStatus
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.security.DatabaseKeyProvider
+import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -47,9 +47,10 @@ import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
 import com.dispensesure.retail.feature.hl7.util.Hl7Format
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -61,7 +62,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -570,11 +570,12 @@ class DashboardViewModel @Inject constructor(
                             // version than what's currently stored (no-op otherwise, since
                             // auth/me is polled repeatedly with an unchanged KEK).
                             detail.kek?.let { kekInfo ->
+                                val context = preferenceHelper.getContext()
                                 // Records the current (e.g. bootstrap) wrap before the server KEK replaces it.
-                                deviceKeyProvider.getDeviceKey()?.let { deviceKey ->
-                                    dekVersionRecorder.recordCurrentWrap(deviceKey)
+                                if (kekInfo.version > (DatabaseKeyProvider.currentWrap(context)?.kekVersion ?: -1)) {
+                                    recordWrapBeforeKekRotation()
                                 }
-                                DatabaseKeyProvider.rotateKekIfNewer(preferenceHelper.getContext(), kekInfo)
+                                DatabaseKeyProvider.rotateKekIfNewer(context, kekInfo)
                             }
                             // The token is known good here: send closed audit files.
                             auditLogUploader.requestUpload()
@@ -629,6 +630,17 @@ class DashboardViewModel @Inject constructor(
                     }
                 }
             )
+        }
+    }
+
+    // Own try: a failure here must not stop the KEK rotation or the audit upload.
+    private suspend fun recordWrapBeforeKekRotation() {
+        try {
+            deviceKeyProvider.getDeviceKey()?.let { deviceKey -> dekVersionRecorder.recordCurrentWrap(deviceKey) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("Recording the DEK wrap failed", e, event = LogEvent.DEK_VERSION_RECORD_FAILED)
         }
     }
 

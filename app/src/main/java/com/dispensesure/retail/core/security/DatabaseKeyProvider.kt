@@ -78,6 +78,21 @@ object DatabaseKeyProvider {
         return generateAndBootstrapWrapDek(prefs)
     }
 
+    /** Makes a DEK only when none is stored. Never unwraps, clears prefs or deletes the DB. */
+    fun createDekIfMissing(context: Context): Unit = synchronized(lock) {
+        val prefs = SecurePreferences(context, PREFS_NAME)
+        if (prefs.getString(KEY_DEK_WRAPPED) != null && prefs.getString(KEY_KEK_ID) != null) return
+        generateAndBootstrapWrapDek(prefs).fill(0)
+    }
+
+    /** The stored DEK, for sealing. Throws if it is missing or can't be unwrapped; never clears or deletes. */
+    fun unwrapCurrentDek(context: Context): ByteArray = synchronized(lock) {
+        val prefs = SecurePreferences(context, PREFS_NAME)
+        val wrappedB64 = checkNotNull(prefs.getString(KEY_DEK_WRAPPED)) { "No DEK stored" }
+        val kekId = checkNotNull(prefs.getString(KEY_KEK_ID)) { "No KEK id stored" }
+        KeystoreAesGcm.unwrapPcwrp(aliasFor(kekId), Base64.decode(wrappedB64, Base64.NO_WRAP))
+    }
+
     private fun generateAndBootstrapWrapDek(prefs: SecurePreferences): ByteArray {
         val dek = ByteArray(32).also { SecureRandom().nextBytes(it) }
         val wrapped = KeystoreAesGcm.wrapPcwrp(BOOTSTRAP_KEK_ALIAS, dek)
