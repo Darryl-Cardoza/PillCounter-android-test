@@ -139,25 +139,27 @@ class Hl7ValidatorTest {
         append("RXE||$giveCode^LIPITOR 40MG TABLET|30||TAB|||||30|TAB|0|||RX-001\r")
     })
 
-    private fun invalidNdcIssues(giveCode: String) =
-        validator.validateStructure(rdeWithGiveCode(giveCode)).issues
-            .filter { issue -> issue.errorText.startsWith("Invalid NDC") }
+    private fun validate(giveCode: String) = validator.validateStructure(rdeWithGiveCode(giveCode))
 
+    // Exact text: Hl7Validator's DIN filter matches this wording, so a library rewording must fail here.
     @Test
     fun `US rejects an 8-digit DIN as an invalid NDC`() {
-        assertEquals(1, invalidNdcIssues("02230714").size)
+        val errors = validate("02230714").issues.map { issue -> issue.errorText }
+        assertTrue(errors.toString(), "Invalid NDC in RXE 1" in errors)
     }
 
     @Test
     fun `canada accepts an 8-digit DIN in RXE-2`() {
         every { regionProvider.current } returns Region.CA
-        assertEquals(emptyList<Any>(), invalidNdcIssues("02230714"))
+        val result = validate("02230714")
+        assertTrue(result.issues.toString(), result.isValid)
     }
 
     @Test
     fun `canada still accepts an NDC and still rejects a malformed code`() {
         every { regionProvider.current } returns Region.CA
-        assertEquals(emptyList<Any>(), invalidNdcIssues("00093005801"))
-        assertEquals(1, invalidNdcIssues("ABC123").size)
+        val ndcResult = validate("00093005801")
+        assertTrue(ndcResult.issues.toString(), ndcResult.isValid)
+        assertFalse(validate("ABC123").isValid)
     }
 }
