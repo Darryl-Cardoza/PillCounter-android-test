@@ -35,6 +35,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.dispensesure.retail.core.audit.DeviceIntegrityAuditor
 import com.dispensesure.retail.core.auth.AuthEvent
 import com.dispensesure.retail.core.auth.AuthEventBus
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
@@ -78,6 +79,7 @@ import com.dispensesure.retail.ui.theme.DispenseSureRetailTheme
 import com.dispensesure.retail.ui.theme.ExtendedColors
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -121,6 +123,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var connectivityCallback: ConnectivityCallback
+
+    @Inject
+    lateinit var deviceIntegrityAuditor: DeviceIntegrityAuditor
 
     private lateinit var navController: NavController
 
@@ -226,6 +231,11 @@ class MainActivity : ComponentActivity() {
 //        } else {
 //            runtimeUnit.revokeClearance()
 //        }
+
+        // Log-only integrity check, once per fresh launch of a release build and off the main thread.
+        if (savedInstanceState == null && !BuildConfig.DEBUG) {
+            lifecycleScope.launch(Dispatchers.IO) { deviceIntegrityAuditor.logFailedIntegrityChecks() }
+        }
 
         lifecycleScope.launch {
             try {

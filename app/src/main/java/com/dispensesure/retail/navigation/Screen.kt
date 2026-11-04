@@ -224,6 +224,11 @@ sealed interface Screen {
         override val route: String = "face_recognition_users"
     }
 
+    // Debug builds only: decrypted audit log viewer.
+    data object AuditLog : Screen {
+        override val route: String = "audit_log"
+    }
+
 }
 
 

@@ -6,6 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.dispensesure.retail.BuildConfig
+import com.dispensesure.retail.feature.auditLog.presentation.AuditLogScreen
 import com.dispensesure.retail.feature.dashboard.presentation.DashboardScreen
 import com.dispensesure.retail.feature.dispense.presentation.DispenseFlowScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceIntroScreen
@@ -146,6 +148,12 @@ fun AppNavGraph(
 
         composable(route = Screen.FaceRecognitionUsers.route) {
             FaceUsersListScreen(navController = navController)
+        }
+
+        if (BuildConfig.DEBUG) {
+            composable(route = Screen.AuditLog.route) {
+                AuditLogScreen(navController = navController)
+            }
         }
 
     }

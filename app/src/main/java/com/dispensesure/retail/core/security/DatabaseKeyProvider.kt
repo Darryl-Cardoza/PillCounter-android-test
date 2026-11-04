@@ -2,9 +2,10 @@ package com.dispensesure.retail.core.security
 
 import android.content.Context
 import android.util.Base64
-import com.dispensesure.retail.core.utils.preference.SecurePreferences
+import com.dispensesure.retail.core.security.DatabaseKeyProvider.BOOTSTRAP_KEK_ALIAS
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.preference.SecurePreferences
 import java.security.SecureRandom
 
 /**
@@ -46,26 +47,32 @@ object DatabaseKeyProvider {
 
     /** Returns the raw DEK bytes to use as the SQLCipher passphrase, generating/wrapping it on first use. */
     fun getOrCreateDatabasePassphrase(context: Context): ByteArray = synchronized(lock) {
-        val prefs = SecurePreferences(context, PREFS_NAME)
+        try {
+            getOrCreatePassphraseWithoutReset(context)
+        } catch (e: Exception) {
+            // Keystore key missing/invalidated (e.g. partial data clear) — local txn data is
+            // disposable/synced to PMS, so recover by re-keying rather than failing to open the DB.
+            // The old DB file is encrypted under the now-unrecoverable DEK, so it must be
+            // deleted too — otherwise SQLCipher would fail to open it with the new passphrase.
+            logger.e("Failed to unwrap DEK, re-keying database", e, event = LogEvent.DB_KEY_ROTATE_FAILED)
+            val prefs = SecurePreferences(context, PREFS_NAME)
+            prefs.clear()
+            context.deleteDatabase(DATABASE_NAME)
+            generateAndBootstrapWrapDek(prefs)
+        }
+    }
 
+    /**
+     * For callers that must never wipe the DB (the audit key): same as [getOrCreateDatabasePassphrase],
+     * but an unwrap failure throws instead of re-keying and deleting the database.
+     */
+    fun getOrCreatePassphraseWithoutReset(context: Context): ByteArray = synchronized(lock) {
+        val prefs = SecurePreferences(context, PREFS_NAME)
         val wrappedB64 = prefs.getString(KEY_DEK_WRAPPED)
         val kekId = prefs.getString(KEY_KEK_ID)
-
         if (wrappedB64 != null && kekId != null) {
-            return try {
-                KeystoreAesGcm.unwrap(aliasFor(kekId), Base64.decode(wrappedB64, Base64.NO_WRAP))
-            } catch (e: Exception) {
-                // Keystore key missing/invalidated (e.g. partial data clear) — local txn data is
-                // disposable/synced to PMS, so recover by re-keying rather than failing to open the DB.
-                // The old DB file is encrypted under the now-unrecoverable DEK, so it must be
-                // deleted too — otherwise SQLCipher would fail to open it with the new passphrase.
-                logger.e("Failed to unwrap DEK, re-keying database", e, event = LogEvent.DB_KEY_ROTATE_FAILED)
-                prefs.clear()
-                context.deleteDatabase(DATABASE_NAME)
-                generateAndBootstrapWrapDek(prefs)
-            }
+            return KeystoreAesGcm.unwrap(aliasFor(kekId), Base64.decode(wrappedB64, Base64.NO_WRAP))
         }
-
         return generateAndBootstrapWrapDek(prefs)
     }
 
