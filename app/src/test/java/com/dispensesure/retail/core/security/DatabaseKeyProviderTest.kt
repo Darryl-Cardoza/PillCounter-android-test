@@ -103,7 +103,7 @@ class DatabaseKeyProviderTest {
         stubPrefs(wrapped = pcwrpB64(1), kekId = "local-bootstrap")
         every { KeystoreAesGcm.unwrapPcwrp(any(), any()) } returns ByteArray(32)
 
-        DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(context)
+        DatabaseKeyProvider.getOrCreateDatabasePassphrase(context)
 
         verify(exactly = 0) { KeystoreAesGcm.unwrap(any(), any()) }
         verify(exactly = 0) { anyConstructed<SecurePreferences>().putString("dek_wrapped", any(), any()) }
@@ -336,38 +336,6 @@ class DatabaseKeyProviderTest {
         DatabaseKeyProvider.rotateKekIfNewer(context, kekInfo)
 
         verify(exactly = 0) { KeystoreAesGcm.importKeystoreKey(any(), any()) }
-    }
-
-    // ---- getOrCreatePassphraseWithoutReset: audit key path, never wipes ----
-
-    @Test
-    fun `no-reset getter returns the stored DEK`() {
-        val dek = ByteArray(32) { it.toByte() }
-        stubPrefs(wrapped = pcwrpB64(1), kekId = "local-bootstrap")
-        every { KeystoreAesGcm.unwrapPcwrp("com.dispensesure.retail.dek_bootstrap_kek", any()) } returns dek
-
-        assertArrayEquals(dek, DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(context))
-    }
-
-    @Test
-    fun `no-reset getter creates a DEK when none is stored`() {
-        stubPrefs(wrapped = null, kekId = null)
-        every { KeystoreAesGcm.wrapPcwrp(any(), any()) } answers { secondArg() }
-
-        assertEquals(32, DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(context).size)
-        verify(exactly = 1) { anyConstructed<SecurePreferences>().putString("dek_kek_id", "local-bootstrap") }
-    }
-
-    @Test
-    fun `no-reset getter throws on unwrap failure and never wipes`() {
-        stubPrefs(wrapped = pcwrpB64(1), kekId = "local-bootstrap")
-        every { KeystoreAesGcm.unwrapPcwrp(any(), any()) } throws IllegalStateException("Keystore key not found")
-
-        assertThrows(IllegalStateException::class.java) {
-            DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(context)
-        }
-        verify(exactly = 0) { anyConstructed<SecurePreferences>().clear() }
-        verify(exactly = 0) { context.deleteDatabase(any()) }
     }
 
     // ---- KEK algorithm and currentWrap ----

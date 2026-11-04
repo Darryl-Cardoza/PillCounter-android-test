@@ -65,10 +65,10 @@ object DatabaseKeyProvider {
     }
 
     /**
-     * For callers that must never wipe the DB (the audit key): same as [getOrCreateDatabasePassphrase],
-     * but an unwrap failure throws instead of re-keying and deleting the database.
+     * The stored DEK, or a new one on first use. An unwrap failure throws;
+     * [getOrCreateDatabasePassphrase] catches it and re-keys.
      */
-    fun getOrCreatePassphraseWithoutReset(context: Context): ByteArray = synchronized(lock) {
+    private fun getOrCreatePassphraseWithoutReset(context: Context): ByteArray = synchronized(lock) {
         val prefs = SecurePreferences(context, PREFS_NAME)
         migrateLegacyWrap(prefs)
         val wrappedB64 = prefs.getString(KEY_DEK_WRAPPED)
