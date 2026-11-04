@@ -207,7 +207,7 @@ class AuditLoggerTest {
     @Test
     fun `logOutsideTour drops events while the tour runs`() {
         val auditLogger = createLogger()
-        val tourEvent = DeviceIntegrityCheckFailed(listOf("TOUR"), emptyList(), "unknown", emptyList())
+        val tourEvent = DeviceIntegrityCheckFailed(listOf("TOUR"), emptyList(), "unknown")
         FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, bucketsEnabled = true)
         try {
             auditLogger.logOutsideTour(tourEvent)
