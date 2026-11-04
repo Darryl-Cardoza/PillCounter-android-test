@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import app.cash.turbine.test
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.AuthErrorCode
+import com.dispensesure.retail.core.audit.model.OtpVerifyFailed
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.common.NetworkUtils
@@ -60,6 +63,7 @@ class VerifyPinViewModelTest {
     private lateinit var viewModel: VerifyPinViewModel
 
     private val email = "user@test.com"
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
     private val otp = "123456"
     private val testDeviceKey = "test-device-key"
 
@@ -89,7 +93,10 @@ class VerifyPinViewModelTest {
 
         every { context.getString(any()) } returns "msg"
 
-        viewModel = VerifyPinViewModel(repository, context, prefs, deviceKeyProvider, sessionHealthController)
+        viewModel = VerifyPinViewModel(
+            repository, context, prefs, deviceKeyProvider, sessionHealthController,
+            auditLogger
+        )
     }
 
     @After
@@ -253,6 +260,7 @@ class VerifyPinViewModelTest {
         coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
         verify(exactly = 0) { prefs.setLoggedInEmail(any()) }
         verify(exactly = 0) { prefs.setRegion(any()) }
+        verify { auditLogger.log(OtpVerifyFailed(email, null, AuthErrorCode.UNSUPPORTED_REGION)) }
     }
 
     @Test
@@ -345,6 +353,7 @@ class VerifyPinViewModelTest {
         assertTrue(state is VerifyPinUiState.Error)
         assertEquals("server-unavailable", (state as VerifyPinUiState.Error).message)
         coVerify(exactly = 0) { repository.verifyPin(any(), any(), any(), any()) }
+        verify { auditLogger.log(OtpVerifyFailed(email, null, AuthErrorCode.DEVICE_KEY_UNAVAILABLE)) }
     }
 
     // ─────────────── failure: mapExceptionToUserMessage branches ───────────────

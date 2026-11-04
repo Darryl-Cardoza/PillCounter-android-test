@@ -223,7 +223,7 @@ class UnsyncedTransactionViewModelTest {
             connectionState.value = true
             advanceUntilIdle()
 
-            verify(exactly = 1) { stockHl7Repository.resendPendingBatches() }
+            verify(exactly = 1) { stockHl7Repository.sendPendingBatches() }
             // touch the vm so it is not flagged unused.
             assertTrue(vm.unsyncedTransactionUiState.value.dispenseList.isEmpty())
         }
@@ -234,7 +234,7 @@ class UnsyncedTransactionViewModelTest {
             val vm = createViewModel()
             advanceUntilIdle()
 
-            verify(exactly = 0) { stockHl7Repository.resendPendingBatches() }
+            verify(exactly = 0) { stockHl7Repository.sendPendingBatches() }
             assertTrue(vm.unsyncedTransactionUiState.value.batchList.isEmpty())
         }
 }

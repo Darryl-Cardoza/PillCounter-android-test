@@ -1,6 +1,12 @@
 package com.dispensesure.retail.feature.dashboard.presentation.viewmodel
 
 import android.util.Log
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.CertPinChoice
+import com.dispensesure.retail.core.audit.model.DataPurged
+import com.dispensesure.retail.core.audit.model.PmsCertPinMismatch
+import com.dispensesure.retail.core.audit.model.ServerConfigChanged
+import com.dispensesure.retail.core.audit.model.ServerSetting
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.ApiResponse
@@ -9,6 +15,7 @@ import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
@@ -161,7 +168,10 @@ class DashboardViewModelTest {
         mockk(relaxed = true),
         testDispatcher,
         regionProvider,
+        auditLogger,
     )
+
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
 
     // ─────────────────────────────── helpers ───────────────────────────────
 
@@ -292,7 +302,7 @@ class DashboardViewModelTest {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        vm.clearPmsCertPin()
+        vm.clearPmsCertPin(CertPinChoice.CONFIRM)
 
         verify(exactly = 1) { hl7ServiceManager.clearPmsCertPin(hl7EventHandler) }
     }
@@ -303,7 +313,19 @@ class DashboardViewModelTest {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        assertFalse(vm.clearPmsCertPin())
+        assertFalse(vm.clearPmsCertPin(CertPinChoice.CONFIRM))
+    }
+
+    @Test
+    fun `clearPmsCertPin logs the old fingerprint and the choice once cleared`() = runTest(testDispatcher) {
+        every { hl7ServiceManager.pinnedPmsFingerprint() } returns "AB:CD"
+        every { hl7ServiceManager.clearPmsCertPin(hl7EventHandler) } returns true
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.clearPmsCertPin(CertPinChoice.CANCEL)
+
+        verify { auditLogger.log(PmsCertPinMismatch(oldFingerprint = "AB:CD", choice = CertPinChoice.CANCEL)) }
     }
 
     @Test
@@ -852,6 +874,38 @@ class DashboardViewModelTest {
         assertFalse(vm.uiState.value.isLoadingUserDetail)
         // no persistence because data was null (saveUserId only runs in the non-null branch).
         verify(exactly = 0) { preferenceHelper.saveUserId(any()) }
+    }
+
+    @Test
+    fun `synced cleanup leaves out a txn that was already gone`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        every { preferenceHelper.isAllowLocalStorage() } returns false
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail()))
+        coEvery { dispenseTxnDao.getSyncedDispenses() } returns listOf(DispenseTxnEntity(txnId = 1L, status = CountStatus.COMPLETED), DispenseTxnEntity(txnId = 2L, status = CountStatus.COMPLETED))
+        coEvery { dispenseTxnDao.deleteTransaction(1L) } returns 0
+        coEvery { dispenseTxnDao.deleteTransaction(2L) } returns 1
+
+        createViewModel()
+        advanceUntilIdle()
+
+        verify { auditLogger.log(match { it is DataPurged && it.txnIds == listOf(2L) && it.count == 1 }) }
+    }
+
+    @Test
+    fun `fetchUserDetail with a claimed terminal that has no id logs no terminal change`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        every { preferenceHelper.getSelectedTerminalId() } returns "t1"
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-A"
+        val terminals = listOf(Terminal(terminalId = null, terminalName = "T1", isActive = true, deviceKey = "device-A"))
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail(terminals = terminals)))
+
+        createViewModel()
+        advanceUntilIdle()
+
+        verify(exactly = 0) { auditLogger.log(match { it is ServerConfigChanged && it.setting == ServerSetting.TERMINAL }) }
+        verify(exactly = 0) { preferenceHelper.saveSelectedTerminalId(any()) }
     }
 
     @Test

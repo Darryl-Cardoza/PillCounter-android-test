@@ -2,6 +2,14 @@ package com.dispensesure.retail.feature.hl7.presentation
 
 import android.content.Context
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DispenseTxnCreated
+import com.dispensesure.retail.core.audit.model.DispenseTxnUpdated
+import com.dispensesure.retail.core.audit.model.OrderCancelled
+import com.dispensesure.retail.core.audit.model.OrderDiscontinued
+import com.dispensesure.retail.core.audit.model.OrderHeld
+import com.dispensesure.retail.core.audit.model.OrderReleased
+import com.dispensesure.retail.core.audit.model.TxnSource
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
@@ -35,6 +43,7 @@ class Hl7OrderProcessor @Inject constructor(
     private val notifier: Hl7Notifier,
     private val dispenseHl7Repository: DispenseHl7Repository,
     private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
 ) {
 
     private val logger = AppLogger("Hl7OrderProcessor")
@@ -129,6 +138,7 @@ class Hl7OrderProcessor @Inject constructor(
             )
             txnId = dispenseTxnDao.upsertPreservingId(txn)
         }
+        logTxnCreatedOrUpdated(txnId, order, hl7Ndc, targetCount, updatedExisting = existing != null)
 
         dispenseHl7Repository.insertZinContainerDetails(txnId, message)
 
@@ -136,6 +146,30 @@ class Hl7OrderProcessor @Inject constructor(
             title = context.getString(R.string.hl7_notification_new_rx_title),
             message = context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), hl7DrugName, targetCount),
             dispenseTxnId = txnId,
+        )
+    }
+
+    private fun logTxnCreatedOrUpdated(txnId: Long, order: OrderGroup, ndc: String, targetCount: Int, updatedExisting: Boolean) {
+        val messageId = order.messageControlId.takeIf { it.isNotBlank() }
+        auditLogger.log(
+            if (updatedExisting) {
+                DispenseTxnUpdated(
+                    txnId = txnId,
+                    messageId = messageId,
+                    ndc = ndc,
+                    targetQty = targetCount,
+                    priority = order.priority.name
+                )
+            } else {
+                DispenseTxnCreated(
+                    txnId = txnId,
+                    source = TxnSource.PMS,
+                    messageId = messageId,
+                    ndc = ndc,
+                    targetQty = targetCount,
+                    priority = order.priority.name
+                )
+            }
         )
     }
 
@@ -224,6 +258,7 @@ class Hl7OrderProcessor @Inject constructor(
             )
             txnId = dispenseTxnDao.upsertPreservingId(txn)
         }
+        logTxnCreatedOrUpdated(txnId, order, hl7Ndc, targetCount, updatedExisting = existing != null)
 
         dispenseHl7Repository.insertZinContainerDetails(txnId, message)
 
@@ -236,22 +271,29 @@ class Hl7OrderProcessor @Inject constructor(
 
     private suspend fun handleCancel(rxNo: String) {
         logger.i("ORC|CA for rxNo=$rxNo — soft-deleting transaction")
-        dispenseTxnDao.softDeleteByRxNo(rxNo)
+        // The audit event names the cancelled txns, never the Rx itself.
+        val cancelledTxnIds = dispenseTxnDao.cancelActiveTxnsByRxNo(rxNo)
+        if (cancelledTxnIds.isNotEmpty()) auditLogger.log(OrderCancelled(txnIds = cancelledTxnIds))
     }
 
     private suspend fun handleHold(orderId: String) {
         logger.i("ORC|HD for orderId=$orderId — marking ON_HOLD")
-        dispenseTxnDao.updateStatusByOrderIdIfPartial(orderId, CountStatus.ON_HOLD)
+        val rowsChanged = dispenseTxnDao.updateStatusByOrderIdIfPartial(orderId, CountStatus.ON_HOLD)
+        if (rowsChanged > 0) auditLogger.log(OrderHeld(orderId = orderId, rowsChanged = rowsChanged))
     }
 
     private suspend fun handleRelease(orderId: String) {
         logger.i("ORC|RL for orderId=$orderId — restoring to PARTIAL")
-        dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold(orderId, CountStatus.PARTIAL)
+        val release = dispenseTxnDao.releaseOrder(orderId)
+        if (release.rowsChanged > 0) {
+            auditLogger.log(OrderReleased(orderId = orderId, oldStatus = release.oldStatus?.name, rowsChanged = release.rowsChanged))
+        }
     }
 
     private suspend fun handleDiscontinue(orderId: String) {
         logger.i("ORC|DC for orderId=$orderId — soft-deleting (discontinued)")
-        dispenseTxnDao.softDeleteByOrderId(orderId)
+        val rowsChanged = dispenseTxnDao.softDeleteByOrderId(orderId)
+        if (rowsChanged > 0) auditLogger.log(OrderDiscontinued(orderId = orderId, rowsChanged = rowsChanged))
     }
 
     private suspend fun resolveDrug(ndc: String, fallbackName: String): DrugMasterEntity? {

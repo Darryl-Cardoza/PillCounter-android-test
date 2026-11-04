@@ -5,6 +5,14 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DispenseResumed
+import com.dispensesure.retail.core.audit.model.DispenseTxnCreated
+import com.dispensesure.retail.core.audit.model.ResumeSource
+import com.dispensesure.retail.core.audit.model.RxScanned
+import com.dispensesure.retail.core.audit.model.SubstituteAccepted
+import com.dispensesure.retail.core.audit.model.TxnSource
+import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
@@ -17,6 +25,7 @@ import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dispense.data.ContainerOutcome
 import com.dispensesure.retail.feature.dispense.data.ContainerVerifier
 import com.dispensesure.retail.feature.dispense.data.DispenseFlowRepository
+import com.dispensesure.retail.feature.dispense.data.DispenseStepResolver
 import com.dispensesure.retail.feature.dispense.data.RxLabelResolver
 import com.dispensesure.retail.feature.dispense.data.RxScanOutcome
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseFlowAction
@@ -66,6 +75,8 @@ class DispenseFlowViewModel @Inject constructor(
     private val rxLabelResolver: RxLabelResolver,
     private val containerVerifier: ContainerVerifier,
     private val dispenseFlowRepository: DispenseFlowRepository,
+    private val auditLogger: AuditLogger,
+    private val dispenseStepResolver: DispenseStepResolver,
 ) : ViewModel() {
 
     private val logger = AppLogger("DispenseFlowVM")
@@ -156,6 +167,8 @@ class DispenseFlowViewModel @Inject constructor(
                     return@launch
                 }
                 val drug = dispenseFlowRepository.loadDrug(txn.drugId)
+                // This entry always lands on the container scan, whatever the order's progress.
+                auditLogger.logOutsideTour(DispenseResumed(txn.txnId, ResumeSource.NOTIFICATION, StepState.SCAN.name))
                 _uiState.update {
                     it.withOrder(txn, drug).copy(stage = DispenseStage.PRE_NDC, isResolvingEntry = false)
                 }
@@ -186,6 +199,7 @@ class DispenseFlowViewModel @Inject constructor(
                 }
                 dispenseFlowRepository.clearGlovesPresent(txnId)
                 val drug = dispenseFlowRepository.loadDrug(txn.drugId)
+                logResumed(txn, drug, ResumeSource.QUEUE)
 
                 if (txn.isNdcVerified == true) {
                     // RX + container both confirmed — skip straight to pill counting.
@@ -286,6 +300,12 @@ class DispenseFlowViewModel @Inject constructor(
         dispenseFlowRepository.clearGlovesPresent(txnId)
         val ndcAlreadyVerified = existingTxn.isNdcVerified == true
         val targetStage = if (ndcAlreadyVerified) DispenseStage.COUNTING else DispenseStage.PRE_NDC
+        // Container already scanned: the label only reopens the order. Otherwise the verify sheet is shown.
+        if (ndcAlreadyVerified) {
+            logResumed(existingTxn, drug, ResumeSource.RX_SCAN)
+        } else {
+            auditLogger.logOutsideTour(RxScanned(txnId, labelNdc = scannedLabel.ndcNo, qty = scannedLabel.qty?.toIntOrNull()))
+        }
         _uiState.update {
             it.withOrder(existingTxn, drug).copy(
                 isLoading = false,
@@ -310,6 +330,8 @@ class DispenseFlowViewModel @Inject constructor(
     private fun showStandaloneRxSheet(outcome: RxScanOutcome.Standalone) {
         val draft = outcome.draft
         val drug = outcome.drug
+        // No order exists until Proceed, so no txn id; the label's NDC is the matched drug's.
+        auditLogger.logOutsideTour(RxScanned(txnId = null, labelNdc = drug.ndc, qty = draft.targetCount))
         // Every field is assigned outright, never falling back to the last scan's value.
         _uiState.update {
             it.copy(
@@ -400,6 +422,16 @@ class DispenseFlowViewModel @Inject constructor(
             FtueController.track(viewModelScope.launch {
                 try {
                     val txnId = dispenseFlowRepository.createStandaloneTxn(draft, preferenceHelper.getLocalId())
+                    auditLogger.logOutsideTour(
+                        DispenseTxnCreated(
+                            txnId = txnId,
+                            source = TxnSource.STANDALONE,
+                            messageId = null,
+                            ndc = state.ndc,
+                            targetQty = draft.targetCount,
+                            priority = null
+                        )
+                    )
                     _uiState.update { it.copy(stage = DispenseStage.PRE_NDC, txnId = txnId) }
                     logger.i("[HAZARDOUS] Standalone RX confirmed: rx=${draft.rxNo} drugId=${draft.drugId} isHazardous=${state.isHazardous} txn=$txnId → PRE_NDC")
                 } catch (e: CancellationException) {
@@ -621,6 +653,9 @@ class DispenseFlowViewModel @Inject constructor(
             firstBottle = state.pendingFirstBottle,
         )
         if (!isVerified) return
+        if (isSubstitute) {
+            auditLogger.logOutsideTour(SubstituteAccepted(txnId, expectedNdc = state.hl7ExpectedNdc ?: state.ndc, scannedNdc = state.ndcScannedValue))
+        }
         _uiState.update { it.copy(stage = DispenseStage.COUNTING, pendingFirstBottle = null) }
         logger.i("[HAZARDOUS] NDC auto-confirmed: txn=$txnId substitute=$isSubstitute isHazardous=${state.isHazardous} → COUNTING")
     }
@@ -802,6 +837,7 @@ class DispenseFlowViewModel @Inject constructor(
                 val txn = dispenseFlowRepository.loadTxn(txnId) ?: return@launch
                 dispenseFlowRepository.clearGlovesPresent(txnId)
                 val drug = dispenseFlowRepository.loadDrug(txn.drugId)
+                logResumed(txn, drug, ResumeSource.QUEUE)
                 val targetStage = if (txn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC
                 _uiState.update { it.withOrder(txn, drug).copy(stage = targetStage) }
             } catch (e: CancellationException) {
@@ -811,6 +847,12 @@ class DispenseFlowViewModel @Inject constructor(
                 _effects.trySend(DispenseFlowEffect.GenericError)
             }
         }
+    }
+
+    // Logs the reopened order with the step it lands on, the same one the count screen picks.
+    private suspend fun logResumed(txn: DispenseTxnEntity, drug: DrugMasterEntity?, source: ResumeSource) {
+        val step = dispenseStepResolver.resumeStep(txn.txnId, txn.isNdcVerified == true, txn.workflowStep, drug?.drugType)
+        auditLogger.logOutsideTour(DispenseResumed(txn.txnId, source, step.name))
     }
 
     private fun observeDispenseQueue() {

@@ -40,7 +40,7 @@ class OperatorNameProviderTest {
 
     /** Wires the session flow plus a resolvable logged-in account. */
     private fun givenAccount() {
-        every { sessionLockController.verifiedFaceProfileId } returns verifiedId
+        every { sessionLockController.operatorProfileId } returns verifiedId
         every { preferenceHelper.getLocalId() } returns 7L
         coEvery { userDao.getByLocalId(7L) } returns account
     }
@@ -96,7 +96,7 @@ class OperatorNameProviderTest {
 
     @Test
     fun `returns nulls when there is no verified face and no resolvable account`() = runTest {
-        every { sessionLockController.verifiedFaceProfileId } returns verifiedId
+        every { sessionLockController.operatorProfileId } returns verifiedId
         verifiedId.value = null
         every { preferenceHelper.getLocalId() } returns 0L
 
@@ -133,6 +133,33 @@ class OperatorNameProviderTest {
         coEvery { faceProfileDao.getById(1L) } returns face(1L, "Bruce", "Wayne", enabled = false)
 
         assertEquals("Jane", provider.observe().first().firstName)
+    }
+
+    @Test
+    fun `nameFor uses the given face profile even when it is switched off`() = runTest {
+        coEvery { faceProfileDao.getById(1L) } returns face(1L, "Bruce", "Wayne", enabled = false)
+
+        assertEquals(OperatorName("Bruce", "Wayne"), provider.nameFor(1L, 7L))
+    }
+
+    @Test
+    fun `nameFor with a deleted face profile gives no name, not the account`() = runTest {
+        givenAccount()
+        coEvery { faceProfileDao.getById(1L) } returns null
+
+        assertEquals(OperatorName(null, null), provider.nameFor(1L, 7L))
+    }
+
+    @Test
+    fun `nameFor with no face id uses the account`() = runTest {
+        givenAccount()
+
+        assertEquals(OperatorName("Jane", "Doe"), provider.nameFor(null, 7L))
+    }
+
+    @Test
+    fun `nameFor with no face id and no account gives no name`() = runTest {
+        assertEquals(OperatorName(null, null), provider.nameFor(null, 0L))
     }
 
     @Test

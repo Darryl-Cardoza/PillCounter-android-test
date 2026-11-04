@@ -35,7 +35,10 @@ import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.audit.DeviceIntegrityAuditor
+import com.dispensesure.retail.core.audit.model.SessionEndReason
+import com.dispensesure.retail.core.audit.model.SessionEnded
 import com.dispensesure.retail.core.auth.AuthEvent
 import com.dispensesure.retail.core.auth.AuthEventBus
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
@@ -125,6 +128,9 @@ class MainActivity : ComponentActivity() {
     lateinit var connectivityCallback: ConnectivityCallback
 
     @Inject
+    lateinit var auditLogger: AuditLogger
+
+    @Inject
     lateinit var deviceIntegrityAuditor: DeviceIntegrityAuditor
 
     private lateinit var navController: NavController
@@ -189,7 +195,7 @@ class MainActivity : ComponentActivity() {
             // Runs first so the face lock and permission chain see the logged-out state.
             // Skipped for notification taps, which keep the user in the app.
             if (!intent.getBooleanExtra(EXTRA_OPENED_FROM_NOTIFICATION, false)) {
-                clearSessionIfNotRemembered(preferenceHelper)
+                clearSessionIfNotRemembered(preferenceHelper, ::logSessionEnded)
             }
             sessionLockController.onAppLaunch()
         }
@@ -307,7 +313,9 @@ class MainActivity : ComponentActivity() {
                     ) {
                         navController = rememberNavController()
                         val preferenceHelper = remember { PreferenceHelper(this) }
-                        val startDestination = remember { resolveStartDestinationAndClearIfExpired(preferenceHelper) }
+                        val startDestination = remember {
+                            resolveStartDestinationAndClearIfExpired(preferenceHelper, ::logSessionEnded)
+                        }
                         // A local logout (Remember me off, offline expiry) doesn't stop HL7, and the
                         // settings fetch only stops it when online. Stop it here, with no network needed.
                         LaunchedEffect(Unit) {
@@ -330,7 +338,7 @@ class MainActivity : ComponentActivity() {
                                     val healthState by sessionHealthController.state.collectAsStateWithLifecycle()
                                     LaunchedEffect(healthState) {
                                         if (healthState == HealthState.EXPIRED) {
-                                            performLogoutTeardown()
+                                            performLogoutTeardown(SessionEndReason.OFFLINE_LIMIT_REACHED)
                                             sessionHealthController.resetAfterExpiry()
                                         }
                                     }
@@ -338,7 +346,7 @@ class MainActivity : ComponentActivity() {
                                     LaunchedEffect(Unit) {
                                         authEventBus.events.collect { event ->
                                             if (event is AuthEvent.SessionExpired) {
-                                                performLogoutTeardown()
+                                                performLogoutTeardown(SessionEndReason.REFRESH_REJECTED)
                                             }
                                         }
                                     }
@@ -543,7 +551,7 @@ class MainActivity : ComponentActivity() {
      * would be jarring. Full-logout path in AppNavGraph.onLogOut keeps the settings-reset
      * call. If that assumption ever changes, add the call here too.
      */
-    private fun performLogoutTeardown() {
+    private fun performLogoutTeardown(reason: SessionEndReason) {
         if (!sessionHealthController.beginTeardown()) return
         // currentDestination?.route is always a leaf (login, otp, …); the auth graph route
         // ("auth") only appears in the destination's parent. Walk the hierarchy so a second
@@ -556,9 +564,11 @@ class MainActivity : ComponentActivity() {
         }
         FtueController.end()
         try {
+            // Closes the offline period first, so it is logged under the user who is leaving.
+            sessionHealthController.markLoggedOut()
+            logSessionEnded(reason)
             preferenceHelper.clearTokens()
             preferenceHelper.setUserLoggedIn(false)
-            sessionHealthController.markLoggedOut()
             LoggerConfig.newSession()
             sessionLockController.unlock()
             if (::navController.isInitialized) {
@@ -570,6 +580,12 @@ class MainActivity : ComponentActivity() {
         } finally {
             sessionHealthController.endTeardown()
         }
+    }
+
+    // Logged before LoggerConfig.newSession(), so SESSION_ENDED belongs to the session it ends.
+    private fun logSessionEnded(reason: SessionEndReason) {
+        auditLogger.log(SessionEnded(userId = preferenceHelper.getUserId(), reason = reason))
+        auditLogger.onSessionEnded()
     }
 
     override fun onNewIntent(intent: Intent) {

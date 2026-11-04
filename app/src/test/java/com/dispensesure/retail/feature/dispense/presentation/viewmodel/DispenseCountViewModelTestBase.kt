@@ -1,6 +1,7 @@
 package com.dispensesure.retail.feature.dispense.presentation.viewmodel
 
 import android.app.Application
+import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.UserDao
@@ -14,6 +15,7 @@ import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dispense.data.DispenseCountRepository
+import com.dispensesure.retail.feature.dispense.data.DispenseStepResolver
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountEffect
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountUiState
@@ -55,6 +57,7 @@ abstract class DispenseCountViewModelTestBase {
     protected val locationProvider: LocationProvider = mockk(relaxed = true)
     protected val modelLoader: PillDetectionModelLoader = mockk(relaxed = true)
     protected val performanceLogger: PerformanceLogger = mockk(relaxed = true)
+    protected val auditLogger: AuditLogger = mockk(relaxed = true)
 
     protected lateinit var engineFactory: TestEngineFactory
     protected lateinit var viewModel: DispenseCountViewModel
@@ -95,6 +98,8 @@ abstract class DispenseCountViewModelTestBase {
             dispenseCountRepository = dispenseCountRepository,
             engineFactory = engineFactory,
             regionProvider = regionProvider,
+            auditLogger = auditLogger,
+            dispenseStepResolver = DispenseStepResolver(preferenceHelper, regionProvider, dispenseCountRepository),
         )
     }
 

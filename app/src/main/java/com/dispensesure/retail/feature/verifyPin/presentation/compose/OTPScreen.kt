@@ -198,7 +198,7 @@ fun OTPScreen(
                 fontSize = responsiveSp(7.sp),
                 modifier = if (!isTimerRunning) {
                     Modifier.clickable {
-                        loginViewModel.login(userEmail)
+                        loginViewModel.login(userEmail, isResend = true)
                         secondsRemaining = timerDuration
                         isTimerRunning = true
                     }
@@ -213,7 +213,7 @@ fun OTPScreen(
                 text = stringResource(R.string.verify),
                 onClick = {
                     if (isOtpComplete && !isVerifying) {
-                        viewModel.verifyPin(userEmail, otp)
+                        viewModel.verifyPin(userEmail, otp, rememberMe)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

@@ -3,6 +3,13 @@ package com.dispensesure.retail.feature.dashboard.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.CertPinChoice
+import com.dispensesure.retail.core.audit.model.DataPurged
+import com.dispensesure.retail.core.audit.model.PmsCertPinMismatch
+import com.dispensesure.retail.core.audit.model.PurgeReason
+import com.dispensesure.retail.core.audit.model.ServerConfigChanged
+import com.dispensesure.retail.core.audit.model.ServerSetting
 import com.dispensesure.retail.core.di.DefaultDispatcher
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.region.RegionProvider
@@ -91,6 +98,7 @@ class DashboardViewModel @Inject constructor(
     sessionLockController: SessionLockController,
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
     private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
 ) : ViewModel() {
 
     /** Logger instance for this ViewModel. */
@@ -111,8 +119,16 @@ class DashboardViewModel @Inject constructor(
     val isConnected: StateFlow<Boolean> = hl7EventHandler.connectionState
     val pmsCertMismatch: StateFlow<Boolean> = hl7EventHandler.pmsCertMismatch
 
-    /** @return false when the pin could not be cleared; the mismatch dialog stays up. */
-    fun clearPmsCertPin(): Boolean = hl7ServiceManager.clearPmsCertPin(hl7EventHandler)
+    /**
+     * @param choice Which dialog button cleared it, recorded on PMS_CERT_PIN_MISMATCH.
+     * @return false when the pin could not be cleared; the mismatch dialog stays up.
+     */
+    fun clearPmsCertPin(choice: CertPinChoice): Boolean {
+        val oldFingerprint = hl7ServiceManager.pinnedPmsFingerprint()
+        val cleared = hl7ServiceManager.clearPmsCertPin(hl7EventHandler)
+        if (cleared) auditLogger.log(PmsCertPinMismatch(oldFingerprint = oldFingerprint, choice = choice))
+        return cleared
+    }
 
     /** Closes the mismatch dialog even when the pin clear failed (Cancel must always close it). */
     fun dismissPmsCertMismatch() = hl7EventHandler.clearCertMismatch()
@@ -418,6 +434,7 @@ class DashboardViewModel @Inject constructor(
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.settings?.bucket ?: emptyList())
                             preferenceHelper.saveIsColorImageEnabled(payload.data?.settings?.isColorImageEnabled ?: true)
+                            logServerConfigChange(ServerSetting.HL7_ENABLED, preferenceHelper.isHl7Enabled(), entity.isHl7Enable)
                             preferenceHelper.setHl7Enabled(entity.isHl7Enable)
                             // Persist is_standalone so the RX-scan flow knows whether it may
                             // create dispense transactions locally (without waiting on PMS/HL7)
@@ -437,10 +454,15 @@ class DashboardViewModel @Inject constructor(
                                 ?.let { preferenceHelper.saveBarcodeRegex(it) }
                             // Persist allow_local_storage so the HL7 sync flow knows whether to
                             // delete a dispense txn once it is completed and synced with the PMS.
-                            preferenceHelper.setAllowLocalStorage(detail.settings?.allowLocalStorage ?: true)
+                            val allowLocalStorage = detail.settings?.allowLocalStorage ?: true
+                            logServerConfigChange(ServerSetting.ALLOW_LOCAL_STORAGE, preferenceHelper.isAllowLocalStorage(), allowLocalStorage)
+                            preferenceHelper.setAllowLocalStorage(allowLocalStorage)
                             // Persist bypass_ssl so HL7 MLLP connections know whether to skip
                             // TLS certificate verification for this pharmacy's PMS.
-                            detail.settings?.bypassSSL?.let { preferenceHelper.setBypassTlsEnabled(it) }
+                            detail.settings?.bypassSSL?.let {
+                                logServerConfigChange(ServerSetting.BYPASS_TLS, preferenceHelper.isBypassTlsEnabled(), it)
+                                preferenceHelper.setBypassTlsEnabled(it)
+                            }
                             // Persist hl7_message_spec so outbound HL7 messages are composed
                             // using the sending-application format the server has configured.
                             detail.settings?.hl7MessageSpec
@@ -448,11 +470,21 @@ class DashboardViewModel @Inject constructor(
                                 ?.let { preferenceHelper.saveHl7Format(Hl7Format.fromSendingApplication(it)) }
                             // Persist PMS connection info so the dispenser can reach the PMS
                             // over a static IP/port when the server has configured one.
-                            preferenceHelper.setUseStaticPmsConnection(detail.settings?.useStaticPmsConnection ?: false)
+                            val useStaticPmsConnection = detail.settings?.useStaticPmsConnection ?: false
+                            logServerConfigChange(
+                                ServerSetting.STATIC_PMS_CONNECTION,
+                                preferenceHelper.isUseStaticPmsConnection(),
+                                useStaticPmsConnection
+                            )
+                            preferenceHelper.setUseStaticPmsConnection(useStaticPmsConnection)
+                            logServerConfigChange(ServerSetting.PMS_IP, preferenceHelper.getPmsIP(), detail.settings?.pmsIP)
                             detail.settings?.pmsIP
                                 ?.let { preferenceHelper.savePmsIP(it) }
                                 ?: preferenceHelper.clearPmsIP()
-                            detail.settings?.pmsPort?.toIntOrNull()
+                            val serverPmsPort = detail.settings?.pmsPort?.toIntOrNull()
+                            // A missing port clears to 0, so 0 is the "none" value on both sides.
+                            logServerConfigChange(ServerSetting.PMS_PORT, preferenceHelper.getPmsPort(), serverPmsPort ?: 0)
+                            serverPmsPort
                                 ?.let { preferenceHelper.savePmsPort(it) }
                                 ?: preferenceHelper.clearPmsPort()
                             // When the server has now disallowed local storage, clean up dispense
@@ -490,6 +522,7 @@ class DashboardViewModel @Inject constructor(
 
                                 if (claimedTerminal != null) {
                                     claimedTerminal.terminalId?.let { id ->
+                                        logServerConfigChange(ServerSetting.TERMINAL, preferenceHelper.getSelectedTerminalId(), id)
                                         preferenceHelper.saveSelectedTerminalId(id)
                                     }
                                     claimedTerminal.terminalName?.let { name ->
@@ -604,6 +637,8 @@ class DashboardViewModel @Inject constructor(
             logger.d("allowLocalStorage=true — retaining synced transactions locally")
             return
         }
+        // Only rows actually deleted go on DATA_PURGED, even if a later one fails.
+        val purgedTxnIds = mutableListOf<Long>()
         try {
             val syncedTransactions = dispenseTxnDao.getSyncedDispenses()
             logger.d("allowLocalStorage=false — cleaning up ${syncedTransactions.size} synced transactions")
@@ -614,7 +649,7 @@ class DashboardViewModel @Inject constructor(
                 filesToDelete.addAll(dispenseTxnDao.getTransactionDetailsImages(txn.txnId))
 
                 // Delete transaction (cascade deletes details)
-                dispenseTxnDao.deleteTransaction(txn.txnId)
+                if (dispenseTxnDao.deleteTransaction(txn.txnId) > 0) purgedTxnIds.add(txn.txnId)
 
                 filesToDelete.forEach { path ->
                     val file = File(path)
@@ -627,7 +662,23 @@ class DashboardViewModel @Inject constructor(
             throw e
         } catch (e: Exception) {
             logger.e("Error cleaning up synced transactions", e, event = LogEvent.TRANSACTION_PURGE_FAILED)
+        } finally {
+            if (purgedTxnIds.isNotEmpty()) {
+                auditLogger.log(
+                    DataPurged(
+                        reason = PurgeReason.SYNCED_DATA_CLEANUP,
+                        count = purgedTxnIds.size,
+                        txnIds = purgedTxnIds.toList(),
+                        unsyncedIds = emptyList()
+                    )
+                )
+            }
         }
+    }
+
+    // One SERVER_CONFIG_CHANGED per value the server actually changed; most responses change nothing.
+    private fun logServerConfigChange(setting: ServerSetting, old: Any?, new: Any?) {
+        ServerConfigChanged.ifChanged(setting, old, new)?.let(auditLogger::log)
     }
 
     /** Resets the navigateToProfile flag after navigation. */

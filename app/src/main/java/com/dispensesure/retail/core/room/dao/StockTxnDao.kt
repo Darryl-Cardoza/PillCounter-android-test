@@ -152,6 +152,7 @@ interface StockTxnDao {
     @Query("DELETE FROM stock_txn WHERE drugId IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}')")
     suspend fun deleteByDemoDrug()
 
+    /** @return Rows deleted, recorded on LOCAL_DATA_CLEARED. */
     @Query("DELETE FROM stock_txn")
-    suspend fun deleteAll()
+    suspend fun deleteAll(): Int
 }

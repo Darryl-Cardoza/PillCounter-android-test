@@ -534,6 +534,10 @@ class HL7Service : Service() {
     /** Raw MLLP connection state — flips instantly, unlike [Hl7EventHandler.connectionState] which waits for [MllpConnectionManager]'s settle delay. */
     fun isPmsConnected(): Boolean = clientManager.isConnected()
 
+    /** The trusted PMS cert fingerprint, or null when none is pinned or TLS isn't set up yet. */
+    fun pinnedFingerprint(): String? =
+        if (::tlsFactory.isInitialized) runCatching { tlsFactory.pinnedFingerprint() }.getOrNull() else null
+
     /** @return false when the pin could not be cleared, so the caller keeps the mismatch state. */
     fun clearPmsCertPin(): Boolean {
         logger.i("clearPmsCertPin() — clearing stored TOFU pin and resuming discovery")

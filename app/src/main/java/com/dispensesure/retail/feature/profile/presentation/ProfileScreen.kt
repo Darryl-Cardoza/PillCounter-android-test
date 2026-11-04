@@ -91,6 +91,7 @@ private const val SEARCH_DEBOUNCE_MS = 300L
 @Composable
 fun ProfileScreen(
     navController: NavController,
+    onLogOut: () -> Unit,
     viewModel: ProfileViewModel = hiltViewModel(),
     fromRoute: String? = navController.previousBackStackEntry?.destination?.route
 ) {
@@ -240,6 +241,7 @@ fun ProfileScreen(
                         navController.navigate(AUTH_GRAPH_ROUTE) {
                             popUpTo(0) { inclusive = true }
                         }
+                        onLogOut()
                     }
                 }
 

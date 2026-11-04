@@ -5,6 +5,13 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.FaceProfileDeleted
+import com.dispensesure.retail.core.audit.model.FaceProfileEnrolled
+import com.dispensesure.retail.core.audit.model.FaceProfileStatusChanged
+import com.dispensesure.retail.core.audit.model.FaceVerified
+import com.dispensesure.retail.core.audit.model.FaceVerifyFailed
+import com.dispensesure.retail.core.audit.model.roundedMatchScore
 import com.dispensesure.retail.core.faceAuth.data.FaceProfileRepository
 import com.dispensesure.retail.core.faceAuth.logic.AutoCaptureController
 import com.dispensesure.retail.core.faceAuth.logic.FaceEngine
@@ -89,7 +96,8 @@ class FaceAuthViewModel @Inject constructor(
     private val sessionLockController: SessionLockController,
     private val preferenceHelper: PreferenceHelper,
     // One per enrollment, not per angle.
-    private val trackGate: FaceTrackContinuityGate
+    private val trackGate: FaceTrackContinuityGate,
+    private val auditLogger: AuditLogger
 ) : ViewModel() {
 
     private val logger = AppLogger.create<FaceAuthViewModel>()
@@ -120,6 +128,9 @@ class FaceAuthViewModel @Inject constructor(
 
     private var pendingFirstName: String = ""
     private var pendingLastName: String = ""
+
+    // Set when the user enrolls past the "already on file" warning; recorded on FACE_PROFILE_ENROLLED.
+    private var duplicateWarningOverridden = false
     private val capturedEmbeddings = mutableMapOf<FaceCaptureAngle, FloatArray>()
     private var pendingFrontBitmap: Bitmap? = null
 
@@ -139,6 +150,7 @@ class FaceAuthViewModel @Inject constructor(
     fun startRegistration(firstName: String, lastName: String) {
         pendingFirstName = firstName
         pendingLastName = lastName
+        duplicateWarningOverridden = false
         clearCaptureProgress()
         autoCaptureJob?.cancel()
         autoCaptureFrames = null
@@ -268,6 +280,7 @@ class FaceAuthViewModel @Inject constructor(
      */
     fun continueAfterDuplicateWarning() {
         if (_registrationState.value !is RegistrationState.DuplicateWarning) return
+        duplicateWarningOverridden = true
         _registrationState.value = RegistrationState.Capturing(
             nextPendingAngle() ?: FaceCaptureAngle.FRONT,
             capturedEmbeddings.size
@@ -290,13 +303,22 @@ class FaceAuthViewModel @Inject constructor(
             try {
                 val email = sessionEmailProvider()
                 val faceImagePath = pendingFrontBitmap?.let { saveFaceImage(it) }
-                faceProfileRepository.registerProfile(
+                val faceProfileId = faceProfileRepository.registerProfile(
                     firstName = pendingFirstName,
                     lastName = pendingLastName,
                     email = email,
                     embeddingsByAngle = capturedEmbeddings.toMap(),
                     now = System.currentTimeMillis(),
                     faceImagePath = faceImagePath
+                )
+                auditLogger.log(
+                    FaceProfileEnrolled(
+                        faceProfileId = faceProfileId,
+                        firstName = pendingFirstName,
+                        lastName = pendingLastName,
+                        enrolledByEmail = email,
+                        duplicateWarningOverridden = duplicateWarningOverridden
+                    )
                 )
                 _registrationState.value = RegistrationState.Enrolled
             } catch (e: CancellationException) {
@@ -361,6 +383,16 @@ class FaceAuthViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 faceProfileRepository.setEnabled(profile, enabled)
+                // Turning off the last enabled profile releases the lock (SessionLockController).
+                val lockReleased = !enabled && profiles.value.none { it.id != profile.id && it.isEnabled }
+                auditLogger.log(
+                    FaceProfileStatusChanged(
+                        faceProfileId = profile.id,
+                        oldEnabled = profile.isEnabled,
+                        newEnabled = enabled,
+                        lockReleased = lockReleased
+                    )
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -379,6 +411,14 @@ class FaceAuthViewModel @Inject constructor(
             try {
                 profile.faceImagePath?.let { path -> java.io.File(path).delete() }
                 faceProfileRepository.deleteProfile(profile)
+                auditLogger.log(
+                    FaceProfileDeleted(
+                        faceProfileId = profile.id,
+                        firstName = profile.firstName,
+                        lastName = profile.lastName,
+                        deletedByEmail = sessionEmailProvider()
+                    )
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -464,9 +504,17 @@ class FaceAuthViewModel @Inject constructor(
 
         val matchedId = result.faceProfileId
         if (matchedId == null) {
+            auditLogger.log(FaceVerifyFailed(bestScore = roundedMatchScore(result.bestScore)))
             _verifyState.value = VerifyState.NotRecognized
             return
         }
+        auditLogger.log(
+            FaceVerified(
+                faceProfileId = matchedId,
+                matchScore = roundedMatchScore(result.bestScore),
+                previousOperatorProfileId = sessionLockController.previousOperatorProfileId
+            )
+        )
         faceProfileRepository.markUsed(matchedId, System.currentTimeMillis())
         // Who the app reports as the operator until this session locks again.
         sessionLockController.onFaceVerified(matchedId)

@@ -2,12 +2,19 @@ package com.dispensesure.retail.feature.hl7.presentation
 
 import android.content.Context
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DispenseTxnCreated
+import com.dispensesure.retail.core.audit.model.DispenseTxnUpdated
+import com.dispensesure.retail.core.audit.model.OrderCancelled
+import com.dispensesure.retail.core.audit.model.OrderHeld
+import com.dispensesure.retail.core.audit.model.OrderReleased
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.dtos.OrderReleaseResult
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
@@ -69,8 +76,73 @@ class Hl7OrderProcessorTest {
         processor = Hl7OrderProcessor(
             context, dispenseTxnDao, preferenceHelper,
             DrugResolver(drugMasterDao, drugRepository, drugImageDownloader, regionProvider), notifier, dispenseHl7Repository,
-            regionProvider,
+            regionProvider, auditLogger,
         )
+    }
+
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
+
+    @Test
+    fun `HD logs the rows it changed`() = runTest {
+        coEvery { dispenseTxnDao.updateStatusByOrderIdIfPartial(ORDER_ID, CountStatus.ON_HOLD, any()) } returns 2
+
+        processor.process(Hl7OrderAction.Hold(ORDER_ID)).join()
+
+        verify { auditLogger.log(OrderHeld(orderId = ORDER_ID, rowsChanged = 2)) }
+    }
+
+    @Test
+    fun `RL logs the status it released from`() = runTest {
+        coEvery { dispenseTxnDao.releaseOrder(ORDER_ID, any()) } returns OrderReleaseResult(CountStatus.ON_HOLD, 1)
+
+        processor.process(Hl7OrderAction.Release(ORDER_ID)).join()
+
+        verify { auditLogger.log(OrderReleased(orderId = ORDER_ID, oldStatus = "ON_HOLD", rowsChanged = 1)) }
+    }
+
+    @Test
+    fun `RL that releases nothing logs nothing`() = runTest {
+        coEvery { dispenseTxnDao.releaseOrder(ORDER_ID, any()) } returns OrderReleaseResult(null, 0)
+
+        processor.process(Hl7OrderAction.Release(ORDER_ID)).join()
+
+        verify(exactly = 0) { auditLogger.log(any()) }
+    }
+
+    @Test
+    fun `HD that holds nothing logs nothing`() = runTest {
+        coEvery { dispenseTxnDao.updateStatusByOrderIdIfPartial(ORDER_ID, CountStatus.ON_HOLD, any()) } returns 0
+
+        processor.process(Hl7OrderAction.Hold(ORDER_ID)).join()
+
+        verify(exactly = 0) { auditLogger.log(any()) }
+    }
+
+    @Test
+    fun `DC that removes nothing logs nothing`() = runTest {
+        coEvery { dispenseTxnDao.softDeleteByOrderId(ORDER_ID, any()) } returns 0
+
+        processor.process(Hl7OrderAction.Discontinue(ORDER_ID)).join()
+
+        verify(exactly = 0) { auditLogger.log(any()) }
+    }
+
+    @Test
+    fun `CA for an unknown Rx logs nothing`() = runTest {
+        coEvery { dispenseTxnDao.cancelActiveTxnsByRxNo(RX) } returns emptyList()
+
+        processor.process(Hl7OrderAction.Cancel(RX)).join()
+
+        verify(exactly = 0) { auditLogger.log(any()) }
+    }
+
+    @Test
+    fun `CA logs the txns it cancelled`() = runTest {
+        coEvery { dispenseTxnDao.cancelActiveTxnsByRxNo(RX) } returns listOf(3L, 4L)
+
+        processor.process(Hl7OrderAction.Cancel(RX)).join()
+
+        verify { auditLogger.log(OrderCancelled(txnIds = listOf(3L, 4L))) }
     }
 
     // ───────────────────────── NW ─────────────────────────
@@ -97,6 +169,25 @@ class Hl7OrderProcessorTest {
         processor.process(newOrder(order("NW"))).join()
 
         verifyUpdatedInPlace()
+    }
+
+    @Test
+    fun `NW with no saved row logs DISPENSE_TXN_CREATED`() = runTest {
+        processor.process(newOrder(order("NW"))).join()
+
+        verify { auditLogger.log(match { it is DispenseTxnCreated && it.txnId == NEW_TXN_ID }) }
+        verify(exactly = 0) { auditLogger.log(match { it is DispenseTxnUpdated }) }
+    }
+
+    @Test
+    fun `NW with a saved PARTIAL row logs DISPENSE_TXN_UPDATED`() = runTest {
+        val savedRow = savedRow(CountStatus.PARTIAL, "0")
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow
+
+        processor.process(newOrder(order("NW"))).join()
+
+        verify { auditLogger.log(match { it is DispenseTxnUpdated && it.txnId == savedRow.txnId }) }
+        verify(exactly = 0) { auditLogger.log(match { it is DispenseTxnCreated }) }
     }
 
     @Test
@@ -295,9 +386,7 @@ class Hl7OrderProcessorTest {
     fun `RL uses the PARTIAL-or-ON_HOLD status update`() = runTest {
         processor.process(Hl7OrderAction.Release(ORDER_ID)).join()
 
-        coVerify(exactly = 1) {
-            dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold(ORDER_ID, CountStatus.PARTIAL, any())
-        }
+        coVerify(exactly = 1) { dispenseTxnDao.releaseOrder(ORDER_ID, any()) }
     }
 
     // ───────────────────────── helpers ─────────────────────────

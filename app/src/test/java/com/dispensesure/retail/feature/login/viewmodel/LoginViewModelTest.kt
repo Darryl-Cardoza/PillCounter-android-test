@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import app.cash.turbine.test
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.Logout
+import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.hl7.service.Hl7serviceHandler
 import com.dispensesure.retail.core.models.ValidationResult
 import com.dispensesure.retail.core.utils.common.NetworkUtils
@@ -25,6 +28,7 @@ import io.mockk.mockkObject
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
+import io.mockk.verifyOrder
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -60,6 +64,8 @@ class LoginViewModelTest {
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var serviceManager: Hl7serviceHandler
     private lateinit var viewModel: LoginViewModel
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
+    private val sessionHealthController = mockk<SessionHealthController>(relaxed = true)
 
     private val email = "user@test.com"
 
@@ -89,7 +95,10 @@ class LoginViewModelTest {
 
         every { context.getString(any()) } returns "msg"
 
-        viewModel = LoginViewModel(repository, validator, context, preferenceHelper, serviceManager)
+        viewModel = LoginViewModel(
+            repository, validator, context, preferenceHelper, serviceManager,
+            auditLogger, sessionHealthController
+        )
     }
 
     @After
@@ -392,6 +401,31 @@ class LoginViewModelTest {
 
         coVerify(exactly = 1) { AppLogger.flushBeforeLogout() }
         assertTrue(LoggerConfig.sessionId != before)
+    }
+
+    @Test
+    fun `server logout closes the offline period before LOGOUT`() = runTest {
+        coEvery { repository.logout("refresh") } returns Result.success(LogoutResponse())
+
+        viewModel.logout("refresh")
+        advanceUntilIdle()
+
+        verifyOrder {
+            sessionHealthController.markLoggedOut()
+            auditLogger.log(match { it is Logout })
+            auditLogger.onSessionEnded()
+        }
+    }
+
+    @Test
+    fun `local logout closes the offline period before LOGOUT`() = runTest {
+        viewModel.logLocalLogoutAndStartNewSession()
+
+        verifyOrder {
+            sessionHealthController.markLoggedOut()
+            auditLogger.log(match { it is Logout })
+            auditLogger.onSessionEnded()
+        }
     }
 
     @Test

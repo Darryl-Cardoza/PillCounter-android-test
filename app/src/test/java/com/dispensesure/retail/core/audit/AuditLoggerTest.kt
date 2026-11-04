@@ -6,11 +6,16 @@ import com.dispensesure.retail.core.audit.model.AuditResult
 import com.dispensesure.retail.core.audit.model.DeviceIntegrityCheckFailed
 import com.dispensesure.retail.core.audit.store.AuditLogFileStore
 import com.dispensesure.retail.core.audit.store.AuditSequenceCounter
+import com.dispensesure.retail.core.faceAuth.data.OperatorName
+import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourSection
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.spyk
@@ -21,6 +26,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import javax.crypto.spec.SecretKeySpec
 import javax.inject.Provider
@@ -45,12 +51,17 @@ class AuditLoggerTest {
     }
 
     private val preferenceHelper = mockk<PreferenceHelper>(relaxed = true).also {
+        every { it.isUserLoggedIn() } returns true
         every { it.getUserId() } returns "1042"
         every { it.getSelectedTerminalId() } returns "T-03"
+        every { it.getLocalId() } returns 42L
     }
     private val deviceKeyProvider = mockk<DeviceKeyProvider>().also { coEvery { it.getDeviceKey() } returns "dev-1" }
     private val sessionLockController = mockk<SessionLockController>().also {
-        every { it.verifiedFaceProfileId } returns MutableStateFlow(7L)
+        every { it.operatorProfileId } returns MutableStateFlow(7L)
+    }
+    private val operatorNameProvider = mockk<OperatorNameProvider>().also {
+        coEvery { it.nameFor(7L, 42L) } returns OperatorName("Asha", "Rao")
     }
     private var nextSeq = 0L
     private val sequenceCounter = mockk<AuditSequenceCounter>().also { every { it.next() } answers { ++nextSeq } }
@@ -59,10 +70,11 @@ class AuditLoggerTest {
 
     private fun createLogger(
         recordCipher: AuditRecordCipher = cipher,
-        sessionLockProvider: Provider<SessionLockController> = Provider { sessionLockController }
+        sessionLockProvider: Provider<SessionLockController> = Provider { sessionLockController },
+        nameProvider: Provider<OperatorNameProvider> = Provider { operatorNameProvider }
     ) = AuditLogger(
         fileStore, recordCipher, sequenceCounter, preferenceHelper, deviceKeyProvider,
-        sessionLockProvider, writerDispatcher
+        sessionLockProvider, nameProvider, writerDispatcher
     )
 
     private fun awaitUntil(description: String, condition: () -> Boolean) {
@@ -95,10 +107,72 @@ class AuditLoggerTest {
         assertEquals(LoggerConfig.sessionId, record.sessionId)
         assertEquals("1042", record.userId)
         assertEquals(null, record.email)
-        assertEquals(7L, record.operatorId)
+        assertEquals(7L, record.operatorProfileId)
         assertEquals("dev-1", record.deviceKey)
         assertEquals("T-03", record.terminalId)
         assertTrue(record.data.containsKey("failed_checks"))
+    }
+
+    @Test
+    fun `operator name comes from the same snapshot as the operator id`() {
+        createLogger().log(integrityEvent)
+        val record = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single()))
+        assertEquals(7L, record.operatorProfileId)
+        assertEquals("Asha Rao", record.operatorName)
+        coVerify { operatorNameProvider.nameFor(7L, 42L) }
+    }
+
+    @Test
+    fun `a name lookup that fails leaves only the name out`() {
+        coEvery { operatorNameProvider.nameFor(any(), any()) } throws IllegalStateException("db closed")
+        createLogger().log(integrityEvent)
+        val record = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single()))
+        assertEquals(7L, record.operatorProfileId)
+        assertEquals(null, record.operatorName)
+    }
+
+    @Test
+    fun `the user logged in at construction owns the first record even if logged out right after`() {
+        // Hold the writer thread so the logout lands before the writer could read the prefs.
+        val writerHeld = CountDownLatch(1)
+        writerDispatcher.executor.execute { writerHeld.await() }
+        val auditLogger = createLogger()
+        every { preferenceHelper.isUserLoggedIn() } returns false
+        writerHeld.countDown()
+        auditLogger.log(integrityEvent)
+        assertEquals("1042", AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).userId)
+    }
+
+    @Test
+    fun `logged out at start means records have no user`() {
+        every { preferenceHelper.isUserLoggedIn() } returns false
+        createLogger().log(integrityEvent)
+        val record = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single()))
+        assertEquals(null, record.userId)
+        assertEquals(null, record.email)
+    }
+
+    @Test
+    fun `session markers switch the user in call order`() {
+        every { preferenceHelper.isUserLoggedIn() } returns false
+        val auditLogger = createLogger()
+        auditLogger.log(integrityEvent)
+        auditLogger.onSessionStarted(userId = "9", email = "a@b.c")
+        auditLogger.log(integrityEvent)
+        auditLogger.onSessionEnded()
+        auditLogger.log(integrityEvent)
+
+        val userIds = awaitLines(3).map { AuditJson.decodeRecord(cipher.decrypt(it)).userId }
+        assertEquals(listOf(null, "9", null), userIds)
+    }
+
+    @Test
+    fun `email is kept only while the user id is unknown`() {
+        every { preferenceHelper.isUserLoggedIn() } returns false
+        val auditLogger = createLogger()
+        auditLogger.onSessionStarted(userId = null, email = "a@b.c")
+        auditLogger.log(integrityEvent)
+        assertEquals("a@b.c", AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).email)
     }
 
     @Test
@@ -128,6 +202,23 @@ class AuditLoggerTest {
         auditLogger.log(integrityEvent)
         // seq 1 was used by the dropped event, so the gap shows the loss.
         assertEquals(2L, AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).seq)
+    }
+
+    @Test
+    fun `logOutsideTour drops events while the tour runs`() {
+        val auditLogger = createLogger()
+        val tourEvent = DeviceIntegrityCheckFailed(listOf("TOUR"), emptyList(), "unknown")
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, bucketsEnabled = true)
+        try {
+            auditLogger.logOutsideTour(tourEvent)
+        } finally {
+            FtueController.end() // process-wide singleton: don't leak the tour into other tests
+        }
+        auditLogger.logOutsideTour(integrityEvent)
+
+        // Records are written in call order, so a kept tour event would be the first line.
+        val firstRecord = AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).first()))
+        assertEquals("[\"EMULATOR\"]", firstRecord.data["failed_checks"].toString())
     }
 
     @Test
@@ -182,6 +273,6 @@ class AuditLoggerTest {
     @Test
     fun `an operator id that cannot be read is left out`() {
         createLogger(sessionLockProvider = Provider { error("not ready") }).log(integrityEvent)
-        assertEquals(null, AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).operatorId)
+        assertEquals(null, AuditJson.decodeRecord(cipher.decrypt(awaitLines(1).single())).operatorProfileId)
     }
 }

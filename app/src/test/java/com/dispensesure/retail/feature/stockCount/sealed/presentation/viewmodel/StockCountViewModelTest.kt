@@ -3,6 +3,10 @@ package com.dispensesure.retail.feature.stockCount.sealed.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.BatchCompleted
+import com.dispensesure.retail.core.audit.model.BottleCountAdjusted
+import com.dispensesure.retail.core.audit.model.BottleCounted
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
@@ -136,7 +140,50 @@ class StockCountViewModelTest {
             stockHl7Repository,
             hl7EventHandler,
             regionProvider,
+            auditLogger,
         )
+    }
+
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
+
+    @Test
+    fun `a first scan logs BOTTLE_COUNTED with no old count`() = runTest(testDispatcher) {
+        stubGs1Decode()
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
+        coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
+
+        val vm = createViewModel(batchId = 7L)
+        advanceUntilIdle()
+        vm.onBarcodeDetected("raw")
+        advanceUntilIdle()
+
+        verify { auditLogger.logOutsideTour(match { it is BottleCounted && it.batchId == 7L && it.oldBottleQty == null && it.newBottleQty == 1 }) }
+    }
+
+    @Test
+    fun `a counter change logs BOTTLE_COUNT_ADJUSTED and a no-change flush logs nothing`() = runTest(testDispatcher) {
+        stubGs1Decode()
+        coEvery { drugMasterDao.getDrugByGtin(any(), any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any(), any()) } returns 10L
+        coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returnsMany listOf(null, stockTxn(), stockTxn())
+        // Scan inserts; the +1 then updates a 1-bottle line; ADD flushes the 2-bottle line unchanged.
+        coEvery { stockBottleInfoDao.findSealedLine(any(), any(), any()) } returnsMany
+            listOf(null, bottleLine(bottleQty = 1), bottleLine(bottleQty = 2))
+
+        val vm = createViewModel(batchId = 7L)
+        val job = launch { vm.uiState.collect {} }
+        advanceUntilIdle()
+        vm.onBarcodeDetected("raw")
+        advanceUntilIdle()
+        vm.increment()
+        advanceUntilIdle()
+        vm.onAdd()
+        advanceUntilIdle()
+
+        verify(exactly = 1) { auditLogger.logOutsideTour(match { it is BottleCountAdjusted && it.batchId == 7L && it.oldBottleQty == 1 && it.newBottleQty == 2 }) }
+        verify(exactly = 1) { auditLogger.logOutsideTour(match { it is BottleCounted }) }
+        job.cancel()
     }
 
     private fun drug(
@@ -1189,8 +1236,10 @@ class StockCountViewModelTest {
 
         coVerify { stockBatchDao.markAsCompleted(7L, any()) }
         coVerify { stockBatchDao.updateNote(7L, "a note") }
-        coVerify { stockHl7Repository.resendPendingBatches() }
+        coVerify { stockHl7Repository.sendPendingBatches(firstSendBatchId = 7L) }
         assertTrue(vm.batchEnded.value)
+        // Note text never reaches the audit log, only whether there was one and its length.
+        verify { auditLogger.logOutsideTour(BatchCompleted(batchId = 7L, ndcCount = 1, totalPills = vm.uiState.value.totalPills, noteLength = 6)) }
         job.cancel()
     }
 
@@ -1210,7 +1259,7 @@ class StockCountViewModelTest {
 
         coVerify { stockBatchDao.markAsCompleted(7L, any()) }
         coVerify(exactly = 0) { stockBatchDao.updateNote(any(), any()) }
-        coVerify(exactly = 0) { stockHl7Repository.resendPendingBatches() }
+        coVerify(exactly = 0) { stockHl7Repository.sendPendingBatches(any()) }
         job.cancel()
     }
 

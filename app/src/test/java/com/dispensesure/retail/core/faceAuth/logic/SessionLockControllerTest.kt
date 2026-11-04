@@ -1,6 +1,9 @@
 package com.dispensesure.retail.core.faceAuth.logic
 
 import android.content.SharedPreferences
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.ScreenLockReason
+import com.dispensesure.retail.core.audit.model.ScreenLocked
 import com.dispensesure.retail.core.faceAuth.data.FaceProfileRepository
 import com.dispensesure.retail.core.room.models.FaceProfileEntity
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -9,6 +12,8 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
+import io.mockk.verifyOrder
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -26,6 +31,8 @@ import org.junit.Test
  * shared `hasEnabledProfile` flow cannot race the synchronous lock calls.
  */
 class SessionLockControllerTest {
+
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
 
     private fun controller(
         hasEnabledProfile: Boolean,
@@ -45,7 +52,118 @@ class SessionLockControllerTest {
         val repository = mockk<FaceProfileRepository> {
             every { observeProfiles() } returns flowOf(profiles)
         }
-        return SessionLockController(preferenceHelper, repository)
+        return SessionLockController(preferenceHelper, repository, auditLogger)
+    }
+
+    @Test
+    fun `each lock path logs its reason`() {
+        val controller = controller(hasEnabledProfile = true, isLoggedIn = true)
+
+        controller.lockNow()
+        controller.unlock()
+        controller.lockNow(startOnScan = true)
+        controller.unlock()
+        controller.onAppLaunch()
+
+        verifyOrder {
+            auditLogger.log(ScreenLocked(ScreenLockReason.MENU))
+            auditLogger.log(ScreenLocked(ScreenLockReason.AFTER_LOGIN))
+            auditLogger.log(ScreenLocked(ScreenLockReason.APP_LAUNCH))
+        }
+    }
+
+    @Test
+    fun `onAppLaunch logs the lock before clearing the operator`() {
+        val controller = controller(hasEnabledProfile = true, isLoggedIn = true)
+        controller.unlock()
+        controller.onFaceVerified(5L)
+        var operatorWhenLogged: Long? = null
+        every { auditLogger.log(any()) } answers { operatorWhenLogged = controller.operatorProfileId.value }
+
+        controller.onAppLaunch()
+
+        assertEquals(5L, operatorWhenLogged)
+        assertNull(controller.operatorProfileId.value)
+        assertEquals(5L, controller.previousOperatorProfileId)
+    }
+
+    @Test
+    fun `locking while already locked logs nothing more`() {
+        val controller = controller(hasEnabledProfile = true, isLoggedIn = true)
+        controller.unlock()
+
+        controller.lockNow()
+        assertTrue(controller.lockNow())
+
+        verify(exactly = 1) { auditLogger.log(ScreenLocked(ScreenLockReason.MENU)) }
+    }
+
+    @Test
+    fun `a post-login lock onto an already-up lock switches to the camera without logging again`() {
+        // E.g. the idle timer locked while the post-login permission dialogs were open.
+        val controller = controller(hasEnabledProfile = true, isLoggedIn = true)
+        controller.unlock()
+        controller.lockNow()
+        assertFalse(controller.startOnScan.value)
+
+        assertTrue(controller.lockNow(startOnScan = true))
+
+        assertTrue(controller.isLocked.value)
+        assertTrue(controller.startOnScan.value)
+        verify(exactly = 1) { auditLogger.log(any()) }
+    }
+
+    @Test
+    fun `the cold-start lock is logged once by the first onAppLaunch`() {
+        val controller = controller(hasEnabledProfile = true, isLoggedIn = true)
+
+        controller.onAppLaunch()
+        controller.onAppLaunch()
+
+        verify(exactly = 1) { auditLogger.log(ScreenLocked(ScreenLockReason.APP_LAUNCH)) }
+    }
+
+    @Test
+    fun `a relaunch onto an idle lock after the cold-start lock was cleared logs nothing more`() {
+        val preferenceHelper = mockk<PreferenceHelper>(relaxed = true) {
+            every { isUserLoggedIn() } returns true
+            every { hasEnabledFaceProfile() } returns true
+            every { getFaceLockTimeoutMinutes() } returns 0
+        }
+        val repository = mockk<FaceProfileRepository> {
+            every { observeProfiles() } returns flowOf(
+                listOf(FaceProfileEntity(id = 1L, firstName = "Bruce", lastName = "Wayne", email = null, createdAt = 0L))
+            )
+        }
+        val controller = SessionLockController(preferenceHelper, repository, auditLogger)
+        controller.unlock()
+        val deadline = System.currentTimeMillis() + 3_000
+        while (!controller.isLocked.value && System.currentTimeMillis() < deadline) Thread.sleep(20)
+        assertTrue(controller.isLocked.value)
+
+        controller.onAppLaunch()
+
+        verify(exactly = 0) { auditLogger.log(ScreenLocked(ScreenLockReason.APP_LAUNCH)) }
+    }
+
+    @Test
+    fun `lock with no enabled profile logs nothing`() {
+        val controller = controller(hasEnabledProfile = false)
+
+        controller.lockNow()
+
+        verify(exactly = 0) { auditLogger.log(any()) }
+    }
+
+    @Test
+    fun `a lock keeps the outgoing operator for the next verify`() {
+        val controller = controller(hasEnabledProfile = true)
+        controller.onFaceVerified(7L)
+
+        controller.lockNow()
+
+        assertNull(controller.operatorProfileId.value)
+        assertEquals(7L, controller.previousOperatorProfileId)
     }
 
     @Test
@@ -133,7 +251,7 @@ class SessionLockControllerTest {
 
         controller.onFaceVerified(7L)
 
-        assertEquals(7L, controller.verifiedFaceProfileId.value)
+        assertEquals(7L, controller.operatorProfileId.value)
     }
 
     @Test
@@ -143,7 +261,7 @@ class SessionLockControllerTest {
 
         controller.unlock()
 
-        assertEquals(7L, controller.verifiedFaceProfileId.value)
+        assertEquals(7L, controller.operatorProfileId.value)
     }
 
     @Test
@@ -153,7 +271,7 @@ class SessionLockControllerTest {
 
         controller.lockNow()
 
-        assertNull(controller.verifiedFaceProfileId.value)
+        assertNull(controller.operatorProfileId.value)
     }
 
     @Test
@@ -165,7 +283,7 @@ class SessionLockControllerTest {
 
         assertFalse(controller.onAppLaunch())
 
-        assertNull(controller.verifiedFaceProfileId.value)
+        assertNull(controller.operatorProfileId.value)
     }
 
     @Test
@@ -190,13 +308,13 @@ class SessionLockControllerTest {
                 )
             )
         }
-        val controller = SessionLockController(preferenceHelper, repository)
+        val controller = SessionLockController(preferenceHelper, repository, auditLogger)
         controller.onFaceVerified(7L)
 
         every { preferenceHelper.isUserLoggedIn() } returns false
         listener.captured.onSharedPreferenceChanged(mockk(), LOGGED_IN_KEY)
 
-        assertNull(controller.verifiedFaceProfileId.value)
+        assertNull(controller.operatorProfileId.value)
     }
 
     @Test
@@ -220,7 +338,7 @@ class SessionLockControllerTest {
                 )
             )
         }
-        val controller = SessionLockController(preferenceHelper, repository)
+        val controller = SessionLockController(preferenceHelper, repository, auditLogger)
         controller.lockNow(startOnScan = true)
         assertTrue(controller.isLocked.value)
 
@@ -252,12 +370,12 @@ class SessionLockControllerTest {
                 )
             )
         }
-        val controller = SessionLockController(preferenceHelper, repository)
+        val controller = SessionLockController(preferenceHelper, repository, auditLogger)
         controller.onFaceVerified(7L)
 
         listener.captured.onSharedPreferenceChanged(mockk(), "some_other_pref")
 
-        assertEquals(7L, controller.verifiedFaceProfileId.value)
+        assertEquals(7L, controller.operatorProfileId.value)
     }
 
     private companion object {

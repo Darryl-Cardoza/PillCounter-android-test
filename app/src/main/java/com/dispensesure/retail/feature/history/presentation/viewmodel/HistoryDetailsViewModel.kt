@@ -3,6 +3,9 @@ package com.dispensesure.retail.feature.history.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.HistoryDetailViewed
+import com.dispensesure.retail.core.audit.model.HistoryTxnDeleted
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -24,7 +27,8 @@ import javax.inject.Inject
 @HiltViewModel
 class HistoryDetailsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val dispenseTxnDao: DispenseTxnDao
+    private val dispenseTxnDao: DispenseTxnDao,
+    private val auditLogger: AuditLogger
 ) : ViewModel() {
 
     private val logger = AppLogger.create<HistoryDetailsViewModel>()
@@ -43,6 +47,7 @@ class HistoryDetailsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val txnInfo = dispenseTxnDao.getDispenseTxnDetail(txnId)
+                if (txnInfo != null) auditLogger.log(HistoryDetailViewed(txnId))
                 _uiState.update { currentState ->
                     currentState.copy(
                         txnInfo = txnInfo,
@@ -59,7 +64,9 @@ class HistoryDetailsViewModel @Inject constructor(
     fun deleteTransaction() {
         viewModelScope.launch {
             try {
+                val wasUnsynced = dispenseTxnDao.getById(txnId)?.isSynced != true
                 dispenseTxnDao.softDelete(txnId)
+                auditLogger.log(HistoryTxnDeleted(txnId = txnId, wasUnsynced = wasUnsynced))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

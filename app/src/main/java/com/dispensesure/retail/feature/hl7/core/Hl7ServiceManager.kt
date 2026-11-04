@@ -170,6 +170,9 @@ class Hl7ServiceManager @Inject constructor(
     /** Raw MLLP connection state — see [com.dispensesure.retail.core.hl7.service.HL7Service.isPmsConnected]. */
     fun isPmsConnected(): Boolean = serviceManager.getService()?.isPmsConnected() ?: false
 
+    /** The PMS cert fingerprint currently trusted, read before a clear for the audit log. */
+    fun pinnedPmsFingerprint(): String? = serviceManager.getService()?.pinnedFingerprint()
+
     /**
      * Clear the stored TOFU certificate pin and resume PMS connection.
      * Call this when the PMS server certificate is legitimately rotated.

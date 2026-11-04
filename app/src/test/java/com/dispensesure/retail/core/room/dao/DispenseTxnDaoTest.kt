@@ -10,6 +10,8 @@ import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.UserEntity
+import com.dispensesure.retail.core.room.models.dtos.OrderReleaseResult
+import com.dispensesure.retail.core.room.models.dtos.unsyncedIds
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.tourguide.TutorialData
@@ -222,6 +224,20 @@ class DispenseTxnDaoTest {
     }
 
     @Test
+    fun `cancelActiveTxnsByRxNo returns only the txns it soft-deleted`() = runTest {
+        val activeId = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "R1"))
+        val alreadyDeletedId = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "R1"))
+        val otherRxId = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "R2"))
+        dispenseTxnDao.softDelete(alreadyDeletedId)
+
+        val cancelledTxnIds = dispenseTxnDao.cancelActiveTxnsByRxNo("R1")
+
+        assertEquals(listOf(activeId), cancelledTxnIds)
+        assertTrue(dispenseTxnDao.getById(activeId)!!.isDeleted)
+        assertFalse(dispenseTxnDao.getById(otherRxId)!!.isDeleted)
+    }
+
+    @Test
     fun `getDeletedByRxNo returns most recent deleted row or null`() = runTest {
         assertNull(dispenseTxnDao.getDeletedByRxNo("NONE"))
 
@@ -357,8 +373,8 @@ class DispenseTxnDaoTest {
     fun `deleteAllTransactions removes every row`() = runTest {
         dispenseTxnDao.insertIgnore(baseTxn())
         dispenseTxnDao.insertIgnore(baseTxn())
-        dispenseTxnDao.deleteAllTransactions()
 
+        assertEquals(2, dispenseTxnDao.deleteAllTransactions())
         assertNull(dispenseTxnDao.getById(1L))
         assertNull(dispenseTxnDao.getById(2L))
     }
@@ -395,6 +411,28 @@ class DispenseTxnDaoTest {
     }
 
     // ───────────────────────── Date-range deletes / retention ─────────────────────────
+
+    @Test
+    fun `deleteTransactionsByDateReturningSyncStates returns exactly the rows it deleted`() = runTest {
+        val unsyncedInRange = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.COMPLETED, createdAt = 150L, isSynced = false)
+        )
+        val outOfRange = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.COMPLETED, createdAt = 999L)
+        )
+
+        val deletedRows = dispenseTxnDao.deleteTransactionsByDateReturningSyncStates(
+            start = 100L,
+            end = 200L,
+            isCompleted = true,
+            userLocalId = 1L
+        )
+
+        assertEquals(listOf(unsyncedInRange), deletedRows.map { it.id })
+        assertEquals(listOf(unsyncedInRange), deletedRows.unsyncedIds())
+        assertNull(dispenseTxnDao.getById(unsyncedInRange))
+        assertEquals(outOfRange, dispenseTxnDao.getById(outOfRange)?.txnId)
+    }
 
     @Test
     fun `deleteTransactionsByDate removes only rows within range matching filters`() = runTest {
@@ -501,6 +539,13 @@ class DispenseTxnDaoTest {
     fun `getTransactionDetailsImages returns empty list when none exist`() = runTest {
         val txnId = dispenseTxnDao.insertIgnore(baseTxn())
         assertTrue(dispenseTxnDao.getTransactionDetailsImages(txnId).isEmpty())
+    }
+
+    @Test
+    fun `deleteTransaction returns 1 then 0 for the same txn`() = runTest {
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
+        assertEquals(1, dispenseTxnDao.deleteTransaction(id))
+        assertEquals(0, dispenseTxnDao.deleteTransaction(id))
     }
 
     @Test
@@ -1099,6 +1144,23 @@ class DispenseTxnDaoTest {
         assertEquals(CountStatus.PARTIAL, dispenseTxnDao.getById(heldId)?.status)
         assertEquals(CountStatus.COMPLETED, dispenseTxnDao.getById(completedId)?.status)
         assertEquals(CountStatus.FORCE_COMPLETED, dispenseTxnDao.getById(forcedId)?.status)
+    }
+
+    @Test
+    fun `releaseOrder reads the held status and ignores finished rows`() = runTest {
+        // The finished row goes in first, so an unfiltered LIMIT 1 would read it.
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED).copy(transactionOrderId = "ORD1"))
+        val heldId = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.ON_HOLD).copy(transactionOrderId = "ORD1"))
+
+        assertEquals(OrderReleaseResult(CountStatus.ON_HOLD, 1), dispenseTxnDao.releaseOrder("ORD1"))
+        assertEquals(CountStatus.PARTIAL, dispenseTxnDao.getById(heldId)?.status)
+    }
+
+    @Test
+    fun `releaseOrder with only finished rows changes nothing`() = runTest {
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED).copy(transactionOrderId = "ORD1"))
+
+        assertEquals(OrderReleaseResult(null, 0), dispenseTxnDao.releaseOrder("ORD1"))
     }
 
     @Test

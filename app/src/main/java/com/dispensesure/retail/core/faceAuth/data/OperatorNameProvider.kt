@@ -70,9 +70,23 @@ class OperatorNameProvider @Inject constructor(
         return OperatorName(user?.fName, user?.lName)
     }
 
+    /**
+     * The name for an already-captured operator, so an audit record's name always matches its id.
+     * A face id gives that profile's name (nulls if it's gone); no face id gives the account's.
+     */
+    suspend fun nameFor(faceProfileId: Long?, localId: Long): OperatorName {
+        if (faceProfileId != null) {
+            val face = faceProfileDao.getById(faceProfileId) ?: return OperatorName(null, null)
+            return OperatorName(face.firstName, face.lastName)
+        }
+        if (localId <= 0L) return OperatorName(null, null)
+        val user = userDao.getByLocalId(localId)
+        return OperatorName(user?.fName, user?.lName)
+    }
+
     /** The profile that verified this session, or null if none did or it was switched off since. */
     private suspend fun verifiedFaceUser(): FaceProfileEntity? =
-        sessionLockController.verifiedFaceProfileId.value
+        sessionLockController.operatorProfileId.value
             ?.let { faceProfileDao.getById(it) }
             ?.takeIf { it.isEnabled }
 
@@ -95,7 +109,7 @@ class OperatorNameProvider @Inject constructor(
         val localId = preferenceHelper.getLocalId()
         val userChanges = if (localId > 0L) userDao.observeByLocalId(localId) else flowOf(null)
         return combine(
-            sessionLockController.verifiedFaceProfileId,
+            sessionLockController.operatorProfileId,
             faceProfileDao.observeAll(),
             userChanges
         ) { _, _, _ -> invoke() }

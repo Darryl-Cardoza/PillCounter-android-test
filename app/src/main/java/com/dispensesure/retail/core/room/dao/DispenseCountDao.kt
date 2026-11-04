@@ -98,9 +98,12 @@ interface DispenseCountDao {
     )
     suspend fun getImagePathsForTxn(txnId: Long): List<String>
 
-    /** Physical delete of every detail for a transaction. Used by reset, which keeps nothing. */
+    /**
+     * Physical delete of every detail for a transaction. Used by reset, which keeps nothing.
+     * @return Rows removed, recorded on DISPENSE_RESET.
+     */
     @Query("DELETE FROM dispense_count WHERE txnId = :txnId")
-    suspend fun deleteAllForTxn(txnId: Long)
+    suspend fun deleteAllForTxn(txnId: Long): Int
 
     // ─────────────────────────────── Aggregations ───────────────────────────────
 

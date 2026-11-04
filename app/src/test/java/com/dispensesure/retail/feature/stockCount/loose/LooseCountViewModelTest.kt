@@ -108,6 +108,7 @@ class LooseCountViewModelTest {
         preferenceHelper = preferenceHelper,
         engineFactory = engineFactory,
         regionProvider = regionProvider,
+        auditLogger = io.mockk.mockk(relaxed = true),
     )
 
     private fun drug(drugType: String? = null, isHazardous: Boolean = false) = DrugMasterEntity(

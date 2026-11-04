@@ -32,11 +32,19 @@ object AuditRecordFormatter {
         return buildString {
             appendLine("┌ $time   #${record.seq}   ${record.tag}   $resultLabel")
             appendLine("│ session   ${record.sessionId}")
-            appendLine("│ user      ${(record.userId ?: record.email).orNoValue()}   operator  ${record.operatorId?.toString().orNoValue()}")
+            appendLine("│ user      ${(record.userId ?: record.email).orNoValue()}   operator  ${operatorText(record)}")
             appendLine("│ device    ${record.deviceKey.orNoValue()}   terminal  ${record.terminalId.orNoValue()}   app  ${record.appVersion}")
             appendLine("│ data      $dataText")
             append("└──")
         }
+    }
+
+    // "Asha Rao (#7)", the name or id alone when only one is known, or a dash.
+    private fun operatorText(record: AuditRecord): String {
+        val operatorProfileIdText = record.operatorProfileId?.let { "(#$it)" }
+        return listOfNotNull(record.operatorName?.takeIf { it.isNotBlank() }, operatorProfileIdText)
+            .joinToString(" ")
+            .orNoValue()
     }
 
     private fun valueText(value: JsonElement): String = when (value) {

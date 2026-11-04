@@ -7,6 +7,12 @@ import com.dispensesure.retail.feature.verifyPin.data.VerifyPinRepository
 import com.google.gson.Gson
 import com.dispensesure.retail.BuildConfig
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.AuthErrorCode
+import com.dispensesure.retail.core.audit.model.LoginSucceeded
+import com.dispensesure.retail.core.audit.model.OtpVerifyFailed
+import com.dispensesure.retail.core.audit.model.authErrorCodeOf
+import com.dispensesure.retail.core.audit.model.httpStatusOf
 import com.dispensesure.retail.core.models.ErrorResponse
 import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.common.NetworkUtils
@@ -49,7 +55,8 @@ class VerifyPinViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val prefs: PreferenceHelper,
     private val deviceKeyProvider: DeviceKeyProvider,
-    private val sessionHealthController: SessionHealthController
+    private val sessionHealthController: SessionHealthController,
+    private val auditLogger: AuditLogger
 ) : ViewModel() {
 
     private val logger = AppLogger.create<VerifyPinViewModel>()
@@ -62,8 +69,9 @@ class VerifyPinViewModel @Inject constructor(
      *
      * @param email User’s email address (for logging/debug).
      * @param otp The 6-digit OTP entered by the user.
+     * @param rememberMe The Login screen's "Remember me" choice, recorded on the login audit event.
      */
-    fun verifyPin(email: String, otp: String) {
+    fun verifyPin(email: String, otp: String, rememberMe: Boolean = false) {
         if (otp.length != 6) {
             _uiState.value = VerifyPinUiState.Error(
                 context.getString(R.string.error_invalid_otp)
@@ -89,6 +97,7 @@ class VerifyPinViewModel @Inject constructor(
             val deviceKey = deviceKeyProvider.getDeviceKey()
             if (deviceKey == null) {
                 logger.e("OTP verification aborted: device key unavailable", event = LogEvent.OTP_VERIFICATION_FAILED)
+                auditLogger.log(OtpVerifyFailed(email, httpStatus = null, errorCode = AuthErrorCode.DEVICE_KEY_UNAVAILABLE))
                 _uiState.value = VerifyPinUiState.Error(
                     context.getString(R.string.error_server_unavailable)
                 )
@@ -109,6 +118,7 @@ class VerifyPinViewModel @Inject constructor(
                     val loggedInRegion = Region.fromCountryCode(user?.country)
                     if (loggedInRegion == null) {
                         logger.w("OTP verification blocked: unsupported country '${user?.country}'")
+                        auditLogger.log(OtpVerifyFailed(email, httpStatus = null, errorCode = AuthErrorCode.UNSUPPORTED_REGION))
                         _uiState.value = VerifyPinUiState.Error(context.getString(R.string.error_unsupported_region))
                         return@onSuccess
                     }
@@ -140,6 +150,20 @@ class VerifyPinViewModel @Inject constructor(
                             logger.i("User verified: verified=${it.isVerified}, role=${it.role}")
                         } ?: logger.w("User object is null in response.")
 
+                        // Identity first, so LOGIN_SUCCEEDED and everything after it carry the new user.
+                        val loggedInEmail = user?.email ?: email
+                        auditLogger.onSessionStarted(userId = user?.userId, email = loggedInEmail)
+                        auditLogger.log(
+                            LoginSucceeded(
+                                userId = user?.userId,
+                                email = loggedInEmail,
+                                role = user?.role,
+                                deviceKey = deviceKey,
+                                appVersion = AuditLogger.APP_VERSION,
+                                rememberMe = rememberMe
+                            )
+                        )
+
                         _uiState.value = VerifyPinUiState.Success
                     } catch (e: CancellationException) {
                         throw e
@@ -149,6 +173,13 @@ class VerifyPinViewModel @Inject constructor(
                     }
                 }
                 .onFailure { exception ->
+                    auditLogger.log(
+                        OtpVerifyFailed(
+                            email = email,
+                            httpStatus = httpStatusOf(exception),
+                            errorCode = authErrorCodeOf(exception)
+                        )
+                    )
                     val message = mapExceptionToUserMessage(exception)
                     _uiState.value = VerifyPinUiState.Error(message)
                 }

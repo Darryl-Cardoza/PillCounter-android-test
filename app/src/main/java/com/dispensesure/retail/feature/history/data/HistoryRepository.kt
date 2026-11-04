@@ -1,10 +1,16 @@
 package com.dispensesure.retail.feature.history.data
 
+import androidx.room.withTransaction
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.BatchDeleted
+import com.dispensesure.retail.core.audit.model.HistoryBulkDeleted
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
+import com.dispensesure.retail.core.room.models.dtos.unsyncedIds
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
@@ -20,6 +26,8 @@ class HistoryRepository @Inject constructor(
     private val stockBatchDao: StockBatchDao,
     private val stockTxnDao: StockTxnDao,
     private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
+    private val appDatabase: AppDatabase,
 ) {
 
     private fun LocalDate.toEpochRange(): Pair<Long, Long> {
@@ -37,7 +45,21 @@ class HistoryRepository @Inject constructor(
     ) {
         val (startStartDate, _) = startDate.toEpochRange()
         val (_, endEndDate) = endDate.toEpochRange()
-        dispenseTxnDao.deleteTransactionsByDate(startStartDate, endEndDate, isCompleted, userLocalId)
+        // Read with the delete's own filter, so the audit event names exactly the rows removed.
+        val deletedRows =
+            dispenseTxnDao.deleteTransactionsByDateReturningSyncStates(startStartDate, endEndDate, isCompleted, userLocalId)
+        if (deletedRows.isNotEmpty()) {
+            auditLogger.log(
+                HistoryBulkDeleted(
+                    rangeStart = startStartDate,
+                    rangeEnd = endEndDate,
+                    statusFilter = statusFilterName(isCompleted),
+                    count = deletedRows.size,
+                    txnIds = deletedRows.map { it.id },
+                    unsyncedIds = deletedRows.unsyncedIds()
+                )
+            )
+        }
     }
 
     suspend fun deleteBatchesForDateRange(
@@ -50,11 +72,32 @@ class HistoryRepository @Inject constructor(
         val startMillis = startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
         val endMillis = endDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
 
-        val batchIds = stockBatchDao.getBatchIdsByDate(startMillis, endMillis, isCompleted, regionProvider.current)
-        if (batchIds.isNotEmpty()) {
+        // Read and delete in one transaction so the event names exactly the batches removed.
+        val (batchIds, rowsToDelete) = appDatabase.withTransaction {
+            val ids = stockBatchDao.getBatchIdsByDate(startMillis, endMillis, isCompleted, regionProvider.current)
+            if (ids.isEmpty()) return@withTransaction ids to emptyList()
+            val syncStates = stockBatchDao.getSyncStatesByIds(ids)
             stockBatchDao.softDeleteBatchesByDate(startMillis, endMillis, isCompleted, regionProvider.current)
-            stockTxnDao.deleteByBatchIds(batchIds)
+            stockTxnDao.deleteByBatchIds(ids)
+            ids to syncStates
         }
+        if (batchIds.isNotEmpty()) {
+            auditLogger.log(
+                BatchDeleted(
+                    batchIds = batchIds,
+                    rangeStart = startMillis,
+                    rangeEnd = endMillis,
+                    unsyncedIds = rowsToDelete.unsyncedIds()
+                )
+            )
+        }
+    }
+
+    // ALL / COMPLETED / PENDING, matching the History delete filter.
+    private fun statusFilterName(isCompleted: Boolean?): String = when (isCompleted) {
+        null -> "ALL"
+        true -> "COMPLETED"
+        false -> "PENDING"
     }
 
     fun getBatchSummaries(

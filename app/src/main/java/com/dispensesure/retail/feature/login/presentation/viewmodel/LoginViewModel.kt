@@ -4,6 +4,13 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.Logout
+import com.dispensesure.retail.core.audit.model.LogoutMode
+import com.dispensesure.retail.core.audit.model.OtpRequestRejected
+import com.dispensesure.retail.core.audit.model.OtpRequested
+import com.dispensesure.retail.core.audit.model.authErrorCodeOf
+import com.dispensesure.retail.core.audit.model.httpStatusOf
 import com.dispensesure.retail.core.models.ErrorResponse
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -15,6 +22,7 @@ import com.dispensesure.retail.core.utils.validator.CredentialsValidator
 import com.dispensesure.retail.feature.login.domain.model.LoginUiState
 import com.dispensesure.retail.feature.login.domain.model.LogoutUiState
 import com.google.gson.Gson
+import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.hl7.service.Hl7serviceHandler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -47,7 +55,9 @@ class LoginViewModel @Inject constructor(
     private val validator: CredentialsValidator,
     @ApplicationContext private val context: Context,
     val preferenceHelper: PreferenceHelper,
-    val serviceManager: Hl7serviceHandler
+    val serviceManager: Hl7serviceHandler,
+    private val auditLogger: AuditLogger,
+    private val sessionHealthController: SessionHealthController
 ) : ViewModel() {
 
     private val logger = AppLogger.create<LoginViewModel>()
@@ -61,7 +71,7 @@ class LoginViewModel @Inject constructor(
     // -------------------------------------------------------------------------
     // LOGIN FLOW
     // -------------------------------------------------------------------------
-    fun login(email: String) {
+    fun login(email: String, isResend: Boolean = false) {
         val validationResult = validator.validateEmail(email)
 
         if (!validationResult.isSuccess) {
@@ -86,6 +96,7 @@ class LoginViewModel @Inject constructor(
             repository.login(email)
                 .onSuccess {
                     logger.i("Login successful.")
+                    auditLogger.log(OtpRequested(email = email, isResend = isResend))
                     _uiState.value = LoginUiState.Success
                     try {
                         serviceManager.startService()
@@ -96,6 +107,13 @@ class LoginViewModel @Inject constructor(
                     }
                 }
                 .onFailure { exception ->
+                    auditLogger.log(
+                        OtpRequestRejected(
+                            email = email,
+                            httpStatus = httpStatusOf(exception),
+                            errorCode = authErrorCodeOf(exception)
+                        )
+                    )
                     _uiState.value = LoginUiState.Error(getFriendlyErrorMessage(exception))
                 }
         }
@@ -121,6 +139,7 @@ class LoginViewModel @Inject constructor(
             AppLogger.flushBeforeLogout()
             repository.logout(refreshToken)
                 .onSuccess {
+                    logLogout(LogoutMode.SERVER)
                     LoggerConfig.newSession()
                     logger.i("Logout successful")
                     _logoutUiState.value = LogoutUiState.Success
@@ -136,6 +155,19 @@ class LoginViewModel @Inject constructor(
                     _logoutUiState.value = LogoutUiState.Error(getFriendlyErrorMessage(exception))
                 }
         }
+    }
+
+    /** Logout with no refresh token: the menu clears the session itself, this logs it and starts a new session id. */
+    fun logLocalLogoutAndStartNewSession() {
+        logLogout(LogoutMode.LOCAL)
+        LoggerConfig.newSession()
+    }
+
+    // Logged before the session id changes, so LOGOUT belongs to the session it ends.
+    private fun logLogout(mode: LogoutMode) {
+        sessionHealthController.markLoggedOut()
+        auditLogger.log(Logout(userId = preferenceHelper.getUserId(), mode = mode))
+        auditLogger.onSessionEnded()
     }
 
     // -------------------------------------------------------------------------

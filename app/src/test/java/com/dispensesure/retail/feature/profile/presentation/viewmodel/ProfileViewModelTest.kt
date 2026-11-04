@@ -5,8 +5,15 @@ import android.util.Log
 import app.cash.turbine.test
 import com.google.gson.Gson
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.AccountDeleted
+import com.dispensesure.retail.core.audit.model.FieldChange
+import com.dispensesure.retail.core.audit.model.ProfileUpdated
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.models.ErrorResponse
 import com.dispensesure.retail.core.models.ValidationResult
+import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.utils.common.NetworkUtils
@@ -38,6 +45,7 @@ import io.mockk.mockkObject
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
+import io.mockk.verifyOrder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -72,6 +80,10 @@ class ProfileViewModelTest {
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var deviceKeyProvider: DeviceKeyProvider
     private lateinit var context: Context
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
+    private val dispenseTxnDao = mockk<DispenseTxnDao>(relaxed = true)
+    private val stockBatchDao = mockk<StockBatchDao>(relaxed = true)
+    private val sessionHealthController = mockk<SessionHealthController>(relaxed = true)
 
     private val deviceKey = "test-device-key"
     private val activeTerminal =
@@ -161,8 +173,31 @@ class ProfileViewModelTest {
             validator,
             hl7ServiceManager,
             deviceKeyProvider,
-            context
+            context,
+            auditLogger,
+            dispenseTxnDao,
+            stockBatchDao,
+            sessionHealthController
         )
+
+    @Test
+    fun `updateProfile logs only the fields that changed`() = runTest(testDispatcher) {
+        val savedUser = userEntity(country = "US", state = "CA")
+        every { userDao.observeByLocalId(any()) } returns flowOf(savedUser)
+        coEvery { userDao.getByLocalId(1L) } returns savedUser
+        coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.onPharmacyIdChanged("654321")
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        verify {
+            auditLogger.log(ProfileUpdated(listOf(FieldChange("pharmacy_id", "123456", "654321"))))
+        }
+    }
 
     private fun httpException(code: Int, body: String = "error"): HttpException {
         val responseBody = body.toResponseBody("application/json".toMediaTypeOrNull())
@@ -866,6 +901,57 @@ class ProfileViewModelTest {
             assertEquals(ProfileDeleteUiState.Success, awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun `account delete ends the session in order`() = runTest(testDispatcher) {
+        coEvery { repository.deleteProfile() } returns Result.success(deleteResponse)
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.deleteProfile()
+        advanceUntilIdle()
+
+        verifyOrder {
+            auditLogger.log(match { it is AccountDeleted })
+            sessionHealthController.markLoggedOut()
+            auditLogger.onSessionEnded()
+        }
+    }
+
+    @Test
+    fun `account delete clears the session prefs`() = runTest(testDispatcher) {
+        coEvery { repository.deleteProfile() } returns Result.success(deleteResponse)
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.deleteProfile()
+        advanceUntilIdle()
+
+        verify {
+            preferenceHelper.clearTokens()
+            preferenceHelper.setUserLoggedIn(false)
+            preferenceHelper.clearLoggedInAt()
+            preferenceHelper.saveLocalId(0)
+            preferenceHelper.clearHl7Config()
+        }
+        assertTrue(vm.deleteUiState.value is ProfileDeleteUiState.Success)
+    }
+
+    @Test
+    fun `account delete still logs when the unsynced read fails`() = runTest(testDispatcher) {
+        coEvery { repository.deleteProfile() } returns Result.success(deleteResponse)
+        coEvery { dispenseTxnDao.getPendingHl7TxnOnce() } throws IllegalStateException("db closed")
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.deleteProfile()
+        advanceUntilIdle()
+
+        verify {
+            auditLogger.log(match { it is AccountDeleted && it.unsyncedDispenseIds.isEmpty() && it.unsyncedBatchIds.isEmpty() })
+        }
+        verify { preferenceHelper.setUserLoggedIn(false) }
     }
 
     @Test

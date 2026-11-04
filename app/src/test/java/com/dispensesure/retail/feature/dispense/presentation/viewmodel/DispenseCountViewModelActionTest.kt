@@ -1,6 +1,9 @@
 package com.dispensesure.retail.feature.dispense.presentation.viewmodel
 
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.audit.model.CountDeleted
+import com.dispensesure.retail.core.audit.model.NoteAdded
+import com.dispensesure.retail.core.audit.model.NoteSkipped
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
@@ -15,6 +18,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -191,6 +195,37 @@ class DispenseCountViewModelActionTest : DispenseCountViewModelTestBase() {
         advanceUntilIdle()
 
         coVerify(exactly = 1) { dispenseCountRepository.deleteCount(9L, 5L) }
+    }
+
+    @Test
+    fun `CountDeleted is logged with its txn and count id`() = runTest {
+        selectTxn(9L)
+
+        viewModel.onAction(DispenseCountAction.CountDeleted(countId = 5L))
+        advanceUntilIdle()
+
+        verify { auditLogger.logOutsideTour(match { it is CountDeleted && it.txnId == 9L && it.countId == 5L }) }
+    }
+
+    @Test
+    fun `a saved note is logged by length only`() = runTest {
+        selectTxn(42L)
+
+        viewModel.onAction(DispenseCountAction.NoteSaved(note = "test note"))
+        advanceUntilIdle()
+
+        verify { auditLogger.logOutsideTour(NoteAdded(txnId = 42L, noteLength = 9)) }
+    }
+
+    @Test
+    fun `a skipped note is logged as NOTE_SKIPPED, not NOTE_ADDED`() = runTest {
+        selectTxn(42L)
+
+        viewModel.onAction(DispenseCountAction.NoteSkipped)
+        advanceUntilIdle()
+
+        verify { auditLogger.logOutsideTour(NoteSkipped(txnId = 42L)) }
+        verify(exactly = 0) { auditLogger.logOutsideTour(match { it is NoteAdded }) }
     }
 
     // ─────────────────────────── notes ───────────────────────────
