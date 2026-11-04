@@ -10,6 +10,10 @@ internal object Pcwrp {
     private const val NONCE_LENGTH_BYTES = 12
     private const val TAG_LENGTH_BITS = 128
 
+    /** True when [bytes] start with the PCWRP header; older builds stored the DEK without it. */
+    fun hasHeader(bytes: ByteArray): Boolean =
+        bytes.size >= HEADER.size && bytes.copyOfRange(0, HEADER.size).contentEquals(HEADER)
+
     // Keystore keys pick their own nonce, so it is read back from the cipher.
     fun seal(key: SecretKey, plainBytes: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")

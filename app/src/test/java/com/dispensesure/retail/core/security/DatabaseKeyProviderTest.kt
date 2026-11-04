@@ -62,6 +62,64 @@ class DatabaseKeyProviderTest {
         every { anyConstructed<SecurePreferences>().clear() } returns Unit
     }
 
+    // A stored wrap in the current PCWRP format, so the legacy migration leaves it alone.
+    private fun pcwrpB64(vararg body: Byte): String =
+        JavaBase64.getEncoder().encodeToString("PCWRP".toByteArray() + byteArrayOf(1) + body)
+
+    // ---- legacy (pre-PCWRP) wrap migration ----
+
+    @Test
+    fun `a legacy wrap is re-wrapped as PCWRP with the same DEK and gets its algorithm`() {
+        val dek = ByteArray(32) { it.toByte() }
+        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(1, 2, 3)), kekId = "local-bootstrap", algorithm = null)
+        every { KeystoreAesGcm.unwrap("com.dispensesure.retail.dek_bootstrap_kek", byteArrayOf(1, 2, 3)) } returns dek
+        every { KeystoreAesGcm.wrapPcwrp("com.dispensesure.retail.dek_bootstrap_kek", dek) } returns byteArrayOf(7, 7)
+
+        DatabaseKeyProvider.currentWrap(context)
+
+        verify(exactly = 1) {
+            anyConstructed<SecurePreferences>().putString("dek_wrapped", JavaBase64.getEncoder().encodeToString(byteArrayOf(7, 7)), true)
+        }
+        verify(exactly = 1) { anyConstructed<SecurePreferences>().putString("dek_kek_algorithm", "AES-256-GCM", true) }
+        verify(exactly = 0) { anyConstructed<SecurePreferences>().clear() }
+        verify(exactly = 0) { context.deleteDatabase(any()) }
+    }
+
+    @Test
+    fun `a legacy wrap under a server kek is opened with that kek's alias`() {
+        val dek = ByteArray(32)
+        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(4)), kekId = "kek-abc", algorithm = null)
+        every { KeystoreAesGcm.unwrap("com.dispensesure.retail.server_kek_kek-abc", any()) } returns dek
+        every { KeystoreAesGcm.wrapPcwrp("com.dispensesure.retail.server_kek_kek-abc", dek) } returns byteArrayOf(8)
+        every { KeystoreAesGcm.unwrapPcwrp(any(), any()) } returns dek
+
+        DatabaseKeyProvider.unwrapCurrentDek(context)
+
+        verify(exactly = 1) { KeystoreAesGcm.wrapPcwrp("com.dispensesure.retail.server_kek_kek-abc", dek) }
+    }
+
+    @Test
+    fun `a PCWRP wrap is not migrated`() {
+        stubPrefs(wrapped = pcwrpB64(1), kekId = "local-bootstrap")
+        every { KeystoreAesGcm.unwrapPcwrp(any(), any()) } returns ByteArray(32)
+
+        DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(context)
+
+        verify(exactly = 0) { KeystoreAesGcm.unwrap(any(), any()) }
+        verify(exactly = 0) { anyConstructed<SecurePreferences>().putString("dek_wrapped", any(), any()) }
+    }
+
+    @Test
+    fun `a failed migration leaves the stored wrap alone and does not throw`() {
+        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(1)), kekId = "local-bootstrap", algorithm = null)
+        every { KeystoreAesGcm.unwrap(any(), any()) } throws IllegalStateException("Keystore key not found")
+
+        assertEquals(null, DatabaseKeyProvider.currentWrap(context))
+
+        verify(exactly = 0) { anyConstructed<SecurePreferences>().putString(any(), any(), any()) }
+        verify(exactly = 0) { anyConstructed<SecurePreferences>().clear() }
+    }
+
     // ---- getOrCreateDatabasePassphrase: bootstrap (first launch) ----
 
     @Test
@@ -85,7 +143,7 @@ class DatabaseKeyProviderTest {
     @Test
     fun `subsequent launch unwraps existing DEK using the stored kek id's alias`() {
         val dek = ByteArray(32) { it.toByte() }
-        val wrappedB64 = JavaBase64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))
+        val wrappedB64 = pcwrpB64(1, 2, 3)
         stubPrefs(wrapped = wrappedB64, kekId = "local-bootstrap")
         every { KeystoreAesGcm.unwrapPcwrp("com.dispensesure.retail.dek_bootstrap_kek", any()) } returns dek
 
@@ -98,7 +156,7 @@ class DatabaseKeyProviderTest {
     @Test
     fun `subsequent launch after rotation unwraps using the server kek alias`() {
         val dek = ByteArray(32) { it.toByte() }
-        val wrappedB64 = JavaBase64.getEncoder().encodeToString(byteArrayOf(9, 9))
+        val wrappedB64 = pcwrpB64(9, 9)
         stubPrefs(wrapped = wrappedB64, kekId = "kek-abc123")
         every { KeystoreAesGcm.unwrapPcwrp("com.dispensesure.retail.server_kek_kek-abc123", any()) } returns dek
 
@@ -109,7 +167,7 @@ class DatabaseKeyProviderTest {
 
     @Test
     fun `unwrap failure re-keys the database instead of crashing`() {
-        val wrappedB64 = JavaBase64.getEncoder().encodeToString(byteArrayOf(1))
+        val wrappedB64 = pcwrpB64(1)
         stubPrefs(wrapped = wrappedB64, kekId = "local-bootstrap")
         every { KeystoreAesGcm.unwrapPcwrp(any(), any()) } throws IllegalStateException("Keystore key not found")
         every { KeystoreAesGcm.wrapPcwrp(any(), any()) } answers { secondArg() }
@@ -136,7 +194,7 @@ class DatabaseKeyProviderTest {
 
     @Test
     fun `createDekIfMissing leaves a stored DEK alone`() {
-        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(1)), kekId = "kek-abc")
+        stubPrefs(wrapped = pcwrpB64(1), kekId = "kek-abc")
 
         DatabaseKeyProvider.createDekIfMissing(context)
 
@@ -149,7 +207,7 @@ class DatabaseKeyProviderTest {
     @Test
     fun `unwrapCurrentDek returns the stored DEK`() {
         val dek = ByteArray(32) { it.toByte() }
-        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(9)), kekId = "kek-abc")
+        stubPrefs(wrapped = pcwrpB64(9), kekId = "kek-abc")
         every { KeystoreAesGcm.unwrapPcwrp("com.dispensesure.retail.server_kek_kek-abc", any()) } returns dek
 
         assertArrayEquals(dek, DatabaseKeyProvider.unwrapCurrentDek(context))
@@ -157,7 +215,7 @@ class DatabaseKeyProviderTest {
 
     @Test
     fun `unwrapCurrentDek failure throws and never clears prefs or deletes the DB`() {
-        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(1)), kekId = "local-bootstrap")
+        stubPrefs(wrapped = pcwrpB64(1), kekId = "local-bootstrap")
         every { KeystoreAesGcm.unwrapPcwrp(any(), any()) } throws IllegalStateException("Keystore key not found")
 
         assertThrows(IllegalStateException::class.java) { DatabaseKeyProvider.unwrapCurrentDek(context) }
@@ -198,7 +256,7 @@ class DatabaseKeyProviderTest {
 
     @Test
     fun `rotation imports new kek, unwraps with old alias, rewraps with new alias, deletes old alias`() {
-        val oldWrappedB64 = JavaBase64.getEncoder().encodeToString(byteArrayOf(5, 5, 5))
+        val oldWrappedB64 = pcwrpB64(5, 5, 5)
         stubPrefs(wrapped = oldWrappedB64, kekId = "local-bootstrap", version = 0)
         val dek = ByteArray(32) { it.toByte() }
         val rawKekBytes = "raw-server-kek".toByteArray()
@@ -228,7 +286,7 @@ class DatabaseKeyProviderTest {
 
     @Test
     fun `second rotation deletes the previous server kek alias, not the bootstrap alias`() {
-        val oldWrappedB64 = JavaBase64.getEncoder().encodeToString(byteArrayOf(3))
+        val oldWrappedB64 = pcwrpB64(3)
         stubPrefs(wrapped = oldWrappedB64, kekId = "kek-old-id", version = 1)
         val dek = ByteArray(32)
         val kekInfo = KekInfo(
@@ -251,7 +309,7 @@ class DatabaseKeyProviderTest {
 
     @Test
     fun `rotation failure rolls back the newly imported kek and leaves old key intact`() {
-        val oldWrappedB64 = JavaBase64.getEncoder().encodeToString(byteArrayOf(3))
+        val oldWrappedB64 = pcwrpB64(3)
         stubPrefs(wrapped = oldWrappedB64, kekId = "local-bootstrap", version = 0)
         val kekInfo = KekInfo(
             keyId = "kek-broken",
@@ -285,7 +343,7 @@ class DatabaseKeyProviderTest {
     @Test
     fun `no-reset getter returns the stored DEK`() {
         val dek = ByteArray(32) { it.toByte() }
-        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(1)), kekId = "local-bootstrap")
+        stubPrefs(wrapped = pcwrpB64(1), kekId = "local-bootstrap")
         every { KeystoreAesGcm.unwrapPcwrp("com.dispensesure.retail.dek_bootstrap_kek", any()) } returns dek
 
         assertArrayEquals(dek, DatabaseKeyProvider.getOrCreatePassphraseWithoutReset(context))
@@ -302,7 +360,7 @@ class DatabaseKeyProviderTest {
 
     @Test
     fun `no-reset getter throws on unwrap failure and never wipes`() {
-        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(1)), kekId = "local-bootstrap")
+        stubPrefs(wrapped = pcwrpB64(1), kekId = "local-bootstrap")
         every { KeystoreAesGcm.unwrapPcwrp(any(), any()) } throws IllegalStateException("Keystore key not found")
 
         assertThrows(IllegalStateException::class.java) {
@@ -326,7 +384,7 @@ class DatabaseKeyProviderTest {
 
     @Test
     fun `rotation records the server kek's algorithm`() {
-        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(5)), kekId = "local-bootstrap", version = 0)
+        stubPrefs(wrapped = pcwrpB64(5), kekId = "local-bootstrap", version = 0)
         val kekInfo = KekInfo(
             keyId = "kek-4fdbc6fc", version = 1, algorithm = "AES-256-GCM",
             keyMaterial = JavaBase64.getEncoder().encodeToString(byteArrayOf(1))
@@ -343,11 +401,11 @@ class DatabaseKeyProviderTest {
 
     @Test
     fun `currentWrap returns the stored wrap`() {
-        stubPrefs(wrapped = JavaBase64.getEncoder().encodeToString(byteArrayOf(4, 2)), kekId = "kek-abc", version = 3)
+        stubPrefs(wrapped = pcwrpB64(4, 2), kekId = "kek-abc", version = 3)
 
         val wrap = DatabaseKeyProvider.currentWrap(context)!!
 
-        assertArrayEquals(byteArrayOf(4, 2), wrap.wrappedDek)
+        assertArrayEquals(JavaBase64.getDecoder().decode(pcwrpB64(4, 2)), wrap.wrappedDek)
         assertEquals("kek-abc", wrap.kekKeyId)
         assertEquals(3, wrap.kekVersion)
         assertEquals("AES-256-GCM", wrap.kekAlgorithm)

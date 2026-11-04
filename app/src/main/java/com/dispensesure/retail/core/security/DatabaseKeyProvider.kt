@@ -70,6 +70,7 @@ object DatabaseKeyProvider {
      */
     fun getOrCreatePassphraseWithoutReset(context: Context): ByteArray = synchronized(lock) {
         val prefs = SecurePreferences(context, PREFS_NAME)
+        migrateLegacyWrap(prefs)
         val wrappedB64 = prefs.getString(KEY_DEK_WRAPPED)
         val kekId = prefs.getString(KEY_KEK_ID)
         if (wrappedB64 != null && kekId != null) {
@@ -88,6 +89,7 @@ object DatabaseKeyProvider {
     /** The stored DEK, for sealing. Throws if it is missing or can't be unwrapped; never clears or deletes. */
     fun unwrapCurrentDek(context: Context): ByteArray = synchronized(lock) {
         val prefs = SecurePreferences(context, PREFS_NAME)
+        migrateLegacyWrap(prefs)
         val wrappedB64 = checkNotNull(prefs.getString(KEY_DEK_WRAPPED)) { "No DEK stored" }
         val kekId = checkNotNull(prefs.getString(KEY_KEK_ID)) { "No KEK id stored" }
         KeystoreAesGcm.unwrapPcwrp(aliasFor(kekId), Base64.decode(wrappedB64, Base64.NO_WRAP))
@@ -104,6 +106,32 @@ object DatabaseKeyProvider {
     }
 
     /**
+     * Builds before PCWRP stored the DEK as iv ‖ ciphertext with no algorithm. Re-wraps the same DEK
+     * as PCWRP so nothing is wiped. On failure it logs and leaves the stored wrap as it was.
+     */
+    private fun migrateLegacyWrap(prefs: SecurePreferences) {
+        val wrappedB64 = prefs.getString(KEY_DEK_WRAPPED) ?: return
+        val kekId = prefs.getString(KEY_KEK_ID) ?: return
+        val wrapped = Base64.decode(wrappedB64, Base64.NO_WRAP)
+        if (Pcwrp.hasHeader(wrapped)) return
+        try {
+            val alias = aliasFor(kekId)
+            val dek = KeystoreAesGcm.unwrap(alias, wrapped)
+            try {
+                val newWrapped = KeystoreAesGcm.wrapPcwrp(alias, dek)
+                prefs.putString(KEY_DEK_WRAPPED, Base64.encodeToString(newWrapped, Base64.NO_WRAP), commit = true)
+                // Every KEK, local or server, is AES-256-GCM.
+                prefs.putString(KEY_KEK_ALGORITHM, BOOTSTRAP_KEK_ALGORITHM, commit = true)
+            } finally {
+                dek.fill(0)
+            }
+            logger.i("Migrated stored DEK to PCWRP")
+        } catch (e: Exception) {
+            logger.e("Legacy DEK migration failed", e, event = LogEvent.DB_KEY_ROTATE_FAILED)
+        }
+    }
+
+    /**
      * Re-wraps the existing DEK under a newly issued server KEK, if [kekInfo]'s version is newer
      * than what's stored locally. No-op otherwise (`/auth/me` may be polled repeatedly with an
      * unchanged KEK). The DB passphrase itself never changes — only its wrapper.
@@ -113,6 +141,7 @@ object DatabaseKeyProvider {
         val currentVersion = prefs.getInt(KEY_KEK_VERSION, -1)
 
         if (kekInfo.version <= currentVersion) return
+        migrateLegacyWrap(prefs)
 
         val oldKekId = prefs.getString(KEY_KEK_ID)
         val oldWrappedB64 = prefs.getString(KEY_DEK_WRAPPED)
@@ -159,6 +188,7 @@ object DatabaseKeyProvider {
     /** The wrap the DEK is stored under now, or null before the first DEK exists. */
     fun currentWrap(context: Context): DekWrap? = synchronized(lock) {
         val prefs = SecurePreferences(context, PREFS_NAME)
+        migrateLegacyWrap(prefs)
         val wrappedB64 = prefs.getString(KEY_DEK_WRAPPED) ?: return null
         DekWrap(
             wrappedDek = Base64.decode(wrappedB64, Base64.NO_WRAP),
