@@ -120,7 +120,7 @@ class HL7ServiceTest {
 
     @Test
     fun `handleIncomingMessage parses successfully, notifies listener, and returns ack`() {
-        setField("hl7", HL7(version = "2.5"))
+        setField("hl7", HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from("2.5"))))
         val listener = mockk<Hl7EventListener>(relaxed = true)
         every { listener.onMessageReceived(any(), any()) } returns
             "MSH|^~\\&|RECVAPP|RECVFAC|SENDAPP|SENDFAC|20240101120000||ACK^A01|ACK001|P|2.5\rMSA|AA|MSG001"
@@ -136,7 +136,7 @@ class HL7ServiceTest {
 
     @Test
     fun `handleIncomingMessage falls back to AA ack when parse fails with no partial message`() {
-        setField("hl7", HL7(version = "2.5"))
+        setField("hl7", HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from("2.5"))))
         val listener = mockk<Hl7EventListener>(relaxed = true)
         setField("listener", listener)
 
@@ -150,7 +150,7 @@ class HL7ServiceTest {
 
     @Test
     fun `handleIncomingMessage still notifies listener and acks when parse succeeds with errors`() {
-        setField("hl7", HL7(version = "2.5"))
+        setField("hl7", HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from("2.5"))))
         val listener = mockk<Hl7EventListener>(relaxed = true)
         every { listener.onMessageReceived(any(), any()) } returns
             "MSH|^~\\&|RECVAPP|RECVFAC|SENDAPP|SENDFAC|20240101120000||ACK^A01|ACK002|P|2.5\rMSA|AA|MSG002"
@@ -279,7 +279,7 @@ class HL7ServiceTest {
         assertNull(getField("listener"))
 
         // Simulate a later callback path: handleIncomingMessage should not crash with a null listener.
-        setField("hl7", HL7(version = "2.5"))
+        setField("hl7", HL7(org.rite.hl7.config.HL7Config(org.rite.hl7.config.HL7Version.from("2.5"))))
         val ack = handleIncomingMessage(sampleHl7("MSGX"))
         assertNotNull(ack)
     }

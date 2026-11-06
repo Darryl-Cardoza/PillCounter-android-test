@@ -16,12 +16,11 @@ import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.scanning.data.DrugResolver
-import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
+import com.dispensesure.retail.feature.hl7.parsing.Hl7DrugResolver
 import com.dispensesure.retail.feature.hl7.parsing.model.Hl7OrderAction
 import com.dispensesure.retail.feature.hl7.parsing.model.OrderGroup
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -39,7 +38,7 @@ class Hl7OrderProcessor @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dispenseTxnDao: DispenseTxnDao,
     private val preferenceHelper: PreferenceHelper,
-    private val drugResolver: DrugResolver,
+    private val hl7DrugResolver: Hl7DrugResolver,
     private val notifier: Hl7Notifier,
     private val dispenseHl7Repository: DispenseHl7Repository,
     private val regionProvider: RegionProvider,
@@ -296,26 +295,8 @@ class Hl7OrderProcessor @Inject constructor(
         if (rowsChanged > 0) auditLogger.log(OrderDiscontinued(orderId = orderId, rowsChanged = rowsChanged))
     }
 
-    private suspend fun resolveDrug(ndc: String, fallbackName: String): DrugMasterEntity? {
-        val name = fallbackName.takeIf { it.isNotBlank() }
-        return when (val lookup = drugResolver.resolve(ndc, expectedNdc = ndc, nameIfMissing = name, nameIfUnknown = name)) {
-            is DrugLookup.Found -> lookup.drug
-            is DrugLookup.Failed -> {
-                notifier.show(
-                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                    message = context.getString(regionProvider.current.wording(R.string.hl7_notification_drug_not_found_api_failed), ndc),
-                )
-                null
-            }
-            DrugLookup.NoName, DrugLookup.NotFound -> {
-                notifier.show(
-                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                    message = context.getString(regionProvider.current.wording(R.string.hl7_notification_drug_not_found_no_drug), ndc),
-                )
-                null
-            }
-        }
-    }
+    private suspend fun resolveDrug(ndc: String, fallbackName: String): DrugMasterEntity? =
+        hl7DrugResolver.resolve(ndc, fallbackName)
 
     // A finished count is never overwritten by a later NW/RF for the same fill.
     private fun DispenseTxnEntity.isFinished() =

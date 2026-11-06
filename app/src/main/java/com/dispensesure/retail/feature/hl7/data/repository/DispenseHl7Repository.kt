@@ -10,7 +10,10 @@ import com.dispensesure.retail.core.audit.model.FieldChange
 import com.dispensesure.retail.core.audit.model.Hl7DispenseSent
 import com.dispensesure.retail.core.audit.model.Hl7SendOutcome
 import com.dispensesure.retail.core.audit.model.OrderCancelled
+import com.dispensesure.retail.core.audit.model.OrderDiscontinued
 import com.dispensesure.retail.core.audit.model.OrderEdited
+import com.dispensesure.retail.core.audit.model.OrderHeld
+import com.dispensesure.retail.core.audit.model.OrderReleased
 import com.dispensesure.retail.core.audit.model.PurgeReason
 import com.dispensesure.retail.core.audit.model.SendTrigger
 import com.dispensesure.retail.core.audit.model.TxnSource
@@ -21,6 +24,7 @@ import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
+import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
@@ -35,6 +39,9 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7MessageSender
 import com.dispensesure.retail.feature.hl7.data.Hl7ConfigProvider
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
+import com.dispensesure.retail.feature.hl7.order.NativeOrderKey
+import com.dispensesure.retail.feature.hl7.parsing.Hl7DrugResolver
+import com.dispensesure.retail.feature.hl7.parsing.Hl7Parser
 import com.dispensesure.retail.feature.hl7.util.DispenseMessageBuilder
 import com.dispensesure.retail.feature.hl7.util.isRejectAck
 import com.dispensesure.retail.feature.hl7.util.isSuccessAck
@@ -51,13 +58,14 @@ import kotlinx.coroutines.sync.withLock
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.segment.ORCSegment
 import org.rite.hl7.model.segment.RXESegment
+import org.rite.hl7.model.segment.ZDRSegment
 import org.rite.hl7.model.segment.ZINSegment
 import org.rite.hl7.model.segment.ZNISegment
-import org.rite.hl7.model.segment.ZPRSegment
 import org.rite.hl7.model.segment.ZUISegment
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.roundToLong
 
 /**
  * Dispense HL7: sends RDS^O13 when a count completes and resends unsynced ones,
@@ -73,6 +81,7 @@ class DispenseHl7Repository @Inject constructor(
     private val preferenceHelper: PreferenceHelper,
     private val hl7MessageSender: Hl7MessageSender,
     private val drugResolver: DrugResolver,
+    private val hl7DrugResolver: Hl7DrugResolver,
     private val notifier: Hl7Notifier,
     private val hl7ConfigProvider: Hl7ConfigProvider,
     private val regionProvider: RegionProvider,
@@ -182,6 +191,7 @@ class DispenseHl7Repository @Inject constructor(
             location = location,
             isControlledSubstance = isControlledDrugType(drug.drugType, drug.region),
             isHazardousDrug = drug.isHazardous,
+            drugCodeLabel = if (regionProvider.current.hl7OrdersAcceptDin) "DIN" else "NDC",
             config = hl7ConfigProvider.current()
         )
         val controlId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() } ?: txnId.toString()
@@ -390,13 +400,6 @@ class DispenseHl7Repository @Inject constructor(
 
         val drugId = finalDrug.drugId
 
-        // Priority from ZPR segment, if the sender included one alongside the order packet
-        val priority = TxnPriority.fromString(
-            message.segment<ZPRSegment>(ZPRSegment.NAME)
-                ?.takeIf { it.qualifier == "PRIORITY" }
-                ?.priority
-        )
-
         logger.i("MSH-10 raw messageControlId (site2) = '${message.header?.messageControlId.orEmpty()}'")
 
         val txn = DispenseTxnEntity(
@@ -410,7 +413,7 @@ class DispenseHl7Repository @Inject constructor(
             rxNo = rxNo,
             transactionOrderId = transactionOrderId,
             refillNo = fillNo,
-            priority = priority,
+            priority = null,
             hl7MessageControlId = message.header?.messageControlId.orEmpty().takeIf { it.isNotBlank() },
             hl7SequenceNumber = message.header?.sequenceNumber?.takeIf { it.isNotBlank() },
         )
@@ -479,13 +482,6 @@ class DispenseHl7Repository @Inject constructor(
 
         val drugId = finalDrug.drugId
 
-        // Priority from ZPR segment, if the sender included one alongside the order packet
-        val priority = TxnPriority.fromString(
-            message.segment<ZPRSegment>(ZPRSegment.NAME)
-                ?.takeIf { it.qualifier == "PRIORITY" }
-                ?.priority
-        )
-
         logger.i("MSH-10 raw messageControlId (site3/orderPacket) = '${message.header?.messageControlId.orEmpty()}'")
 
         val txn = DispenseTxnEntity(
@@ -498,7 +494,7 @@ class DispenseHl7Repository @Inject constructor(
             isNdcVerified = false,
             rxNo = rxNo,
             refillNo = orderPacket.orderFillNumber.takeIf { it.isNotBlank() },
-            priority = priority,
+            priority = null,
             hl7MessageControlId = message.header?.messageControlId.orEmpty().takeIf { it.isNotBlank() },
             hl7SequenceNumber = message.header?.sequenceNumber?.takeIf { it.isNotBlank() },
             transactionOrderId = orderPacket.orderTransactionOrderId.takeIf { it.isNotBlank() },
@@ -521,6 +517,203 @@ class DispenseHl7Repository @Inject constructor(
             dispenseTxnId = txnId,
         )
     }
+
+    // ─────────────────────────── INBOUND HANDLER: ZDR NATIVE DISPENSE REQUEST ───────────────────────────
+
+    /**
+     * Native (post-validation) entry point for NW/RF/XO. The caller has already validated the message
+     * and ACKed it, so nothing here may influence the ACK. [sequenceNumber] is MSH-13, when present.
+     * Orders are identified by [NativeOrderKey.resolve], the same key the validator checked.
+     */
+    internal suspend fun handleZdrOrder(zdr: ZDRSegment, messageControlId: String?, sequenceNumber: String? = null) {
+        val mcid = messageControlId?.takeIf { it.isNotBlank() }
+        val orderAction = zdr.orderAction.uppercase()
+        val rxNo = zdr.rxNumber.takeIf { it.isNotBlank() }
+        val orderKey = NativeOrderKey.resolve(zdr)
+        logger.i("ZDR order received | action=$orderAction | rxNo=$rxNo | orderKey=$orderKey | msgId=${mcid.orEmpty()}")
+        when (orderAction) {
+            "NW", "RF" -> handleZdrDispense(zdr, orderAction == "RF", sequenceNumber, mcid, rxNo)
+            "XO" -> handleZdrChangeOrder(zdr)
+            else -> logger.w("ZDR: unexpected action='$orderAction' in handleZdrOrder — ignoring")
+        }
+    }
+
+    /** Native (post-validation) entry point for CA/HD/RL/DC. Returns whether the action changed a row. */
+    internal suspend fun handleZdrControl(zdr: ZDRSegment, action: String): Boolean {
+        val orderKey = NativeOrderKey.resolve(zdr)
+        logger.i("ZDR control received | action=$action | orderKey=$orderKey")
+        return when (action.uppercase()) {
+            "CA" -> handleZdrCancel(orderKey)
+            "HD" -> handleZdrHold(orderKey)
+            "RL" -> handleZdrRelease(orderKey)
+            "DC" -> handleZdrDiscontinue(orderKey)
+            else -> { logger.w("ZDR: unhandled control action='$action' — ignoring"); false }
+        }
+    }
+
+    /**
+     * NW and RF share one path (as on iOS) and act on the single drug the validator guarantees.
+     * They differ only in the fill number: NW defaults a blank ZDR-17 to "0", RF derives it from the
+     * most recent fill of the Rx (and also enforces refillsAllowed). The transaction is keyed by
+     * the resolved order key; a COMPLETED/FORCE_COMPLETED match is treated as absent so a new
+     * transaction is created.
+     */
+    private suspend fun handleZdrDispense(
+        zdr: ZDRSegment,
+        isRefill: Boolean,
+        sequenceNumber: String?,
+        messageControlId: String?,
+        rxNo: String?,
+    ) {
+        val label = if (isRefill) "RF" else "NW"
+        val drug = zdr.drugs.first()
+        val ndc = drug.ndc.trim()
+        // Rounded, not truncated: NativeZdrValidator accepted this quantity via roundToLong, so
+        // truncating here stored 2 for a "2.6" the validator had passed as 3.
+        val targetCount = zdr.quantityToDispense.trim().toDoubleOrNull()?.roundToLong()?.toInt()
+
+        val fillNo = zdr.fillNumber.takeIf { it.isNotBlank() } ?: when {
+            !isRefill -> "0"
+            else -> {
+                val mostRecent = if (rxNo != null) dispenseTxnDao.getMostRecentByRxNo(rxNo) else null
+                ((mostRecent?.refillNo?.toIntOrNull() ?: 0) + 1).toString()
+            }
+        }
+
+        // When ZDR-15 is blank the key falls back to rx+fill, but the caller resolved it before
+        // [fillNo] was derived — so every refill on an Rx with a blank ZDR-17 would collapse to
+        // "rx-0" and the second refill would overwrite the first in place, losing a dispense.
+        // Re-derive from the resolved fill. An explicit ZDR-15 still wins.
+        val resolvedKey = zdr.orderReferenceNumber.takeIf { it.isNotBlank() }
+            ?: NativeOrderKey.compose(rxNo.orEmpty(), fillNo)
+
+        // Refill exhaustion is not re-checked here: NativeZdrValidator rejects an RF with no
+        // remaining refills (NO_REFILLS_REMAINING) before this handler is ever dispatched.
+
+        val existing = dispenseTxnDao.getByTransactionOrderId(resolvedKey)?.takeUnless { it.isZdrFinished() }
+
+        val finalDrug = zdrResolveDrug(ndc, drug.name) ?: return
+        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
+        val priority = Hl7Parser.mapPriority(zdr.priority)
+
+        val txnId: Long
+        if (existing != null) {
+            dispenseTxnDao.updateFromHl7Edit(
+                txnId = existing.txnId,
+                drugId = drugId,
+                targetCount = targetCount,
+                priority = priority,
+                status = null,
+            )
+            txnId = existing.txnId
+            logger.i("ZDR $label: updated existing txnId=$txnId orderKey=$resolvedKey ndc=$ndc")
+        } else {
+            val txn = DispenseTxnEntity(
+                userLocalId = preferenceHelper.getLocalId(),
+                drugId = drugId,
+                targetCount = targetCount,
+                status = CountStatus.PARTIAL,
+                isComingFromHL7 = true,
+                isSynced = false,
+                isNdcVerified = false,
+                rxNo = rxNo,
+                refillNo = fillNo,
+                transactionOrderId = resolvedKey,
+                priority = priority,
+                hl7MessageControlId = messageControlId,
+                hl7SequenceNumber = sequenceNumber,
+            )
+            txnId = dispenseTxnDao.upsertPreservingId(txn)
+            logger.i("ZDR $label: created txnId=$txnId hl7MessageControlId=$messageControlId orderKey=$resolvedKey ndc=$ndc")
+            logPacketTxnCreated(txnId, txn, ndc)
+        }
+
+        notifier.show(
+            title = context.getString(R.string.hl7_notification_new_rx_title),
+            message = context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), drug.name, targetCount ?: 0),
+            dispenseTxnId = txnId,
+        )
+    }
+
+    internal suspend fun handleZdrChangeOrder(zdr: ZDRSegment): Boolean {
+        // Must use the same resolver the validator used: it accepted this XO against the
+        // resolved key (ZDR-15, else rx-fill), so matching on raw ZDR-15 here would ACK an
+        // AA and then silently apply nothing whenever ZDR-15 is blank.
+        val orderId = NativeOrderKey.resolve(zdr)
+        val existing = dispenseTxnDao.getByTransactionOrderId(orderId) ?: run {
+            logger.w("ZDR XO: no txn found for transactionOrderId=$orderId")
+            return false
+        }
+        // Quantity and drug code are not re-checked here: NativeZdrValidator rejects an XO with a
+        // bad quantity (XO requires one) or an invalid/absent drug code before dispatch, so by the
+        // time this runs both are known good.
+        val newQty = zdr.quantityToDispense.trim().toDoubleOrNull()?.roundToLong()?.toInt()
+        val drug = zdr.drugs.first()
+        val ndc = drug.ndc.trim()
+        val finalDrug = zdrResolveDrug(ndc, drug.name) ?: return false
+        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
+        dispenseTxnDao.updateFromHl7Edit(
+            txnId = existing.txnId,
+            drugId = drugId,
+            targetCount = newQty,
+            priority = Hl7Parser.mapPriority(zdr.priority),
+            status = null,
+        )
+        logger.i("ZDR XO: updated txnId=${existing.txnId} orderId=$orderId qty=$newQty ndc=$ndc")
+        return true
+    }
+
+    private suspend fun handleZdrCancel(orderId: String): Boolean {
+        logger.i("ZDR CA for orderId=$orderId — cancelling active txns")
+        val cancelled = dispenseTxnDao.cancelActiveTxnsByOrderId(orderId)
+        if (cancelled.isEmpty()) {
+            logger.w("ZDR CA: no active txns found for orderId=$orderId")
+            return false
+        }
+        auditLogger.log(OrderCancelled(txnIds = cancelled))
+        return true
+    }
+
+    private suspend fun handleZdrHold(orderId: String): Boolean {
+        logger.i("ZDR HD for orderId=$orderId — marking ON_HOLD")
+        val rowsChanged = dispenseTxnDao.updateStatusByOrderIdIfPartial(orderId, CountStatus.ON_HOLD)
+        if (rowsChanged == 0) {
+            logger.w("ZDR HD: no active PARTIAL txns found for orderId=$orderId")
+            return false
+        }
+        auditLogger.log(OrderHeld(orderId = orderId, rowsChanged = rowsChanged))
+        return true
+    }
+
+    private suspend fun handleZdrRelease(orderId: String): Boolean {
+        logger.i("ZDR RL for orderId=$orderId — restoring to PARTIAL")
+        val oldStatus = dispenseTxnDao.getActiveStatusByOrderId(orderId)
+        val rowsChanged = dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold(orderId, CountStatus.PARTIAL)
+        if (rowsChanged == 0) {
+            logger.w("ZDR RL: no active txns found for orderId=$orderId")
+            return false
+        }
+        auditLogger.log(OrderReleased(orderId = orderId, oldStatus = oldStatus?.name, rowsChanged = rowsChanged))
+        return true
+    }
+
+    private suspend fun handleZdrDiscontinue(orderId: String): Boolean {
+        logger.i("ZDR DC for orderId=$orderId — soft-deleting (discontinued)")
+        val rowsChanged = dispenseTxnDao.softDeleteByOrderId(orderId)
+        if (rowsChanged == 0) {
+            logger.w("ZDR DC: no active txns found for orderId=$orderId")
+            return false
+        }
+        auditLogger.log(OrderDiscontinued(orderId = orderId, rowsChanged = rowsChanged))
+        return true
+    }
+
+    private fun DispenseTxnEntity.isZdrFinished() =
+        status == CountStatus.COMPLETED || status == CountStatus.FORCE_COMPLETED
+
+    private suspend fun zdrResolveDrug(ndc: String, drugName: String?): DrugMasterEntity? =
+        hl7DrugResolver.resolve(ndc, drugName)
+            .also { if (it == null) logger.w("ZDR: no drug resolved for NDC=$ndc") }
 
     // ZNI / ZUI packets always insert a new order (txnId 0 upserts as an insert).
     private fun logPacketTxnCreated(txnId: Long, txn: DispenseTxnEntity, ndc: String) {
@@ -638,13 +831,6 @@ class DispenseHl7Repository @Inject constructor(
 
         val newDrugId = resolvedDrug.drugId
 
-        // 3. Parse priority from ZPR segment
-        val newPriority = TxnPriority.fromString(
-            message.segment<ZPRSegment>(ZPRSegment.NAME)
-                ?.takeIf { it.qualifier == "PRIORITY" }
-                ?.priority
-        )
-
         // 4. Map order status and apply the edit
         val newStatus = mapHl7OrderStatus(orderStatusRaw)
 
@@ -652,19 +838,19 @@ class DispenseHl7Repository @Inject constructor(
             txnId = existingTxn.txnId,
             drugId = newDrugId,
             targetCount = newTargetCount,
-            priority = newPriority,
+            priority = null,
             status = newStatus
         )
 
         logger.i(
             "ORC|XO applied: txnId=${existingTxn.txnId}, rxNo=$rxNo, " +
-                "drugId=$newDrugId, targetCount=$newTargetCount, priority=$newPriority, status=$orderStatusRaw"
+                "drugId=$newDrugId, targetCount=$newTargetCount, priority=null, status=$orderStatusRaw"
         )
         // Mirrors updateFromHl7Edit: a null status keeps the old one.
         val orderChanges = listOf(
             FieldChange("drug_id", existingTxn.drugId?.toString(), newDrugId.toString()),
             FieldChange("target_qty", existingTxn.targetCount?.toString(), newTargetCount?.toString()),
-            FieldChange("priority", existingTxn.priority?.name, newPriority?.name),
+            FieldChange("priority", existingTxn.priority?.name, null),
             FieldChange("status", existingTxn.status.name, (newStatus ?: existingTxn.status).name)
         ).filter { it.old != it.new }
         // An identical XO resend changes nothing, so it isn't logged.

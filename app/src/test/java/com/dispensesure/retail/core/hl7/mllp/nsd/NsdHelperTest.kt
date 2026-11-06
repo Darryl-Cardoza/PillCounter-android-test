@@ -307,6 +307,8 @@ class NsdHelperTest {
         verify(exactly = 1) { nsdManager.resolveService(found, any()) }
     }
 
+
+
     @Test
     fun `onServiceFound ignores service with mismatched type`() {
         val listenerSlot = slot<NsdManager.DiscoveryListener>()

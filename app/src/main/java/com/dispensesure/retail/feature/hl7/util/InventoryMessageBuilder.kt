@@ -4,12 +4,113 @@ import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
 import org.rite.hl7.HL7
 import java.io.File
+import org.rite.hl7.config.HL7Config as LibHl7Config
+import org.rite.hl7.config.HL7Version as LibHl7Version
 
 /**
  * Builds the INU^U05 inventory response, split into chunks for large batches.
  * Like [DispenseMessageBuilder], it does not send, touch the database or use coroutines.
  */
 object InventoryMessageBuilder {
+
+    // =========================================================
+    // DISPENSESURE_NATIVE INVENTORY ACK (MSH + ZDS, flowType=INVENTORY)
+    // Response to INR^U06 with ZDR(flowType=INVENTORY) — sent immediately after txn creation.
+    // Shape: MSH + ZDS only (matching NATIVE dispense response convention).
+    // =========================================================
+
+    data class ZdrInventoryCount(
+        val ndc: String,
+        val total: Int,
+        val sealed: Int,
+        val sealedBottles: Int,
+        val opened: Int,
+        val openedBottles: Int,
+        val lot: String = "",
+        val expiry: String = "",
+        val drugName: String = "",
+        val serial: String = "",
+    )
+
+    fun buildZdrInventoryAck(
+        requestMessageId: String,
+        orderReferenceNumber: String = "",
+        ndcs: List<String>,
+        counts: List<ZdrInventoryCount> = emptyList(),
+        /** ZDS-30 controlled-count photos, "/images/<path>^controlled_count^<ndc>" per row. */
+        imageList: List<String> = emptyList(),
+        /** Who performed the count — the PMS shows this against the submitted inventory. */
+        operatorFamilyName: String? = null,
+        operatorGivenName: String? = null,
+        /**
+         * ZDS-08: "NDC" in the US, "DIN" in Canada — the same label the dispense ZDS carries.
+         * NativeZdrValidator rejects an inbound ZDR whose ZDR-06 does not match the region, so a
+         * response that always said "NDC" labelled Canadian DIN codes as NDCs.
+         */
+        drugCodeLabel: String = "NDC",
+        config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS"),
+    ): String {
+        val now = hl7TimestampNow()
+        val messageId = "INR-ACK-${System.currentTimeMillis() / 1000}"
+        val hl7 = HL7(LibHl7Config(LibHl7Version.from(config.versionId)))
+        val builder = hl7.build()
+
+        val inventoryCountStrings = counts.map { c ->
+            // ZDS-27 is a FIXED 8-component structure (ZDSSegment.InventoryCount: ndc, total,
+            // sealed, sealedBottles, opened, openedBottles, lot, expiry). Do not append fields —
+            // a 9th component shifts nothing for us but breaks a receiver parsing by position.
+            // The expiry is stored for display (MM-dd-yyyy); HL7 dates are yyyyMMdd, so it is
+            // normalized here — an ambiguous date is worse than none on a controlled count.
+            "${c.ndc}^${c.total}^${c.sealed}^${c.sealedBottles}^${c.opened}^${c.openedBottles}^" +
+                "${c.lot}^${hl7Date(c.expiry)}"
+        }
+
+        val message = builder.rdsO13Ds {
+            msh { msh ->
+                msh.sendingApplication = config.sendingApplication
+                msh.sendingFacility = config.sendingFacility
+                msh.receivingApplication = config.receivingApplication
+                msh.receivingFacility = config.receivingFacility
+                msh.dateTimeOfMessage = now
+                msh.messageControlId = messageId
+                msh.processingId = "P"
+                msh.versionId = config.versionId
+            }
+
+            zds { z ->
+                z.flowType = "IR"
+                z.layoutVersion = "1.0"
+                z.responseMessageId = messageId
+                // Blank for a manual count (no PMS request to echo) — omitted rather than sent empty.
+                z.requestMessageId = requestMessageId.takeIf { it.isNotBlank() }
+                z.responseType = "RE"
+                // ZDS-07 is code^name, as on the dispense ZDS — a bare code leaves the drug
+                // name blank on the PMS screen. Names come from the counts, keyed by code.
+                z.drugs = ndcs.map { code ->
+                    val name = counts.firstOrNull { it.ndc == code }?.drugName.orEmpty()
+                    if (name.isBlank()) code else "$code^$name"
+                }
+                z.drugCodeType = drugCodeLabel
+                z.operatorFamilyName = operatorFamilyName
+                z.operatorGivenName = operatorGivenName
+                z.orderReferenceNumber = orderReferenceNumber.takeIf { it.isNotBlank() }
+                z.unitOfMeasure = "TAB"
+                z.inventoryCounts = inventoryCountStrings
+                if (imageList.isNotEmpty()) z.imageList = imageList
+            }
+        }
+
+        // The trigger event follows the HL7 version on every format, native included: the library
+        // emits RDS^O01 below 2.5 and RDS^O13 from 2.5.1 up. Left exactly as built.
+        val encoded = message.encode()
+        // ZDSBuilder escapes '^' as '\S\' inside its array setters, but ZDS-27 count rows
+        // carry '^' as a real component separator — left escaped, the PMS cannot parse the
+        // quantities. Unescape within ZDS lines only. Mirrors iOS
+        // unescapeZdsComponentSeparators; NDCs, lots and expiries contain no literal '^'.
+        return encoded.split("\r").joinToString("\r") { line ->
+            if (line.startsWith("ZDS")) line.replace("\\S\\", "^") else line
+        }
+    }
 
     // =========================================================
     // INVENTORY RESPONSE (INU^U05, INV + ZAD)
@@ -107,7 +208,7 @@ object InventoryMessageBuilder {
             val chunkTotal = chunkRows.sumOf { it.value.opened + it.value.sealed }
             val messageId = "RES${System.currentTimeMillis() / 1000}-$chunkIndex"
 
-            val hl7 = HL7(version = config.versionId)
+            val hl7 = HL7(LibHl7Config(LibHl7Version.from(config.versionId)))
             val builder = hl7.build()
 
             var obxSetId = 0

@@ -7,15 +7,21 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
  * Persisted via [PreferenceHelper.saveHl7Format]/[PreferenceHelper.getHl7Format].
  */
 enum class Hl7Format(val sendingApplication: String) {
-    DISPENSESURE("DISPENSESURE"),
+    DISPENSESURE_STANDARD("DISPENSESURE"),
+    DISPENSESURE_NATIVE("DISPENSESURE_NATIVE"),
     EYECON("EYECON"),
     VIVID("VIVID");
 
     companion object {
-        val DEFAULT = DISPENSESURE
+        val DEFAULT = DISPENSESURE_STANDARD
 
-        fun fromSendingApplication(value: String?): Hl7Format =
-            entries.firstOrNull { it.sendingApplication == value } ?: DEFAULT
+        fun fromSendingApplication(value: String?): Hl7Format {
+            if (value.isNullOrBlank()) return DEFAULT
+            // Exact enum name match first ("DISPENSESURE_NATIVE", "DISPENSESURE_STANDARD", "EYECON", "VIVID")
+            entries.firstOrNull { it.name.equals(value, ignoreCase = true) }?.let { return it }
+            // Legacy: server sends sendingApplication value ("DISPENSESURE" → STANDARD, "EYECON", "VIVID")
+            return entries.firstOrNull { it.sendingApplication.equals(value, ignoreCase = true) } ?: DEFAULT
+        }
     }
 }
 
@@ -40,7 +46,7 @@ data class HL7Config(
             pmsHostName: String,
             hl7Version: String = PreferenceHelper.DEFAULT_HL7_VERSION,
             hl7Format: Hl7Format = Hl7Format.DEFAULT,
-            sendingApplicationName: String = Hl7Format.DISPENSESURE.sendingApplication
+            sendingApplicationName: String = Hl7Format.DISPENSESURE_STANDARD.sendingApplication
         ) = HL7Config(
             sendingApplication = sendingApplicationName,
             sendingFacility = selectedTerminalName,

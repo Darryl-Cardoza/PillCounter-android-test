@@ -646,7 +646,7 @@ class PreferenceHelperTest {
     @Test
     fun `getHl7Version defaults to DEFAULT_HL7_VERSION constant`() {
         assertEquals(PreferenceHelper.DEFAULT_HL7_VERSION, helper.getHl7Version())
-        assertEquals("2.5.1", helper.getHl7Version())
+        assertEquals("2.3.1", helper.getHl7Version())
     }
 
     @Test
@@ -686,8 +686,8 @@ class PreferenceHelperTest {
         helper.saveHl7Format(Hl7Format.EYECON)
         assertEquals(Hl7Format.EYECON, helper.getHl7Format())
 
-        helper.saveHl7Format(Hl7Format.DISPENSESURE)
-        assertEquals(Hl7Format.DISPENSESURE, helper.getHl7Format())
+        helper.saveHl7Format(Hl7Format.DISPENSESURE_STANDARD)
+        assertEquals(Hl7Format.DISPENSESURE_STANDARD, helper.getHl7Format())
     }
 
     @Test

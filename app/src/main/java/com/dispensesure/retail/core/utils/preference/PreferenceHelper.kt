@@ -659,7 +659,7 @@ class PreferenceHelper @Inject constructor(
     }
 
     /**
-     * Returns the persisted HL7 version, defaulting to "2.5" if not yet configured.
+     * Returns the persisted HL7 version, defaulting to "2.3.1" if not yet configured.
      */
     fun getHl7Version(): String {
         val version = prefs.getString(KEY_HL7_VERSION) ?: DEFAULT_HL7_VERSION
@@ -689,16 +689,19 @@ class PreferenceHelper @Inject constructor(
 
     /**
      * Saves the HL7 sending-application format used when composing outbound
-     * messages. One of [Hl7Format.DISPENSESURE], [Hl7Format.EYECON], [Hl7Format.VIVID].
+     * messages. One of [Hl7Format.DISPENSESURE_STANDARD], [Hl7Format.DISPENSESURE_NATIVE],
+     * [Hl7Format.EYECON], [Hl7Format.VIVID].
      */
     fun saveHl7Format(format: Hl7Format) {
         prefs.putString(KEY_HL7_FORMAT, format.name)
         logger.i("Saved HL7 format: ${format.name}")
     }
 
-    /** Returns the persisted HL7 format, defaulting to [Hl7Format.DEFAULT] if not yet configured. */
+    /** Returns the persisted HL7 format, defaulting to [Hl7Format.DEFAULT] if not yet configured.
+     *  Legacy persisted value "DISPENSESURE" migrates to [Hl7Format.DISPENSESURE_STANDARD]. */
     fun getHl7Format(): Hl7Format {
         val name = prefs.getString(KEY_HL7_FORMAT)
+            ?.let { if (it == "DISPENSESURE") "DISPENSESURE_STANDARD" else it }
         val format = name?.let { runCatching { Hl7Format.valueOf(it) }.getOrNull() } ?: Hl7Format.DEFAULT
         logger.d("Retrieved HL7 format: $format")
         return format
@@ -909,6 +912,6 @@ class PreferenceHelper @Inject constructor(
 
     companion object {
         /** Default HL7 spec version used by parser and builder when not explicitly configured. */
-        const val DEFAULT_HL7_VERSION = "2.5.1"
+        const val DEFAULT_HL7_VERSION = "2.3.1"
     }
 }

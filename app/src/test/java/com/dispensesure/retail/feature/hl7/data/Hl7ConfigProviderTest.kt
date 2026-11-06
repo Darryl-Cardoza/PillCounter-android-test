@@ -22,7 +22,7 @@ class Hl7ConfigProviderTest {
         every { preferenceHelper.getSelectedTerminalName() } returns "TERMINAL-1"
         every { preferenceHelper.getHl7PmsHost() } returns "PMS-HOST"
         every { preferenceHelper.getHl7Version() } returns "2.5.1"
-        every { preferenceHelper.getHl7Format() } returns Hl7Format.DISPENSESURE
+        every { preferenceHelper.getHl7Format() } returns Hl7Format.DISPENSESURE_STANDARD
     }
 
     @Test
@@ -34,7 +34,7 @@ class Hl7ConfigProviderTest {
         assertEquals("client", config.receivingApplication)
         assertEquals("PMS-HOST", config.receivingFacility)
         assertEquals("2.5.1", config.versionId)
-        assertEquals(Hl7Format.DISPENSESURE, config.messageFormat)
+        assertEquals(Hl7Format.DISPENSESURE_STANDARD, config.messageFormat)
     }
 
     @Test
@@ -45,6 +45,16 @@ class Hl7ConfigProviderTest {
 
         assertEquals("EYECON", config.sendingApplication)
         assertEquals(Hl7Format.EYECON, config.messageFormat)
+    }
+
+    @Test
+    fun `native sends DISPENSESURE_NATIVE as the outbound sending application`() {
+        every { preferenceHelper.getHl7Format() } returns Hl7Format.DISPENSESURE_NATIVE
+
+        val config = hl7ConfigProvider.current()
+
+        assertEquals("DISPENSESURE_NATIVE", config.sendingApplication)
+        assertEquals(Hl7Format.DISPENSESURE_NATIVE, config.messageFormat)
     }
 
     @Test
@@ -66,5 +76,27 @@ class Hl7ConfigProviderTest {
 
         assertEquals("PILLCOUNTER", config.sendingFacility)
         assertEquals("PMS", config.receivingFacility)
+    }
+
+    @Test
+    fun `native format sends DISPENSESURE_NATIVE on the wire`() {
+        assertEquals("DISPENSESURE_NATIVE", Hl7Format.DISPENSESURE_NATIVE.sendingApplication)
+    }
+
+    @Test
+    fun `standard format keeps the legacy DISPENSESURE wire value`() {
+        assertEquals("DISPENSESURE", Hl7Format.DISPENSESURE_STANDARD.sendingApplication)
+    }
+
+    @Test
+    fun `every format round-trips through its sending application`() {
+        Hl7Format.entries.forEach { format ->
+            assertEquals(format, Hl7Format.fromSendingApplication(format.sendingApplication))
+        }
+    }
+
+    @Test
+    fun `legacy stored DISPENSESURE value reads back as standard`() {
+        assertEquals(Hl7Format.DISPENSESURE_STANDARD, Hl7Format.fromSendingApplication("DISPENSESURE"))
     }
 }

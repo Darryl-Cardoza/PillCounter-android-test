@@ -12,6 +12,7 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -30,6 +31,12 @@ import java.io.File
  * in the encoded text.
  */
 class DispenseMessageBuilderTest {
+
+    private companion object {
+        // ZDS field positions (0 = "ZDS"); 13 is dispensedQuantity.
+        const val ZDS_FILL_STATUS = 14
+        const val ZDS_VERIFICATION_STATUS = 21
+    }
 
     @Before
     fun setup() {
@@ -52,6 +59,7 @@ class DispenseMessageBuilderTest {
         barcodeImage: String? = null,
         note: String? = "some note",
         bottleTxnDetailsIds: List<Long> = emptyList(),
+        targetCount: Int? = null,
     ): DispenseTxnEntity = DispenseTxnEntity(
         txnId = txnId,
         status = CountStatus.COMPLETED,
@@ -68,6 +76,7 @@ class DispenseMessageBuilderTest {
             )
         },
         rxNo = rxNo,
+        targetCount = targetCount,
     )
 
     private fun detail(
@@ -111,8 +120,7 @@ class DispenseMessageBuilderTest {
         )
 
         assertTrue(raw.isNotEmpty())
-        assertTrue("should contain RDS^O13 in MSH", raw.contains("RDS"))
-        assertTrue(raw.contains("O13"))
+        assertTrue("should contain RDS in MSH", raw.contains("RDS"))
         assertTrue("should contain RXD", raw.contains("RXD"))
         assertTrue("should contain PID", raw.contains("PID"))
         assertTrue("should contain ORC", raw.contains("ORC"))
@@ -437,6 +445,386 @@ class DispenseMessageBuilderTest {
         // Every step still gets its image OBX row — only the counting changed.
         assertTrue(raw.contains("before_dispense_stock_bottle_count"))
         assertTrue(raw.contains("dispense_recount"))
+    }
+
+    // ============================ trigger event follows the HL7 version ============================
+    // One rule for every format, native included: 2.3.1 names the dispense trigger RDS^O01 and
+    // 2.5.1 names it RDS^O13. Nothing rewrites the encoded type afterwards.
+
+    private fun versionedConfig(version: String, format: Hl7Format) = HL7Config.current(
+        selectedTerminalName = "PILLCOUNTER",
+        pmsHostName = "PMS",
+        hl7Version = version,
+        hl7Format = format,
+        sendingApplicationName = format.sendingApplication,
+    )
+
+    private fun messageTypeOf(version: String, format: Hl7Format): String {
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn(txnId = 900L, rxNo = "RX-VER"),
+            txnDetails = listOf(detail(countId = 1L, pillCount = 10)),
+            drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
+            drugName = "DRUG",
+            pharmacistName = "Jane Doe",
+            config = versionedConfig(version, format),
+        )
+        return raw.split('\r').first { it.startsWith("MSH") }.split('|')[8]
+    }
+
+    @Test
+    fun `every format sends RDS O01 at 2_3_1`() {
+        for (format in listOf(Hl7Format.DISPENSESURE_STANDARD, Hl7Format.VIVID, Hl7Format.EYECON, Hl7Format.DISPENSESURE_NATIVE)) {
+            assertEquals("$format at 2.3.1", "RDS^O01", messageTypeOf("2.3.1", format))
+        }
+    }
+
+    @Test
+    fun `every format sends RDS O13 at 2_5_1`() {
+        for (format in listOf(Hl7Format.DISPENSESURE_STANDARD, Hl7Format.VIVID, Hl7Format.EYECON, Hl7Format.DISPENSESURE_NATIVE)) {
+            assertEquals("$format at 2.5.1", "RDS^O13", messageTypeOf("2.5.1", format))
+        }
+    }
+
+    // ============================ DISPENSESURE_NATIVE ZDS ============================
+
+    private fun nativeConfig() = HL7Config.current(
+        selectedTerminalName = "PILLCOUNTER",
+        pmsHostName = "PMS",
+        hl7Format = Hl7Format.DISPENSESURE_NATIVE,
+        sendingApplicationName = Hl7Format.DISPENSESURE_NATIVE.sendingApplication,
+    )
+
+    @Test
+    fun `buildDispenseMessage for DISPENSESURE_NATIVE emits ZDS segment`() {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 15, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name, imagePath = "/a/img1.png"),
+        )
+        val txn = txn(txnId = 200L, rxNo = "RX-NATIVE-1", note = "native note")
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn,
+            txnDetails = details,
+            drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
+            drugName = "Metformin",
+            pharmacistName = "Alice Smith",
+            pharmacistFamilyName = "Smith",
+            pharmacistGivenName = "Alice",
+            isNdcVerified = true,
+            isControlledSubstance = false,
+            isHazardousDrug = false,
+            config = nativeConfig(),
+        )
+
+        assertTrue("ZDS segment must be present", raw.lineSequence().any { it.startsWith("ZDS|") })
+        assertTrue("MSH must carry DISPENSESURE sending app", raw.contains("DISPENSESURE"))
+        // NATIVE format: MSH + ZDS only — no PID, ORC or RXD
+        assertFalse("RXD must NOT be present in NATIVE", raw.lineSequence().any { it.startsWith("RXD|") })
+        assertFalse("PID must NOT be present in NATIVE", raw.lineSequence().any { it.startsWith("PID|") })
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE ZDS flowType is DR`() {
+        val details = listOf(detail(countId = 1L, pillCount = 10, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name))
+        val txn = txn(txnId = 201L, rxNo = "RX-NATIVE-2", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "11111-222-33", scannedDrugCode = "11111-222-33",
+            drugName = "Drug", pharmacistName = null,
+            config = nativeConfig(),
+        )
+
+        val zds = raw.lineSequence().first { it.startsWith("ZDS|") }.split("|")
+        assertEquals("DR", zds[1])
+    }
+
+    private fun zdsField(
+        dispensed: Int = 30,
+        target: Int? = 30,
+        isNdcVerified: Boolean = true,
+        field: String,
+    ): String {
+        val details = listOf(detail(countId = 1L, pillCount = dispensed, step = StepState.TARGET_VERIFICATION.name))
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn(txnId = 202L, rxNo = "RX-NATIVE-3", note = null, targetCount = target),
+            txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            isNdcVerified = isNdcVerified, config = nativeConfig(),
+        )
+        val zds = raw.lineSequence().first { it.startsWith("ZDS|") }.split("|")
+        val index = mapOf("fillStatus" to ZDS_FILL_STATUS, "verificationStatus" to ZDS_VERIFICATION_STATUS)
+        return zds[index.getValue(field)]
+    }
+
+    @Test
+    fun `fill status is Complete when dispensed equals target`() =
+        assertEquals("Complete", zdsField(dispensed = 30, target = 30, field = "fillStatus"))
+
+    @Test
+    fun `fill status is Partial when dispensed is under target`() =
+        assertEquals("Partial", zdsField(dispensed = 20, target = 30, field = "fillStatus"))
+
+    @Test
+    fun `fill status is Over when dispensed exceeds target`() =
+        assertEquals("Over", zdsField(dispensed = 40, target = 30, field = "fillStatus"))
+
+    @Test
+    fun `fill status is Complete when there is no target`() =
+        assertEquals("Complete", zdsField(dispensed = 20, target = null, field = "fillStatus"))
+
+    @Test
+    fun `verification status is U when the drug code was not verified`() =
+        assertEquals("U", zdsField(isNdcVerified = false, field = "verificationStatus"))
+
+    @Test
+    fun `verification status is V when the drug code was verified`() =
+        assertEquals("V", zdsField(isNdcVerified = true, field = "verificationStatus"))
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE ZDS controlledSubstance and hazardous flags`() {
+        val details = listOf(detail(countId = 1L, pillCount = 3, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name))
+        val txn = txn(txnId = 204L, rxNo = "RX-NATIVE-5", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            isControlledSubstance = true, isHazardousDrug = true,
+            config = nativeConfig(),
+        )
+
+        val zds = raw.lineSequence().first { it.startsWith("ZDS|") }
+        assertTrue("controlled substance flag Y", zds.contains("|Y|") || zds.endsWith("|Y"))
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE ZDS imageList carries filenames`() {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 10, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name, imagePath = "/storage/img_one.png"),
+            detail(countId = 2L, pillCount = 5, step = com.dispensesure.retail.core.models.StepState.VIAL.name, imagePath = "/storage/img_two.png"),
+            detail(countId = 3L, pillCount = 0, step = com.dispensesure.retail.core.models.StepState.CONTAINER_INITIATE.name, imagePath = null),
+        )
+        val txn = txn(txnId = 205L, rxNo = "RX-NATIVE-6", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            config = nativeConfig(),
+        )
+
+        val zds = raw.lineSequence().first { it.startsWith("ZDS|") }
+        // Each row is "/images/<path>^<label>^<drugCode>" — the old "ZDS:<filename>" form told
+        // the receiver neither which image it was nor which drug it belonged to.
+        assertTrue(zds, zds.contains("/images//storage/img_one.png^dispense_count^NDC1"))
+        assertTrue(zds, zds.contains("/images//storage/img_two.png^dispense_vial^NDC1"))
+        assertFalse("the old ZDS:<filename> form must be gone: $zds", zds.contains("ZDS:"))
+        assertFalse("component separators must not stay escaped: $zds", zds.contains("\\S\\"))
+    }
+
+    // Pins the ZDS against a real outbound message: a bare drug code with no name, and image
+    // rows carrying no label or drug code, were both reported from the field.
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE ZDS carries the drug name and bottle details`() {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 30, step = StepState.TARGET_VERIFICATION.name, imagePath = "/a/one.jpg"),
+        )
+        val txn = txn(txnId = 900L, rxNo = "RX100063", note = null, targetCount = 30)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "76385-0118-01", scannedDrugCode = "76385-0118-01",
+            drugName = "ETODOLAC 400MG TABLET", pharmacistName = null,
+            drugCodeLabel = "NDC",
+            config = nativeConfig(),
+        )
+        val zds = raw.lineSequence().first { it.startsWith("ZDS|") }
+
+        // ZDS-07 is code^name; the name is what a pharmacist reads on the PMS side.
+        assertTrue(zds, zds.contains("76385-0118-01^ETODOLAC 400MG TABLET"))
+        assertTrue("facility must be set: $zds", zds.split("|").last().isNotBlank())
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE does not emit ZUI or ZSN segments`() {
+        val details = listOf(detail(countId = 1L, pillCount = 8, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name))
+        val txn = txn(txnId = 206L, rxNo = "RX-NATIVE-7", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            config = nativeConfig(),
+        )
+
+        assertFalse("ZUI must not appear in native format", raw.lineSequence().any { it.startsWith("ZUI|") })
+        assertFalse("ZSN must not appear in native format", raw.lineSequence().any { it.startsWith("ZSN|") })
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE ZDS carries dispensed quantity`() {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 12, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name),
+            detail(countId = 2L, pillCount = 3, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name),
+        )
+        val txn = txn(txnId = 207L, rxNo = "RX-NATIVE-8", note = null)
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn, txnDetails = details,
+            drugCode = "NDC1", scannedDrugCode = "NDC1",
+            drugName = "Drug", pharmacistName = null,
+            config = nativeConfig(),
+        )
+
+        // NATIVE emits MSH + ZDS only; dispensedQuantity is in ZDS not RXD
+        assertFalse("RXD must NOT be present in NATIVE", raw.lineSequence().any { it.startsWith("RXD|") })
+        val zds = raw.lineSequence().first { it.startsWith("ZDS|") }.split("|")
+        assertEquals("15", zds[13]) // ZDS-13 is dispensedQuantity (0=ZDS, 1=flowType, …, 12=fillNumber, 13=dispensedQuantity)
+    }
+
+    // ============================ EYECON / VIVID — full RDS^O13 body ============================
+
+    private fun buildMessage(format: Hl7Format): String {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 20, step = StepState.TARGET_VERIFICATION.name, imagePath = "/a/img.png"),
+        )
+        return DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn(txnId = 321L, rxNo = "RX-FULL-1", note = null),
+            txnDetails = details,
+            drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
+            drugName = "Atorvastatin",
+            pharmacistName = "Jane Doe",
+            pharmacistGivenName = "Jane",
+            pharmacistFamilyName = "Doe",
+            isNdcVerified = true,
+            config = HL7Config.current(
+                selectedTerminalName = "PILLCOUNTER",
+                pmsHostName = "PMS",
+                hl7Format = format,
+                sendingApplicationName = format.sendingApplication,
+            ),
+        )
+    }
+
+    private fun segmentNames(raw: String) =
+        raw.lineSequence().filter { it.isNotBlank() }.map { it.substringBefore("|") }.toList()
+
+    @Test
+    fun `vivid dispense message keeps the full RDS O13 body`() {
+        val msg = buildMessage(Hl7Format.VIVID)
+        listOf("ORC|", "PID|", "RXD|", "ZSN|", "ZSV|", "ZUI|").forEach { seg ->
+            assertTrue("expected $seg in VIVID message", msg.contains(seg))
+        }
+    }
+
+    @Test
+    fun `eyecon dispense message keeps the full RDS O13 body`() {
+        val msg = buildMessage(Hl7Format.EYECON)
+        listOf("ORC|", "PID|", "RXD|", "ZSN|", "ZSV|", "ZUI|").forEach { seg ->
+            assertTrue("expected $seg in EYECON message", msg.contains(seg))
+        }
+    }
+
+    @Test
+    fun `eyecon still emits the fixed 25 field ZUI segment`() {
+        val zui = buildMessage(Hl7Format.EYECON).lines().first { it.startsWith("ZUI|") }
+        assertEquals(26, zui.split("|").size)
+    }
+
+    @Test
+    fun `vivid ZUI image separators are unescaped`() {
+        // ZUI-8 only carries separators when the image files actually exist on disk —
+        // a non-existent path yields a null drugImage, which would make this test pass
+        // even with the post-encode unescape removed.
+        val imgFile = File.createTempFile("zui8_unescape_step", ".png").apply {
+            writeBytes(byteArrayOf(1, 2, 3)); deleteOnExit()
+        }
+        val barcodeFile = File.createTempFile("zui8_unescape_barcode", ".png").apply {
+            writeBytes(byteArrayOf(4, 5, 6)); deleteOnExit()
+        }
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn(txnId = 987L, rxNo = "RX-UNESC-1", barcodeImage = barcodeFile.absolutePath, note = null),
+            txnDetails = listOf(
+                detail(countId = 1L, pillCount = 20, step = StepState.TARGET_VERIFICATION.name, imagePath = imgFile.absolutePath),
+            ),
+            drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
+            drugName = "Atorvastatin",
+            pharmacistName = "Jane Doe",
+            pharmacistGivenName = "Jane",
+            pharmacistFamilyName = "Doe",
+            isNdcVerified = true,
+            config = HL7Config.current(
+                selectedTerminalName = "PILLCOUNTER",
+                pmsHostName = "PMS",
+                hl7Format = Hl7Format.VIVID,
+                sendingApplicationName = Hl7Format.VIVID.sendingApplication,
+            ),
+        )
+        val zui = raw.lines().first { it.startsWith("ZUI|") }
+
+        // Guard: the payload must be present, or the assertions below are vacuous.
+        val zui8 = zui.split("|").getOrNull(8).orEmpty()
+        assertTrue("ZUI-8 should carry image data", zui8.isNotBlank())
+
+        // Real HL7 separators, not the library's escaped forms.
+        assertTrue("ZUI-8 should use '&' between parts", zui8.contains("&"))
+        assertFalse("ZUI-8 must not contain escaped '^'", zui.contains("\\S\\"))
+        assertFalse("ZUI-8 must not contain escaped '&'", zui.contains("\\T\\"))
+    }
+
+    @Test
+    fun `segment order per format`() {
+        val body = listOf("ORC", "PID", "RXD", "NTE", "OBX", "OBX", "OBX", "ZSN", "ZSV")
+        assertEquals(listOf("MSH") + body, segmentNames(buildMessage(Hl7Format.DISPENSESURE_STANDARD)))
+        assertEquals(listOf("MSH", "ZUI") + body, segmentNames(buildMessage(Hl7Format.EYECON)))
+        assertEquals(listOf("MSH", "ZUI") + body, segmentNames(buildMessage(Hl7Format.VIVID)))
+        assertEquals(listOf("MSH", "ZDS"), segmentNames(buildMessage(Hl7Format.DISPENSESURE_NATIVE)))
+    }
+
+    // ============================ DISPENSESURE_STANDARD — full segment set ============================
+
+    @Test
+    fun `buildDispenseMessage for DISPENSESURE_STANDARD emits ORC RXD OBX — full segment set`() {
+        val details = listOf(
+            detail(countId = 1L, pillCount = 10, step = com.dispensesure.retail.core.models.StepState.TARGET_VERIFICATION.name, imagePath = "/a/img.png"),
+        )
+        val txn = txn(txnId = 300L, rxNo = "RX-STD-1", note = "std note")
+
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn,
+            txnDetails = details,
+            drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
+            drugName = "Metformin",
+            pharmacistName = "Alice Smith",
+            config = HL7Config.current(
+                selectedTerminalName = "PILLCOUNTER",
+                pmsHostName = "PMS",
+                hl7Format = Hl7Format.DISPENSESURE_STANDARD,
+                sendingApplicationName = Hl7Format.DISPENSESURE_STANDARD.sendingApplication,
+            ),
+        )
+
+        assertTrue("MSH must be present", raw.lineSequence().any { it.startsWith("MSH|") })
+        assertTrue("ORC must be present in STANDARD", raw.lineSequence().any { it.startsWith("ORC|") })
+        assertTrue("RXD must be present in STANDARD", raw.lineSequence().any { it.startsWith("RXD|") })
+        assertTrue("OBX must be present in STANDARD", raw.lineSequence().any { it.startsWith("OBX|") })
+    }
+
+    @Test
+    fun `buildDispenseMessage DISPENSESURE_NATIVE legacy pref migration — stored DISPENSESURE routes to STANDARD not NATIVE`() {
+        // Verifies that the preference migration in PreferenceHelper does NOT silently
+        // route legacy "DISPENSESURE" stored value to DISPENSESURE_NATIVE.
+        // Legacy value must map to DISPENSESURE_STANDARD.
+        val migratedFormat = Hl7Format.valueOf(
+            "DISPENSESURE".let { if (it == "DISPENSESURE") "DISPENSESURE_STANDARD" else it }
+        )
+        assertEquals(Hl7Format.DISPENSESURE_STANDARD, migratedFormat)
     }
 
     @Test

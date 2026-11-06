@@ -23,6 +23,7 @@ import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
+import com.dispensesure.retail.feature.hl7.parsing.Hl7DrugResolver
 import com.dispensesure.retail.feature.hl7.parsing.model.Hl7OrderAction
 import com.dispensesure.retail.feature.hl7.parsing.model.OrderGroup
 import io.mockk.coEvery
@@ -75,7 +76,13 @@ class Hl7OrderProcessorTest {
 
         processor = Hl7OrderProcessor(
             context, dispenseTxnDao, preferenceHelper,
-            DrugResolver(drugMasterDao, drugRepository, drugImageDownloader, regionProvider), notifier, dispenseHl7Repository,
+            Hl7DrugResolver(
+                context,
+                DrugResolver(drugMasterDao, drugRepository, drugImageDownloader, regionProvider),
+                notifier,
+                regionProvider,
+            ),
+            notifier, dispenseHl7Repository,
             regionProvider, auditLogger,
         )
     }

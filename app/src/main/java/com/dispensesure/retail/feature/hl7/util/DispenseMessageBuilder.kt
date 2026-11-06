@@ -14,12 +14,16 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import org.rite.hl7.HL7
+import org.rite.hl7.builder.HL7Builder
 import org.rite.hl7.builder.ScanSource
 import org.rite.hl7.builder.ZsnTransactionType
 import org.rite.hl7.builder.ZsvMatchStrength
 import org.rite.hl7.builder.ZsvValidationResult
 import org.rite.hl7.builder.ZuiTransactionStatus
+import org.rite.hl7.model.segment.ZDSSegment
 import java.io.File
+import org.rite.hl7.config.HL7Config as LibHl7Config
+import org.rite.hl7.config.HL7Version as LibHl7Version
 
 /**
  * =========================================================
@@ -36,7 +40,7 @@ import java.io.File
  * - Does NOT use coroutines
  *
  * HL7 version is sourced from [PreferenceHelper.getHl7Version] at call site;
- * a static convenience default ("2.5") is used when no preference is available.
+ * a static convenience default ("2.3.1") is used when no preference is available.
  */
 
 /**
@@ -93,10 +97,12 @@ object DispenseMessageBuilder {
         isNdcVerified: Boolean = false,
         isControlledSubstance: Boolean = false,
         isHazardousDrug: Boolean = false,
+        /** ZDS-08: "NDC" in the US, "DIN" in Canada. */
+        drugCodeLabel: String = "NDC",
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS")
     ): String {
 
-        val hl7 = HL7(version = config.versionId)
+        val hl7 = HL7(LibHl7Config(LibHl7Version.from(config.versionId)))
         val builder = hl7.build()
 
         val now = hl7TimestampNow()
@@ -137,6 +143,27 @@ object DispenseMessageBuilder {
         val effectiveExpirationDate = expirationDate ?: firstBottle?.expirationDate
         val effectiveSerialNumber = serialNumber ?: firstBottle?.serialNumber
 
+        if (config.messageFormat == Hl7Format.DISPENSESURE_NATIVE) {
+            return buildDispenseMessageNative(
+                txn = txn,
+                txnDetails = txnDetails,
+                drugCode = drugCode,
+                scannedDrugCode = scannedDrugCode,
+                drugName = drugName,
+                drugCodeLabel = drugCodeLabel,
+                pharmacistFamilyName = pharmacistFamilyName,
+                pharmacistGivenName = pharmacistGivenName,
+                isControlledSubstance = isControlledSubstance,
+                isHazardousDrug = isHazardousDrug,
+                isNdcVerified = isNdcVerified,
+                config = config,
+                builder = builder,
+                now = now,
+                messageId = messageId,
+                orderId = orderId,
+                totalCount = totalCount,
+            )
+        }
 
         val message = builder.rdsO13 {
             msh { msh ->
@@ -150,12 +177,12 @@ object DispenseMessageBuilder {
                 msh.versionId = config.versionId
             }
 
-            when (config.messageFormat.sendingApplication) {
+            when (config.messageFormat) {
                 // Field mapping verified against Vivid's response-parse spec (ZUI-1 drugId,
                 // ZUI-2 VerifiedBy truncated to 10 chars, ZUI-4 RxNo-RefillNo composite,
                 // ZUI-6 qtyDispensed, ZUI-7 fill status, ZUI-9/10/11 lot/serial/expiry).
                 // ZUI-8 (Base64 tray image log) populated below via drugImages.
-                Hl7Format.VIVID.sendingApplication -> zui { z ->
+                Hl7Format.VIVID -> zui { z ->
                     z.ndc = drugCode.replace("-", "")
                     z.vividUserName = pharmacistGivenName.orEmpty().take(10)
                     z.transactionOrderId = orderId
@@ -168,14 +195,14 @@ object DispenseMessageBuilder {
                     z.drugSerialNumber = effectiveSerialNumber
                     z.drugExpirationDate = effectiveExpirationDate
                 }
-                Hl7Format.EYECON.sendingApplication -> {
+                Hl7Format.EYECON -> {
                     // EyeCon uses a 25-field fixed ZUI layout that the ZUIDispenseBuilder
                     // (11 fields max) cannot express. Use the builder for ZUI-1 only so the
                     // segment appears in the encoded message, then replace the whole line with
                     // the correct 25-field segment in buildEyeConZuiSegment below.
-                    val eyeConNdc = drugCode.replace("-", "")
-                    zui { z -> z.ndc = eyeConNdc }
+                    zui { z -> z.ndc = drugCode.replace("-", "") }
                 }
+                else -> Unit
             }
 
             orc { orc ->
@@ -310,10 +337,129 @@ object DispenseMessageBuilder {
                 fillStatus = "complete",
                 stockBottleBarcodeNdc = eyeConNdc,
             )
-            // Replace the stub ZUI line the builder emitted with the full 25-field segment.
             encoded.replace(Regex("ZUI\\|[^\r\n]*"), zuiSegment)
         } else {
             encoded
+        }
+    }
+
+    private fun buildDispenseMessageNative(
+        txn: DispenseTxnEntity,
+        txnDetails: List<DispenseCountEntity>,
+        drugCode: String,
+        scannedDrugCode: String,
+        drugName: String,
+        drugCodeLabel: String,
+        pharmacistFamilyName: String?,
+        pharmacistGivenName: String?,
+        isControlledSubstance: Boolean,
+        isHazardousDrug: Boolean,
+        isNdcVerified: Boolean,
+        config: HL7Config,
+        builder: HL7Builder,
+        now: String,
+        messageId: String,
+        orderId: String,
+        totalCount: Int,
+    ): String {
+        // ZDS-30 rows are "/images/<path>^<label>^<drugCode>", matching iOS. The old
+        // "ZDS:<filename>" form carried no label and no drug code, so a receiver could not tell
+        // which image was which, nor which drug it belonged to.
+        val stepImages = txnDetails.mapNotNull { detail ->
+            detail.imagePath?.let { path -> "/images/$path^${detail.step.toImageLabel()}^$drugCode" }
+        }
+        val rawCropImages = txnDetails.mapNotNull { detail ->
+            detail.rawImagePath
+                ?.takeIf { detail.step == StepState.TARGET_VERIFICATION.name }
+                ?.let { raw -> "/images/$raw^dispense_count_raw^$drugCode" }
+        }
+        val bottles = DispenseBottleJson.decode(txn.bottlesJson)
+        val barcodeImages = bottles
+            .mapNotNull { it.barcodeImagePath?.takeIf { path -> path.isNotBlank() } }
+            .map { path -> "/images/$path^Barcode Image^$drugCode" }
+        val imageList = stepImages + rawCropImages + barcodeImages
+
+        // ZDS-24: one "ndc^qty^lot^expiry^serial^" row per scanned bottle, so the PMS can see
+        // which stock bottles the fill came from. Android was sending none.
+        val dispensedDetails = txnDetails.filter { it.step.isDispensedQuantityStep() }
+        val pillCountByDetailId = dispensedDetails.associate { it.countId to (it.pillCount ?: 0) }
+        val bottleDetails = bottles.map { bottle ->
+            val qty = bottle.countIds.sumOf { id -> pillCountByDetailId[id] ?: 0 }
+            listOf(
+                drugCode,
+                qty.toString(),
+                bottle.lotNumber.orEmpty(),
+                bottle.expirationDate.orEmpty(),
+                bottle.serialNumber.orEmpty(),
+                "",
+            ).joinToString("^")
+        }
+
+        val message = builder.rdsO13Ds {
+            msh { msh ->
+                msh.sendingApplication = config.sendingApplication
+                msh.sendingFacility = config.sendingFacility
+                msh.receivingApplication = config.receivingApplication
+                msh.receivingFacility = config.receivingFacility
+                msh.dateTimeOfMessage = now
+                msh.messageControlId = messageId
+                msh.processingId = "P"
+                msh.versionId = config.versionId
+            }
+
+            zds { z ->
+                z.flowType = "DR"
+                z.layoutVersion = "1.0"
+                z.responseMessageId = messageId
+                z.requestMessageId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() }
+                z.responseType = "RE"
+                // ZDS-07 is "code^name" — the name is what a pharmacist reads on the PMS side,
+                // and sending the bare code left it blank.
+                z.drugs = listOf(if (drugName.isBlank()) drugCode else "$drugCode^$drugName")
+                z.drugCodeType = drugCodeLabel
+                z.operatorFamilyName = pharmacistFamilyName
+                z.operatorGivenName = pharmacistGivenName
+                z.prescriptionNumber = orderId
+                z.orderReferenceNumber = txn.transactionOrderId
+                z.fillNumber = txn.refillNo ?: "0"
+                z.priority = txn.priority?.name
+                z.dispensedQuantity = totalCount.toString()
+                z.fillStatus = txn.targetCount.let { target ->
+                    when {
+                        target == null || totalCount == target -> "Complete"
+                        totalCount > target -> "Over"
+                        else -> "Partial"
+                    }
+                }
+                // The count's real start, not the send time — sending `now` for both made every
+                // dispense look instantaneous.
+                z.startTime = txn.createdAt.takeIf { it > 0 }?.let { hl7Timestamp(it) } ?: now
+                z.finishTime = now
+                z.transactionId = txn.txnId.toString()
+                // A caret in free-form operator text must stay escaped, or the ZDS-wide unescape
+                // below would turn it into a component separator and shift every later field.
+                z.note = txn.note?.replace("^", " ")
+                z.unitOfMeasure = "TAB"
+                if (bottleDetails.isNotEmpty()) z.bottleDetails = bottleDetails
+                z.verificationStatus = if (isNdcVerified) "V" else "U"
+                z.requestedNdc = drugCode
+                z.dispensedNdc = scannedDrugCode
+                z.controlledSubstanceFlag = if (isControlledSubstance) "Y" else "N"
+                z.hazardousDrugFlag = if (isHazardousDrug) "Y" else "N"
+                if (imageList.isNotEmpty()) z.imageList = imageList
+                z.facilityNumber = config.sendingFacility
+            }
+        }
+
+        // The trigger event follows the HL7 version on every format, native included: 2.3.1 names
+        // the dispense trigger RDS^O01, 2.5.1 names it RDS^O13. The library already resolves it
+        // from the configured version, so the encoded type is left exactly as built.
+        val encoded = message.encode()
+        // drugs, bottleDetails and imageList carry '^' as a real component separator, but the
+        // library escapes it to \S\ in every component. Unescape ZDS lines so the PMS can parse
+        // them — the same step the inventory ZDS needs, and which iOS applies here too.
+        return encoded.split("\r").joinToString("\r") { line ->
+            if (line.startsWith("ZDS")) line.replace("\\S\\", "^") else line
         }
     }
 

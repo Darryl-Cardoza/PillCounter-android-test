@@ -283,6 +283,17 @@ interface DispenseTxnDao {
         return cancelledTxnIds
     }
 
+    @Query("SELECT txnId FROM dispense_txn WHERE transactionOrderId = :orderId AND isDeleted = 0")
+    suspend fun getActiveTxnIdsByOrderId(orderId: String): List<Long>
+
+    /** Soft-deletes by transactionOrderId and returns the cancelled txn ids, for ZDR CA. */
+    @Transaction
+    suspend fun cancelActiveTxnsByOrderId(orderId: String): List<Long> {
+        val cancelledTxnIds = getActiveTxnIdsByOrderId(orderId)
+        softDeleteByOrderId(orderId)
+        return cancelledTxnIds
+    }
+
     /** Status of an order's active txns before a release changes it, for ORDER_RELEASED. */
     @Query("SELECT status FROM dispense_txn WHERE transactionOrderId = :orderId AND isDeleted = 0 AND status IN ('PARTIAL', 'ON_HOLD') LIMIT 1")
     suspend fun getActiveStatusByOrderId(orderId: String): CountStatus?
@@ -353,6 +364,21 @@ interface DispenseTxnDao {
 
     @Query("SELECT * FROM dispense_txn WHERE transactionOrderId = :transactionOrderId AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
     suspend fun getByTransactionOrderId(transactionOrderId: String): DispenseTxnEntity?
+
+    /**
+     * Like [getByTransactionOrderId] but INCLUDES soft-deleted rows. Android has no DISCONTINUED
+     * status: a cancelled or discontinued order is a soft-deleted row, and the native ZDR validator
+     * needs to see it to reject with ORDER_ALREADY_COMPLETED rather than ORDER_NOT_FOUND.
+     *
+     * Deliberately non-suspend: the MLLP receive thread must read it inline to build the ACK
+     * without `runBlocking`. Room permits blocking queries off the main thread.
+     */
+    @Query("SELECT * FROM dispense_txn WHERE transactionOrderId = :transactionOrderId ORDER BY createdAt DESC LIMIT 1")
+    fun findByTransactionOrderIdIncludingDeleted(transactionOrderId: String): DispenseTxnEntity?
+
+    /** Live (not soft-deleted) fills recorded for [rxNo]; non-suspend for the same reason as above. */
+    @Query("SELECT COUNT(*) FROM dispense_txn WHERE $ACTIVE_TXNS_FOR_RX")
+    fun countActiveByRxNo(rxNo: String): Int
 
     @Query("SELECT * FROM dispense_txn WHERE rxNo = :rxNo AND refillNo = :fillNo AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
     suspend fun getByRxNoAndFillNo(rxNo: String, fillNo: String): DispenseTxnEntity?

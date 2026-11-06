@@ -48,6 +48,10 @@ class AppDatabaseMigrationsTest {
     fun `migrated drug_master matches a freshly created v7 drug_master`() {
         val v6Database = openV6DrugMasterDatabase()
         AppDatabaseMigrations.MIGRATION_6_7.migrate(v6Database)
+        // The "fresh" database is built at the CURRENT schema version, so the migrated one must
+        // be brought all the way up too — otherwise this compares v7 against the latest and
+        // fails whenever a later migration touches one of these tables.
+        AppDatabaseMigrations.MIGRATION_8_9.migrate(v6Database)
 
         val freshV7Database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries().build()
@@ -91,6 +95,26 @@ class AppDatabaseMigrationsTest {
 
         assertEquals(freshV8Sqlite.columnsOf("dek_versions"), v7Database.columnsOf("dek_versions"))
         freshV8Database.close()
+    }
+
+    @Test
+    fun `migration 8 to 9 adds the PMS order reference to stock_batch`() {
+        val v8Database = openEmptyDatabase(version = 8)
+        v8Database.execSQL(
+            "CREATE TABLE IF NOT EXISTS `stock_batch` (`batchId` INTEGER PRIMARY KEY NOT NULL, " +
+                "`requestIdFromPMS` TEXT)"
+        )
+
+        AppDatabaseMigrations.MIGRATION_8_9.migrate(v8Database)
+
+        val columnNames = v8Database.query("PRAGMA table_info(`stock_batch`)").use { cursor ->
+            buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
+        }
+        assertEquals(
+            "migration must add orderReferenceFromPMS: $columnNames",
+            true,
+            "orderReferenceFromPMS" in columnNames,
+        )
     }
 
     private fun openEmptyDatabase(version: Int): SupportSQLiteDatabase {
