@@ -465,7 +465,9 @@ class StockHl7RepositoryZdrTest {
     }
 
     @Test
-    fun `a manual batch goes out as standard even while native is active`() = runTest(testDispatcher) {
+    fun `a manual batch goes out as native when native is active`() = runTest(testDispatcher) {
+        // The configured format alone decides the outbound shape. A manual count has no PMS
+        // request to answer, so its ZDS simply carries no request id to echo.
         useNative()
         coEvery { stockBatchDao.getById(1L) } returns nativeBatch(null)
         coEvery { stockBottleInfoDao.getByBatchId(1L) } returns fixture
@@ -475,6 +477,38 @@ class StockHl7RepositoryZdrTest {
         createRepo().sendInventory(1L)
 
         assertTrue(sent.isNotEmpty())
-        assertTrue(sent.none { m -> m.split('\r').any { it.startsWith("ZDS") } })
+        assertTrue(sent.any { m -> m.split('\r').any { it.startsWith("ZDS") } })
+    }
+
+    @Test
+    fun `the native inventory response labels codes DIN in canada`() = runTest(testDispatcher) {
+        // NativeZdrValidator rejects an inbound ZDR whose ZDR-06 is not DIN in Canada, so the
+        // response must not label those same codes NDC.
+        every { regionProvider.current } returns Region.CA
+        useNative()
+        coEvery { stockBatchDao.getById(1L) } returns nativeBatch("REQ-1")
+        coEvery { stockBottleInfoDao.getByBatchId(1L) } returns fixture
+        val sent = mutableListOf<String>()
+        coEvery { hl7MessageSender.sendRaw(any()) } answers { sent += firstArg<String>(); Result.success(SUCCESS_ACK) }
+
+        createRepo().sendInventory(1L)
+
+        val zds = sent.flatMap { it.split('\r') }.first { it.startsWith("ZDS") }
+        assertEquals("DIN", zds.split('|')[7])
+    }
+
+    @Test
+    fun `the native inventory response labels codes NDC in the us`() = runTest(testDispatcher) {
+        every { regionProvider.current } returns Region.US
+        useNative()
+        coEvery { stockBatchDao.getById(1L) } returns nativeBatch("REQ-1")
+        coEvery { stockBottleInfoDao.getByBatchId(1L) } returns fixture
+        val sent = mutableListOf<String>()
+        coEvery { hl7MessageSender.sendRaw(any()) } answers { sent += firstArg<String>(); Result.success(SUCCESS_ACK) }
+
+        createRepo().sendInventory(1L)
+
+        val zds = sent.flatMap { it.split('\r') }.first { it.startsWith("ZDS") }
+        assertEquals("NDC", zds.split('|')[7])
     }
 }

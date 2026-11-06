@@ -225,4 +225,61 @@ class NativeZdrValidatorTest {
 
     @Test fun `a blank order action on dispense is rejected`() =
         assertEquals(NativeRejectReason.UNSUPPORTED_ORDER_ACTION, validate(action = ""))
+
+    // ---- Structural coverage migrated from Hl7Validator.validateZdrStructure (dispense flow),
+    // which the native path superseded: NativeZdrValidator now owns every inbound ZDR rejection.
+
+    @Test fun `a valid NW dispense message is accepted`() =
+        assertNull(validate(action = "NW"))
+
+    @Test fun `a valid RF dispense message is accepted`() =
+        assertNull(validate(action = "RF", refillsAllowed = "5", fillCount = 1))
+
+    @Test fun `ZDR-03 not matching MSH-10 is rejected`() =
+        assertEquals(
+            NativeRejectReason.REQUEST_ID_MISMATCH,
+            validate(mshControlId = "MSG1", requestMessageId = "WRONG"),
+        )
+
+    @Test fun `a blank ZDR-03 request message id is rejected`() =
+        assertEquals(NativeRejectReason.REQUEST_ID_MISMATCH, validate(requestMessageId = ""))
+
+    @Test fun `blank ZDR-05 drugs are rejected`() =
+        assertEquals(NativeRejectReason.INVALID_DRUG_CODE, validate(drugs = emptyList()))
+
+    @Test fun `a blank ZDR-16 quantity is rejected on NW`() =
+        assertEquals(NativeRejectReason.INVALID_QUANTITY, validate(action = "NW", qty = ""))
+
+    @Test fun `a blank ZDR-14 rx number is rejected on NW`() =
+        assertEquals(NativeRejectReason.MISSING_RX_NUMBER, validate(action = "NW", rx = ""))
+
+    @Test fun `a blank ZDR-14 rx number is rejected on RF`() =
+        assertEquals(
+            NativeRejectReason.MISSING_RX_NUMBER,
+            validate(action = "RF", rx = "", refillsAllowed = "5", fillCount = 1),
+        )
+
+    @Test fun `a blank ZDR-02 layout version is rejected`() =
+        assertEquals(NativeRejectReason.INVALID_LAYOUT_VERSION, validate(layout = ""))
+
+    // ---- Inventory flow: migrated from Hl7Validator.validateZdrInventoryStructure. An inventory
+    // ZDR needs neither a rx number nor a quantity, and may carry many drugs.
+
+    @Test fun `a valid inventory message is accepted`() =
+        assertNull(validate(flow = "I", action = "", rx = "", qty = ""))
+
+    @Test fun `an inventory message needs no rx number or quantity`() =
+        assertNull(validate(flow = "I", action = "", rx = "", qty = ""))
+
+    @Test fun `an inventory message still requires ZDR-03 to match MSH-10`() =
+        assertEquals(
+            NativeRejectReason.REQUEST_ID_MISMATCH,
+            validate(flow = "I", action = "", rx = "", qty = "", requestMessageId = "WRONG"),
+        )
+
+    @Test fun `an inventory message with blank drugs is rejected`() =
+        assertEquals(
+            NativeRejectReason.INVALID_DRUG_CODE,
+            validate(flow = "I", action = "", rx = "", qty = "", drugs = emptyList()),
+        )
 }

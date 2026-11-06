@@ -42,6 +42,12 @@ object InventoryMessageBuilder {
         /** Who performed the count — the PMS shows this against the submitted inventory. */
         operatorFamilyName: String? = null,
         operatorGivenName: String? = null,
+        /**
+         * ZDS-08: "NDC" in the US, "DIN" in Canada — the same label the dispense ZDS carries.
+         * NativeZdrValidator rejects an inbound ZDR whose ZDR-06 does not match the region, so a
+         * response that always said "NDC" labelled Canadian DIN codes as NDCs.
+         */
+        drugCodeLabel: String = "NDC",
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS"),
     ): String {
         val now = hl7TimestampNow()
@@ -75,7 +81,8 @@ object InventoryMessageBuilder {
                 z.flowType = "IR"
                 z.layoutVersion = "1.0"
                 z.responseMessageId = messageId
-                z.requestMessageId = requestMessageId
+                // Blank for a manual count (no PMS request to echo) — omitted rather than sent empty.
+                z.requestMessageId = requestMessageId.takeIf { it.isNotBlank() }
                 z.responseType = "RE"
                 // ZDS-07 is code^name, as on the dispense ZDS — a bare code leaves the drug
                 // name blank on the PMS screen. Names come from the counts, keyed by code.
@@ -83,7 +90,7 @@ object InventoryMessageBuilder {
                     val name = counts.firstOrNull { it.ndc == code }?.drugName.orEmpty()
                     if (name.isBlank()) code else "$code^$name"
                 }
-                z.drugCodeType = "NDC"
+                z.drugCodeType = drugCodeLabel
                 z.operatorFamilyName = operatorFamilyName
                 z.operatorGivenName = operatorGivenName
                 z.orderReferenceNumber = orderReferenceNumber.takeIf { it.isNotBlank() }
@@ -93,8 +100,9 @@ object InventoryMessageBuilder {
             }
         }
 
-        // Library emits RDS^O01 for HL7 < 2.5; spec requires RDS^O13 — fix the message type.
-        val encoded = message.encode().replace("RDS^O01", "RDS^O13")
+        // The trigger event follows the HL7 version on every format, native included: the library
+        // emits RDS^O01 below 2.5 and RDS^O13 from 2.5.1 up. Left exactly as built.
+        val encoded = message.encode()
         // ZDSBuilder escapes '^' as '\S\' inside its array setters, but ZDS-27 count rows
         // carry '^' as a real component separator — left escaped, the PMS cannot parse the
         // quantities. Unescape within ZDS lines only. Mirrors iOS

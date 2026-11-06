@@ -14,6 +14,7 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import org.rite.hl7.HL7
+import org.rite.hl7.builder.HL7Builder
 import org.rite.hl7.builder.ScanSource
 import org.rite.hl7.builder.ZsnTransactionType
 import org.rite.hl7.builder.ZsvMatchStrength
@@ -355,7 +356,7 @@ object DispenseMessageBuilder {
         isHazardousDrug: Boolean,
         isNdcVerified: Boolean,
         config: HL7Config,
-        builder: org.rite.hl7.builder.HL7Builder,
+        builder: HL7Builder,
         now: String,
         messageId: String,
         orderId: String,
@@ -450,9 +451,10 @@ object DispenseMessageBuilder {
             }
         }
 
-        // HL7 2.3.1 names the dispense trigger RDS^O01 and 2.5.1 names it RDS^O13, but the
-        // native spec requires O13 at every version. This pins it; at 2.5.1 it matches nothing.
-        val encoded = message.encode().replace("RDS^O01", "RDS^O13")
+        // The trigger event follows the HL7 version on every format, native included: 2.3.1 names
+        // the dispense trigger RDS^O01, 2.5.1 names it RDS^O13. The library already resolves it
+        // from the configured version, so the encoded type is left exactly as built.
+        val encoded = message.encode()
         // drugs, bottleDetails and imageList carry '^' as a real component separator, but the
         // library escapes it to \S\ in every component. Unescape ZDS lines so the PMS can parse
         // them — the same step the inventory ZDS needs, and which iOS applies here too.

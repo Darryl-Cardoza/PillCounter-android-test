@@ -64,6 +64,7 @@ import org.rite.hl7.model.segment.ZUISegment
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.roundToLong
 
 /**
  * Dispense HL7: sends RDS^O13 when a count completes and resends unsynced ones,
@@ -548,37 +549,6 @@ class DispenseHl7Repository @Inject constructor(
         }
     }
 
-    /** Legacy message-based entry point; delegates to [handleZdrOrder]. */
-    internal suspend fun handleZdrNewOrRefill(message: HL7Message) {
-        val zdr = message.segment<ZDRSegment>(ZDRSegment.NAME) ?: run {
-            logger.w("handleZdrNewOrRefill: no ZDR segment — ignoring")
-            return
-        }
-        val action = zdr.orderAction.uppercase()
-        if (action != "NW" && action != "RF") {
-            logger.w("ZDR: unexpected action='$action' in handleZdrNewOrRefill — ignoring")
-            return
-        }
-        handleZdrOrder(
-            zdr,
-            message.header?.messageControlId,
-            message.header?.sequenceNumber?.takeIf { it.isNotBlank() },
-        )
-    }
-
-    /**
-     * CA/HD/RL/DC: runs synchronously so the caller can return NACK when no txn is found.
-     * Returns true if the action was applied to at least one row, false if the order was
-     * not found — caller should send AE ACK on false.
-     */
-    internal suspend fun handleZdrStatusChange(message: HL7Message): Boolean {
-        val zdr = message.segment<ZDRSegment>(ZDRSegment.NAME) ?: run {
-            logger.w("handleZdrStatusChange: no ZDR segment — ignoring")
-            return false
-        }
-        return handleZdrControl(zdr, zdr.orderAction.uppercase())
-    }
-
     /**
      * NW and RF share one path (as on iOS) and act on the single drug the validator guarantees.
      * They differ only in the fill number: NW defaults a blank ZDR-17 to "0", RF derives it from the
@@ -596,7 +566,9 @@ class DispenseHl7Repository @Inject constructor(
         val label = if (isRefill) "RF" else "NW"
         val drug = zdr.drugs.first()
         val ndc = drug.ndc.trim()
-        val targetCount = zdr.quantityToDispense.trim().toDoubleOrNull()?.toInt()
+        // Rounded, not truncated: NativeZdrValidator accepted this quantity via roundToLong, so
+        // truncating here stored 2 for a "2.6" the validator had passed as 3.
+        val targetCount = zdr.quantityToDispense.trim().toDoubleOrNull()?.roundToLong()?.toInt()
 
         val fillNo = zdr.fillNumber.takeIf { it.isNotBlank() } ?: when {
             !isRefill -> "0"
@@ -613,17 +585,8 @@ class DispenseHl7Repository @Inject constructor(
         val resolvedKey = zdr.orderReferenceNumber.takeIf { it.isNotBlank() }
             ?: NativeOrderKey.compose(rxNo.orEmpty(), fillNo)
 
-        if (isRefill) {
-            val refillsAllowed = zdr.refillsAllowed.trim().toIntOrNull()
-            if (refillsAllowed != null && refillsAllowed <= 0) {
-                logger.w("ZDR RF: refills exhausted for rxNo=$rxNo (refillsAllowed=$refillsAllowed) — notifying")
-                notifier.show(
-                    title = context.getString(R.string.hl7_notification_new_rx_title),
-                    message = context.getString(R.string.hl7_notification_refill_exhausted, rxNo.orEmpty(), refillsAllowed),
-                )
-                return
-            }
-        }
+        // Refill exhaustion is not re-checked here: NativeZdrValidator rejects an RF with no
+        // remaining refills (NO_REFILLS_REMAINING) before this handler is ever dispatched.
 
         val existing = dispenseTxnDao.getByTransactionOrderId(resolvedKey)?.takeUnless { it.isZdrFinished() }
 
@@ -670,15 +633,7 @@ class DispenseHl7Repository @Inject constructor(
         )
     }
 
-    internal suspend fun handleZdrChangeOrder(message: HL7Message): Boolean {
-        val zdr = message.segment<ZDRSegment>(ZDRSegment.NAME) ?: run {
-            logger.w("ZDR XO: no ZDR segment in message")
-            return false
-        }
-        return handleZdrChangeOrder(zdr)
-    }
-
-    private suspend fun handleZdrChangeOrder(zdr: ZDRSegment): Boolean {
+    internal suspend fun handleZdrChangeOrder(zdr: ZDRSegment): Boolean {
         // Must use the same resolver the validator used: it accepted this XO against the
         // resolved key (ZDR-15, else rx-fill), so matching on raw ZDR-15 here would ACK an
         // AA and then silently apply nothing whenever ZDR-15 is blank.
@@ -687,17 +642,13 @@ class DispenseHl7Repository @Inject constructor(
             logger.w("ZDR XO: no txn found for transactionOrderId=$orderId")
             return false
         }
-        val newQty = zdr.quantityToDispense.trim().toDoubleOrNull()?.toInt()
-        if (newQty == null || newQty <= 0) {
-            logger.w("ZDR XO: invalid quantity='${zdr.quantityToDispense}' for orderId=$orderId")
-            return false
-        }
-        val ndc = zdr.drugs.firstOrNull()?.ndc?.trim()
-        if (ndc.isNullOrBlank()) {
-            logger.w("ZDR XO: blank NDC for orderId=$orderId")
-            return false
-        }
-        val finalDrug = zdrResolveDrug(ndc, zdr.drugs.firstOrNull()?.name) ?: return false
+        // Quantity and drug code are not re-checked here: NativeZdrValidator rejects an XO with a
+        // bad quantity (XO requires one) or an invalid/absent drug code before dispatch, so by the
+        // time this runs both are known good.
+        val newQty = zdr.quantityToDispense.trim().toDoubleOrNull()?.roundToLong()?.toInt()
+        val drug = zdr.drugs.first()
+        val ndc = drug.ndc.trim()
+        val finalDrug = zdrResolveDrug(ndc, drug.name) ?: return false
         val drugId = drugMasterDao.upsertPreservingId(finalDrug)
         dispenseTxnDao.updateFromHl7Edit(
             txnId = existing.txnId,

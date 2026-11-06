@@ -5,13 +5,11 @@ import com.dispensesure.retail.core.region.isDin
 import com.dispensesure.retail.feature.hl7.parsing.model.OrderGroup
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.segment.RXESegment
-import org.rite.hl7.model.segment.ZDRSegment
 import org.rite.hl7.validation.AckSeverity
 import org.rite.hl7.validation.HL7Validator
 import org.rite.hl7.validation.ValidationConfig
 import org.rite.hl7.validation.ValidationIssue
 import org.rite.hl7.validation.ValidationResult
-import org.rite.hl7.validation.rules.DSValidationRule
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,21 +31,12 @@ class Hl7Validator @Inject constructor(
         HL7Validator(config)
     }
 
-    // ZDR-specific validator — adds DSValidationRule which checks ZDR field presence and ZDR-03==MSH-10.
-    // Kept separate from libValidator so ORC/RXE messages never run DSValidationRule.
-    private val zdrLibValidator: HL7Validator = run {
-        val config = ValidationConfig().copy(
-            knownOrderControlCodes = setOf("NW", "RF", "CA", "HD", "RL", "DC", "XO", "RP"),
-            extraRules = listOf(DSValidationRule),
-        )
-        HL7Validator(config)
-    }
-
     fun validateStructure(message: HL7Message): ValidationResult {
         val libraryResult = libValidator.validate(message)
-        // The library only knows NDC formats (and only inspects the first RXE), and its error text carries no RXE index, so it cannot
-        // say which RXE a code issue belongs to. Drop its RXE drug-code issues unconditionally and
-        // re-validate every RXE's give code ourselves (NDC, plus DIN where the region accepts it), one issue per bad code.
+        // The library only knows NDC formats, and its issue text names no RXE index, so a code
+        // issue cannot be attributed to a particular RXE in a multi-order message. Drop its RXE
+        // drug-code issues unconditionally and re-validate every RXE's give code ourselves (NDC,
+        // plus DIN where the region accepts it), one issue per bad code.
         val rxeSegments = message.segments<RXESegment>(RXESegment.NAME)
         val kept = libraryResult.issues.filterNot { issue -> issue.isLibraryRxeDrugCodeIssue() }
         val acceptsDin = regionProvider.current.hl7OrdersAcceptDin
@@ -64,44 +53,8 @@ class Hl7Validator @Inject constructor(
         return ValidationResult(kept + perCodeIssues)
     }
 
-    // NW and RF only — do not call for XO (ZDR-14 may be absent in valid XO messages).
-    fun validateZdrStructure(message: HL7Message): ValidationResult =
-        zdrLibValidator.validate(message)
-
-    /**
-     * Validates a ZDR message with flowType=INVENTORY (INR^U06 native path).
-     * Different from dispense: no ZDR-14 rxNumber, no orderAction — only ZDR-01/02/03/05 required.
-     * DSValidationRule is not used (it enforces dispense-specific fields); manual checks only.
-     */
-    fun validateZdrInventoryStructure(message: HL7Message): ValidationResult {
-        val issues = mutableListOf<ValidationIssue>()
-        val zdr = message.segment<ZDRSegment>(ZDRSegment.NAME)
-        if (zdr == null) {
-            issues += ValidationIssue(AckSeverity.ERROR, "ZDR segment required for INVENTORY flow", "ZDR", "1", "207")
-            return ValidationResult(issues)
-        }
-        // ZDR-01: flowType must be INVENTORY
-        if (zdr.flowType != ZDRSegment.FlowType.INVENTORY) {
-            issues += ValidationIssue(AckSeverity.ERROR, "ZDR-01 flowType must be INVENTORY", "ZDR", "1", "207")
-        }
-        // ZDR-02: layoutVersion required
-        if (zdr.layoutVersion.isNullOrBlank()) {
-            issues += ValidationIssue(AckSeverity.ERROR, "ZDR-02 layoutVersion is required", "ZDR", "2", "207")
-        }
-        // ZDR-03: requestMessageId must match MSH-10
-        val mshControlId = message.header?.messageControlId.orEmpty()
-        val zdrRequestId = zdr.requestMessageId.orEmpty()
-        if (zdrRequestId.isBlank()) {
-            issues += ValidationIssue(AckSeverity.ERROR, "ZDR-03 requestMessageId is required", "ZDR", "3", "207")
-        } else if (zdrRequestId != mshControlId) {
-            issues += ValidationIssue(AckSeverity.ERROR, "ZDR-03 requestMessageId must match MSH-10 ($mshControlId)", "ZDR", "3", "207")
-        }
-        // ZDR-05: at least one drug with a non-blank NDC required
-        if (zdr.drugs.none { it.ndc.isNotBlank() }) {
-            issues += ValidationIssue(AckSeverity.ERROR, "ZDR-05 at least one drug/NDC is required", "ZDR", "5", "207")
-        }
-        return ValidationResult(issues)
-    }
+    // Inbound ZDR messages (dispense and inventory alike) are validated by NativeZdrValidator,
+    // which runs before any handler and owns every native reject reason.
 
     fun validateBusinessRules(order: OrderGroup): BusinessValidationResult {
         // Library validate() already checks NDC format, quantity range, required segments.

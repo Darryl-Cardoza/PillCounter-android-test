@@ -110,10 +110,11 @@ class StockHl7Repository @Inject constructor(
                 return
             }
 
-            // Chosen per batch, not by the setting alone: only a batch that came from a PMS ZDR
-            // request has a request id to answer. A manual count (requestIdFromPMS == null) always
-            // goes out as standard, even while NATIVE is the active format.
-            if (config.messageFormat == Hl7Format.DISPENSESURE_NATIVE && batch.requestIdFromPMS != null) {
+            // The configured format alone decides what goes out, whatever the request looked like.
+            // Inbound accepts both patterns (a ZDR request under STANDARD is answered with INU^U05,
+            // a standard INR under NATIVE with a ZDS), and a manual count with no PMS request at all
+            // still follows the setting — its ZDS simply carries no request id to echo.
+            if (config.messageFormat == Hl7Format.DISPENSESURE_NATIVE) {
                 sendInventoryNative(batch, trigger, config)
                 return
             }
@@ -219,15 +220,6 @@ class StockHl7Repository @Inject constructor(
     // ─────────────────────── OUTBOUND: DISPENSESURE_NATIVE inventory response (MSH+ZDS) ───────────────────────
 
     /**
-     * Counts for one batch, one row per (ndc, lot, expiry), as the iOS app emits them.
-     *
-     * Android has no sealed/open flag per record: one [StockBottleInfoDto] row carries both
-     * bottleQty (sealed) and looseQty (opened), so both sides accumulate from every row.
-     * sealed pills = bottleQty * packageQty, sealed bottles = bottleQty; opened pills = looseQty,
-     * opened bottles = 1 per row with a non-zero looseQty (that row is the open container).
-     * Null quantities count as 0; groups totalling 0 are dropped; output is sorted by key.
-     */
-    /**
      * ZDS-30 rows for a native inventory response: "/images/<path>^controlled_count^<ndc>", one
      * per controlled-count photo on the batch's bottles. The standard INU^U05 path sends these as
      * image OBX rows, so a controlled count made under the native format must carry them too —
@@ -241,6 +233,15 @@ class StockHl7Repository @Inject constructor(
                 .map { path -> "/images/$path^controlled_count^$ndc" }
         }
 
+    /**
+     * Counts for one batch, one row per (ndc, lot, expiry), as the iOS app emits them.
+     *
+     * Android has no sealed/open flag per record: one [StockBottleInfoDto] row carries both
+     * bottleQty (sealed) and looseQty (opened), so both sides accumulate from every row.
+     * sealed pills = bottleQty * packageQty, sealed bottles = bottleQty; opened pills = looseQty,
+     * opened bottles = 1 per row with a non-zero looseQty (that row is the open container).
+     * Null quantities count as 0; groups totalling 0 are dropped; output is sorted by key.
+     */
     internal suspend fun buildInventoryCounts(batchId: Long): List<InventoryMessageBuilder.ZdrInventoryCount> {
         data class Key(val ndc: String, val lot: String, val expiry: String)
         class Acc {
@@ -297,6 +298,9 @@ class StockHl7Repository @Inject constructor(
             // userName is stored as a display string; split so the PMS gets structured components.
             operatorFamilyName = batch.userName?.trim()?.substringAfterLast(' ', "")?.takeIf { it.isNotBlank() },
             operatorGivenName = batch.userName?.trim()?.substringBefore(' ')?.takeIf { it.isNotBlank() },
+            // Same region label the dispense ZDS sends, and the one NativeZdrValidator demands
+            // on the matching inbound ZDR-06.
+            drugCodeLabel = if (regionProvider.current.hl7OrdersAcceptDin) "DIN" else "NDC",
             config = config,
         )
         val result = hl7MessageSender.sendRaw(ack)
@@ -463,8 +467,8 @@ class StockHl7Repository @Inject constructor(
      * Handles INR^U06 with a ZDR segment (flowType=INVENTORY) — the DISPENSESURE_NATIVE inventory path.
      * Creates a stock transaction for each resolved NDC in ZDR-05, the single MSH+ZDS response is sent at End Count by [sendInventory].
      *
-     * Validation is done in [Hl7Validator.validateZdrInventoryStructure] before this is called;
-     * this method assumes the message is structurally valid.
+     * Validation is done in [NativeZdrValidator] before this is called; this method assumes the
+     * message is structurally valid.
      */
     internal suspend fun handleZdrInventoryRequest(message: HL7Message) {
         val msgId = message.header?.messageControlId.orEmpty()
@@ -513,7 +517,7 @@ class StockHl7Repository @Inject constructor(
             batchId = now,
             startDateTime = now,
             endDateTime = null,
-            status = com.dispensesure.retail.core.room.models.enums.BatchStatus.INPROGRESS,
+            status = BatchStatus.INPROGRESS,
             isDeleted = false,
             note = null,
             bucketId = "",
@@ -540,7 +544,7 @@ class StockHl7Repository @Inject constructor(
         for (item in resolvedItems) {
             val txn = StockTxnEntity(
                 drugId = item.drugId,
-                status = com.dispensesure.retail.core.room.models.enums.CountStatus.PARTIAL,
+                status = CountStatus.PARTIAL,
                 batchId = batchId
             )
             stockTxnDao.upsertPreservingId(txn)

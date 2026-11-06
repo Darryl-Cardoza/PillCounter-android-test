@@ -160,10 +160,8 @@ class Hl7EventHandler @Inject constructor(
         val triggerEvent = msh?.triggerEvent?.uppercase().orEmpty()
         logger.i("HL7 message received | msgId=$msgId | type=$messageCode^$triggerEvent | key=$idempotencyKey")
 
-        // The native path owns a ZDR only when MSH-3 also declares the native sender, so the
-        // validation gate and the dispatch gate are the same predicate. A ZDR from any other
-        // sender falls through to the standard handlers below, which apply their own
-        // validation — matching iOS, which returns from the native branch only when it matches.
+        // A ZDR segment alone marks the native path, whatever MSH-3 says — see
+        // [isNativeZdrMessage]. Validation, ACK and dispatch all hang off this one predicate.
         if (isNativeZdrMessage(parsed)) return handleNativeZdr(parsed, msgId)
 
         return when {

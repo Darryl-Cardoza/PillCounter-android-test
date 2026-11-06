@@ -447,6 +447,45 @@ class DispenseMessageBuilderTest {
         assertTrue(raw.contains("dispense_recount"))
     }
 
+    // ============================ trigger event follows the HL7 version ============================
+    // One rule for every format, native included: 2.3.1 names the dispense trigger RDS^O01 and
+    // 2.5.1 names it RDS^O13. Nothing rewrites the encoded type afterwards.
+
+    private fun versionedConfig(version: String, format: Hl7Format) = HL7Config.current(
+        selectedTerminalName = "PILLCOUNTER",
+        pmsHostName = "PMS",
+        hl7Version = version,
+        hl7Format = format,
+        sendingApplicationName = format.sendingApplication,
+    )
+
+    private fun messageTypeOf(version: String, format: Hl7Format): String {
+        val raw = DispenseMessageBuilder.buildDispenseMessage(
+            txn = txn(txnId = 900L, rxNo = "RX-VER"),
+            txnDetails = listOf(detail(countId = 1L, pillCount = 10)),
+            drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
+            drugName = "DRUG",
+            pharmacistName = "Jane Doe",
+            config = versionedConfig(version, format),
+        )
+        return raw.split('\r').first { it.startsWith("MSH") }.split('|')[8]
+    }
+
+    @Test
+    fun `every format sends RDS O01 at 2_3_1`() {
+        for (format in listOf(Hl7Format.DISPENSESURE_STANDARD, Hl7Format.VIVID, Hl7Format.EYECON, Hl7Format.DISPENSESURE_NATIVE)) {
+            assertEquals("$format at 2.3.1", "RDS^O01", messageTypeOf("2.3.1", format))
+        }
+    }
+
+    @Test
+    fun `every format sends RDS O13 at 2_5_1`() {
+        for (format in listOf(Hl7Format.DISPENSESURE_STANDARD, Hl7Format.VIVID, Hl7Format.EYECON, Hl7Format.DISPENSESURE_NATIVE)) {
+            assertEquals("$format at 2.5.1", "RDS^O13", messageTypeOf("2.5.1", format))
+        }
+    }
+
     // ============================ DISPENSESURE_NATIVE ZDS ============================
 
     private fun nativeConfig() = HL7Config.current(
