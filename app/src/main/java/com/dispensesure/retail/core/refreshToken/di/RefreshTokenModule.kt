@@ -32,7 +32,7 @@ object RefreshTokenModule {
     /**
      * Provides a minimal [OkHttpClient] dedicated for token refresh operations.
      *
-     * - Includes basic [HttpLoggingInterceptor] for debugging purposes.
+     * - Includes the shared [HttpLoggingInterceptor]: confidential data hidden, silent in release.
      * - Uses shorter timeouts (20 seconds) for quick refresh operations.
      *
      * @return Configured [OkHttpClient] instance for refresh token calls.
@@ -40,11 +40,9 @@ object RefreshTokenModule {
     @Provides
     @Singleton
     @Named("refresh_okhttp")
-    fun provideRefreshOkHttpClient(): OkHttpClient =
+    fun provideRefreshOkHttpClient(loggingInterceptor: HttpLoggingInterceptor): OkHttpClient =
         OkHttpClient.Builder()
-            .addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
-            })
+            .addInterceptor(loggingInterceptor)
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)

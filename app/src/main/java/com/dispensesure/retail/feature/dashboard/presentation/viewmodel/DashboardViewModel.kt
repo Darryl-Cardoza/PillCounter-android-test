@@ -4,12 +4,14 @@ package com.dispensesure.retail.feature.dashboard.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.key.DekVersionRecorder
 import com.dispensesure.retail.core.audit.model.CertPinChoice
 import com.dispensesure.retail.core.audit.model.DataPurged
 import com.dispensesure.retail.core.audit.model.PmsCertPinMismatch
 import com.dispensesure.retail.core.audit.model.PurgeReason
 import com.dispensesure.retail.core.audit.model.ServerConfigChanged
 import com.dispensesure.retail.core.audit.model.ServerSetting
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.di.DefaultDispatcher
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.region.RegionProvider
@@ -99,6 +101,8 @@ class DashboardViewModel @Inject constructor(
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
     private val regionProvider: RegionProvider,
     private val auditLogger: AuditLogger,
+    private val auditLogUploader: AuditLogUploader,
+    private val dekVersionRecorder: DekVersionRecorder,
 ) : ViewModel() {
 
     /** Logger instance for this ViewModel. */
@@ -566,8 +570,15 @@ class DashboardViewModel @Inject constructor(
                             // version than what's currently stored (no-op otherwise, since
                             // auth/me is polled repeatedly with an unchanged KEK).
                             detail.kek?.let { kekInfo ->
-                                DatabaseKeyProvider.rotateKekIfNewer(preferenceHelper.getContext(), kekInfo)
+                                val context = preferenceHelper.getContext()
+                                // Records the current (e.g. bootstrap) wrap before the server KEK replaces it.
+                                if (kekInfo.version > (DatabaseKeyProvider.currentWrap(context)?.kekVersion ?: -1)) {
+                                    recordWrapBeforeKekRotation()
+                                }
+                                DatabaseKeyProvider.rotateKekIfNewer(context, kekInfo)
                             }
+                            // The token is known good here: send closed audit files.
+                            auditLogUploader.requestUpload()
                         }
 
                         // Check if profile is incomplete
@@ -619,6 +630,17 @@ class DashboardViewModel @Inject constructor(
                     }
                 }
             )
+        }
+    }
+
+    // Own try: a failure here must not stop the KEK rotation or the audit upload.
+    private suspend fun recordWrapBeforeKekRotation() {
+        try {
+            deviceKeyProvider.getDeviceKey()?.let { deviceKey -> dekVersionRecorder.recordCurrentWrap(deviceKey) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("Recording the DEK wrap failed", e, event = LogEvent.DEK_VERSION_RECORD_FAILED)
         }
     }
 

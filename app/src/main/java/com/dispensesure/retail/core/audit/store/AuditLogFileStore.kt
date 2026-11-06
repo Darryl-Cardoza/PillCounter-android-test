@@ -1,81 +1,99 @@
 package com.dispensesure.retail.core.audit.store
 
 import com.dispensesure.retail.core.audit.AuditLogConfig
-import com.dispensesure.retail.core.utils.logger.AppLogger
-import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
+import java.time.Clock
+import java.time.LocalDate
 
 /**
- * Plain-text home of the encrypted audit lines: `audit-logs.log` plus rotated `audit-logs-1.log`…
- * Not thread-safe on purpose; only the single AuditLogger worker calls it.
+ * Home of the audit lines, one JSON record each: one `<UTC date>-<seq>.log` per day, a new seq when one fills.
+ * Not thread-safe on purpose; only the single AuditLogger worker writes. The uploader only touches closed files.
  */
 class AuditLogFileStore(
     private val directory: File,
-    private val maxFileBytes: Long = AuditLogConfig.MAX_FILE_BYTES,
-    private val maxFileCount: Int = AuditLogConfig.MAX_FILE_COUNT
+    private val segmentSlot: AuditSegmentSlot,
+    private val outbox: AuditOutbox,
+    private val clock: Clock = Clock.systemUTC(),
+    private val maxFileBytes: Long = AuditLogConfig.MAX_FILE_BYTES
 ) {
-    private val logger = AppLogger.create<AuditLogFileStore>()
 
-    private val currentFile: File
-        get() = File(directory, "${AuditLogConfig.FILE_BASE_NAME}.${AuditLogConfig.FILE_EXTENSION}")
-
-    private val highestRotatedIndex: Int
-        get() = maxFileCount - 1
-
-    fun append(line: String) {
+    /** Appends one line, first starting a new empty file when the UTC day changed or the line won't fit. True when that closed a file. */
+    fun append(line: String): Boolean {
         directory.mkdirs()
         val lineBytes = "$line\n".toByteArray(Charsets.UTF_8)
-        if (currentFile.exists() && currentFile.length() + lineBytes.size > maxFileBytes) rotate()
-        FileOutputStream(currentFile, true).use { it.write(lineBytes) }
+        val today = LocalDate.now(clock)
+        val current = segmentSlot.load()
+        val target = if (current != null && current.logDate == today && !wouldOverflow(current, lineBytes.size)) {
+            current
+        } else {
+            openNextSegment(current, today)
+        }
+        FileOutputStream(localFile(target), true).use { it.write(lineBytes) }
+        return current != null && target != current && localFile(current).exists()
     }
 
-    /** A kill mid-write leaves a line with no newline; close it so the next record starts clean. */
-    fun endIncompleteLine() {
-        val file = currentFile
-        if (!file.exists() || file.length() == 0L) return
-        val lastByte = RandomAccessFile(file, "r").use { it.seek(file.length() - 1); it.read() }
-        if (lastByte != '\n'.code) FileOutputStream(file, true).use { it.write('\n'.code) }
+    /** Moves the writer to a new slot so the current file can be prepared. True when a file was closed. */
+    fun closeActiveFile(onlyIfDayEnded: Boolean): Boolean {
+        val current = segmentSlot.load() ?: return false
+        if (!localFile(current).exists()) return false
+        val today = LocalDate.now(clock)
+        if (onlyIfDayEnded && current.logDate == today) return false
+        openNextSegment(current, today)
+        return true
     }
 
-    fun hasNoLines(): Boolean = !anyLine { true }
-
-    /** Checks non-blank lines from the current file back to the oldest; stops at the first match. */
-    fun anyLine(predicate: (String) -> Boolean): Boolean =
-        readableFilesOldestFirst().asReversed().any { file ->
-            file.useLines { lines -> lines.any { it.isNotBlank() && predicate(it) } }
+    /** A kill mid-write leaves half a line; cut it off so the file holds only whole records. True when it cut. */
+    fun dropIncompleteLine(): Boolean {
+        val file = segmentSlot.load()?.let(::localFile) ?: return false
+        if (!file.exists() || file.length() == 0L) return false
+        RandomAccessFile(file, "rw").use { access ->
+            var end = access.length()
+            access.seek(end - 1)
+            if (access.read() == '\n'.code) return false
+            // Walk back to the last newline; everything after it is the half line.
+            while (end > 0) {
+                access.seek(end - 1)
+                if (access.read() == '\n'.code) break
+                end--
+            }
+            access.setLength(end)
         }
-
-    /** Used when the key changed: old lines can't be read any more, so keep them aside. Only the newest set is kept. */
-    fun markAllUnreadable() {
-        unreadableFiles().forEach { it.delete() }
-        val stamp = System.currentTimeMillis()
-        readableFilesOldestFirst().forEach { file ->
-            file.renameTo(File(directory, "${file.nameWithoutExtension}-$stamp.${AuditLogConfig.UNREADABLE_EXTENSION}"))
-        }
+        return true
     }
 
-    fun readableFilesOldestFirst(): List<File> =
-        ((highestRotatedIndex downTo 1).map(::rotatedFile) + currentFile).filter { it.exists() }
+    fun readableFilesOldestFirst(): List<File> = localSegmentsOldestFirst().map { it.second }
 
-    fun unreadableFiles(): List<File> =
-        directory.listFiles { file -> file.extension == AuditLogConfig.UNREADABLE_EXTENSION }
-            ?.sortedBy { it.name }
-            .orEmpty()
-
-    private fun rotate() {
-        val oldestFile = rotatedFile(highestRotatedIndex)
-        if (oldestFile.exists()) {
-            logger.e("Audit log full; dropping ${oldestFile.name}", event = LogEvent.AUDIT_TRAIL_FILE_DROPPED)
-            oldestFile.delete()
-        }
-        for (index in highestRotatedIndex - 1 downTo 1) {
-            rotatedFile(index).takeIf { it.exists() }?.renameTo(rotatedFile(index + 1))
-        }
-        currentFile.renameTo(rotatedFile(1))
+    /** Files the writer has moved past, oldest first; the uploader prepares these. */
+    fun closedFilesOldestFirst(): List<Pair<SegmentId, File>> {
+        // List before reading the slot: the writer saves a slot before creating its file,
+        // so the file being written is never mistaken for a closed one.
+        val localSegments = localSegmentsOldestFirst()
+        val activeSegment = segmentSlot.load()
+        return localSegments.filter { it.first != activeSegment }
     }
 
-    private fun rotatedFile(index: Int): File =
-        File(directory, "${AuditLogConfig.FILE_BASE_NAME}-$index.${AuditLogConfig.FILE_EXTENSION}")
+    private fun openNextSegment(previous: SegmentId?, today: LocalDate): SegmentId {
+        val first = if (previous != null && previous.logDate == today) previous.next() else SegmentId(today, 1)
+        // Skip slots still on disk, e.g. after the device clock went back.
+        val next = generateSequence(first, SegmentId::next).first { candidate ->
+            !localFile(candidate).exists() && !outbox.isTaken(candidate)
+        }
+        segmentSlot.save(next)
+        return next
+    }
+
+    private fun wouldOverflow(segmentId: SegmentId, extraBytes: Int): Boolean {
+        val file = localFile(segmentId)
+        return file.exists() && file.length() + extraBytes > maxFileBytes
+    }
+
+    private fun localSegmentsOldestFirst(): List<Pair<SegmentId, File>> =
+        directory.listFiles().orEmpty()
+            .filter { it.isFile }
+            .mapNotNull { file -> SegmentId.fromFileName(file.name)?.let { segmentId -> segmentId to file } }
+            .sortedBy { it.first }
+
+    private fun localFile(segmentId: SegmentId) = File(directory, segmentId.fileName)
 }

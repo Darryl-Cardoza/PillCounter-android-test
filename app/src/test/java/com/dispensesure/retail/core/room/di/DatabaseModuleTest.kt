@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.room.di
 
 import com.dispensesure.retail.core.room.AppDatabase
+import com.dispensesure.retail.core.room.dao.DekVersionDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
@@ -35,6 +36,7 @@ class DatabaseModuleTest {
         every { db.dispenseTxnDao() } returns mockk<DispenseTxnDao>(relaxed = true)
         every { db.dispenseCountDao() } returns mockk<DispenseCountDao>(relaxed = true)
         every { db.stockBatchDao() } returns mockk<StockBatchDao>(relaxed = true)
+        every { db.dekVersionDao() } returns mockk<DekVersionDao>(relaxed = true)
     }
 
     @Test
@@ -60,5 +62,10 @@ class DatabaseModuleTest {
     @Test
     fun `provideStockBatchDao returns non-null StockBatchDao`() {
         assertNotNull(DatabaseModule.provideStockBatchDao(db))
+    }
+
+    @Test
+    fun `provideDekVersionDao returns non-null DekVersionDao`() {
+        assertNotNull(DatabaseModule.provideDekVersionDao(db))
     }
 }

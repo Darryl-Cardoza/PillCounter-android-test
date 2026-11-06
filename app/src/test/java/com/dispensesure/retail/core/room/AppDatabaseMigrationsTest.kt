@@ -80,6 +80,31 @@ class AppDatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun `migrated dek_versions matches a freshly created v8 dek_versions`() {
+        val v7Database = openEmptyDatabase(version = 7)
+        AppDatabaseMigrations.MIGRATION_7_8.migrate(v7Database)
+
+        val freshV8Database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries().build()
+        val freshV8Sqlite = freshV8Database.openHelper.writableDatabase
+
+        assertEquals(freshV8Sqlite.columnsOf("dek_versions"), v7Database.columnsOf("dek_versions"))
+        freshV8Database.close()
+    }
+
+    private fun openEmptyDatabase(version: Int): SupportSQLiteDatabase {
+        val emptyCallback = object : SupportSQLiteOpenHelper.Callback(version) {
+            override fun onCreate(db: SupportSQLiteDatabase) = Unit
+            override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }
+        val openHelperConfiguration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(null)
+            .callback(emptyCallback)
+            .build()
+        return FrameworkSQLiteOpenHelperFactory().create(openHelperConfiguration).writableDatabase
+    }
+
     // drug_master and stock_batch exactly as schema v6 created them.
     private fun openV6DrugMasterDatabase(): SupportSQLiteDatabase {
         val v6Callback = object : SupportSQLiteOpenHelper.Callback(6) {

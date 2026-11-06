@@ -16,4 +16,16 @@ object AppDatabaseMigrations {
             db.execSQL("ALTER TABLE `stock_batch` ADD COLUMN `region` TEXT NOT NULL DEFAULT 'US'")
         }
     }
+
+    /** v7 → v8: adds `dek_versions`. No existing table changes. */
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `dek_versions` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`dek_key_id` TEXT NOT NULL, `version` INTEGER NOT NULL, `wrapped_dek` BLOB NOT NULL, " +
+                    "`kek_key_id` TEXT NOT NULL, `kek_version` INTEGER NOT NULL, `kek_algorithm` TEXT NOT NULL, " +
+                    "`is_active` INTEGER NOT NULL, `is_registered` INTEGER NOT NULL, `created_at` INTEGER NOT NULL)"
+            )
+        }
+    }
 }

@@ -1,5 +1,6 @@
 package com.dispensesure.retail.core.refreshToken.di
 
+import com.dispensesure.retail.core.di.NetworkModule
 import com.dispensesure.retail.core.refreshToken.data.remote.IRefreshTokenAPI
 import com.squareup.moshi.Moshi
 import io.mockk.every
@@ -21,7 +22,7 @@ class RefreshTokenModuleTest {
 
     @Test
     fun `provideRefreshOkHttpClient returns non-null OkHttpClient`() {
-        val client: OkHttpClient = RefreshTokenModule.provideRefreshOkHttpClient()
+        val client: OkHttpClient = RefreshTokenModule.provideRefreshOkHttpClient(NetworkModule.provideLoggingInterceptor())
 
         assertNotNull(client)
     }

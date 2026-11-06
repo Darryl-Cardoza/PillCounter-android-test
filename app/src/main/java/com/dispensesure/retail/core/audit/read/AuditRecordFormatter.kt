@@ -11,19 +11,13 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
-/** Turns an audit entry into the boxed text shown in the viewer and the export. */
+/** Turns an audit record into the boxed text shown in the viewer and the export. */
 object AuditRecordFormatter {
     private const val NO_VALUE = "—"
     private val timestampFormatter =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS 'UTC'").withZone(ZoneOffset.UTC)
 
-    fun format(entry: AuditLogEntry): String = when (entry) {
-        is AuditLogEntry.Record -> formatRecord(entry.record)
-        is AuditLogEntry.UnreadableLine -> "⚠ unreadable line ${entry.lineNumber} in ${entry.fileName}"
-        is AuditLogEntry.UnreadableFile -> "⚠ unreadable file ${entry.fileName} (older key)"
-    }
-
-    private fun formatRecord(record: AuditRecord): String {
+    fun format(record: AuditRecord): String {
         val resultLabel = if (record.result == AuditResult.SUCCESS) "✔ SUCCESS" else "✖ FAILURE"
         val time = timestampFormatter.format(Instant.parse(record.timestamp))
         val dataText = record.data.entries

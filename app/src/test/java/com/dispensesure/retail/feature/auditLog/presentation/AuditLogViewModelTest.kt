@@ -1,10 +1,14 @@
 package com.dispensesure.retail.feature.auditLog.presentation
 
 import android.content.Context
+import com.dispensesure.retail.core.audit.AuditLogConfig
+import com.dispensesure.retail.core.audit.AuditTestData
 import com.dispensesure.retail.core.audit.DeviceIntegrityAuditor
-import com.dispensesure.retail.core.audit.read.AuditLogEntry
 import com.dispensesure.retail.core.audit.read.AuditLogReader
 import com.dispensesure.retail.core.audit.read.AuditRecordFormatter
+import com.dispensesure.retail.core.audit.store.AuditLogFileStore
+import com.dispensesure.retail.core.audit.store.AuditOutbox
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.util.MainDispatcherRule
 import io.mockk.every
 import io.mockk.mockk
@@ -26,14 +30,17 @@ class AuditLogViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val tempDir = File(System.getProperty("java.io.tmpdir"), "audit_export_test_${System.nanoTime()}").apply { mkdirs() }
-    private val entry = AuditLogEntry.UnreadableFile("audit-logs-1.unreadable")
+    private val entry = AuditTestData.record(1)
     private val context = mockk<Context>()
     private val reader = mockk<AuditLogReader>().also { every { it.readAllOldestFirst() } returns listOf(entry) }
 
     private val deviceIntegrityAuditor = mockk<DeviceIntegrityAuditor>()
 
-    private fun createViewModel() =
-        AuditLogViewModel(context, reader, deviceIntegrityAuditor, mainDispatcherRule.testDispatcher)
+    private fun createViewModel() = AuditLogViewModel(
+        context, reader, deviceIntegrityAuditor, mockk<AuditLogUploader>(relaxed = true),
+        mockk<AuditLogFileStore>(relaxed = true), mockk<AuditOutbox>(relaxed = true),
+        mainDispatcherRule.testDispatcher
+    )
 
     @Test
     fun `export writes the formatted log and emits its path`() = runTest(mainDispatcherRule.testDispatcher) {
@@ -43,7 +50,7 @@ class AuditLogViewModelTest {
         viewModel.export()
         advanceUntilIdle()
 
-        val exportFile = File(tempDir, "audit-logs-decrypted.log")
+        val exportFile = File(tempDir, AuditLogConfig.EXPORT_FILE_NAME)
         assertEquals(exportFile.absolutePath, viewModel.exportResults.first())
         assertEquals(AuditRecordFormatter.format(entry), exportFile.readText())
     }

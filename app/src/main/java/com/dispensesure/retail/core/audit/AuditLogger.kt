@@ -1,12 +1,12 @@
 package com.dispensesure.retail.core.audit
 
 import com.dispensesure.retail.BuildConfig
-import com.dispensesure.retail.core.audit.crypto.AuditRecordCipher
 import com.dispensesure.retail.core.audit.model.AuditJson
 import com.dispensesure.retail.core.audit.model.AuditLogEvent
 import com.dispensesure.retail.core.audit.model.AuditRecord
 import com.dispensesure.retail.core.audit.store.AuditLogFileStore
 import com.dispensesure.retail.core.audit.store.AuditSequenceCounter
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.tourguide.FtueController
@@ -15,6 +15,7 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import dagger.Lazy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -29,24 +30,24 @@ import javax.inject.Singleton
 
 /**
  * The only entry point for audit events: call [log] from any thread and it returns at once.
- * One background worker builds, encrypts and appends each record in call order.
+ * One background worker builds and appends each record in call order.
  */
 @Singleton
 class AuditLogger @Inject constructor(
     private val fileStore: AuditLogFileStore,
-    private val cipher: AuditRecordCipher,
     private val sequenceCounter: AuditSequenceCounter,
     private val preferenceHelper: PreferenceHelper,
     private val deviceKeyProvider: DeviceKeyProvider,
     // Provider: SessionLockController logs audit events too, which would otherwise be a DI cycle.
     private val sessionLockController: Provider<SessionLockController>,
     private val operatorNameProvider: Provider<OperatorNameProvider>,
+    // Lazy: the uploader's network stack reaches back to AuditLogger, another DI cycle.
+    private val uploader: Lazy<AuditLogUploader>,
     ioDispatcher: CoroutineDispatcher
 ) {
     private val logger = AppLogger.create<AuditLogger>()
     private val pendingItems = Channel<AuditQueueItem>(Channel.UNLIMITED)
     private val writerScope = CoroutineScope(SupervisorJob() + ioDispatcher)
-    private var filesPrepared = false
     private var currentIdentity: AuditIdentity? = null
 
     init {
@@ -83,26 +84,39 @@ class AuditLogger @Inject constructor(
         pendingItems.trySend(AuditQueueItem.SessionEnded)
     }
 
+    /** Closes the current file so it can be uploaded; with [onlyIfDayEnded], only once its UTC day is over. */
+    fun closeFileForUpload(onlyIfDayEnded: Boolean) {
+        pendingItems.trySend(AuditQueueItem.CloseFile(onlyIfDayEnded))
+    }
+
     private suspend fun writePendingItems() {
+        prepareFiles()
         for (item in pendingItems) {
             when (item) {
                 is AuditQueueItem.SessionStarted -> currentIdentity = item.identity
                 AuditQueueItem.SessionEnded -> currentIdentity = null
-                is AuditQueueItem.QueuedEvent -> {
-                    if (!filesPrepared) filesPrepared = prepareFiles()
-                    writeEvent(item)
-                }
+                is AuditQueueItem.QueuedEvent -> writeEvent(item)
+                is AuditQueueItem.CloseFile -> closeFile(item.onlyIfDayEnded)
             }
         }
     }
 
     private suspend fun writeEvent(queuedEvent: AuditQueueItem.QueuedEvent) {
         try {
-            fileStore.append(cipher.encrypt(AuditJson.encodeRecord(buildRecord(queuedEvent))))
+            val closedPreviousFile = fileStore.append(AuditJson.encodeRecord(buildRecord(queuedEvent)))
+            if (closedPreviousFile) uploader.get().requestUpload()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logger.e("Audit event dropped", e, event = LogEvent.AUDIT_TRAIL_WRITE_FAILED)
+        }
+    }
+
+    private fun closeFile(onlyIfDayEnded: Boolean) {
+        try {
+            if (fileStore.closeActiveFile(onlyIfDayEnded)) uploader.get().requestUpload()
+        } catch (e: Exception) {
+            logger.e("Audit file close failed", e, event = LogEvent.AUDIT_TRAIL_WRITE_FAILED)
         }
     }
 
@@ -119,20 +133,16 @@ class AuditLogger @Inject constructor(
         }
     }
 
-    // Before the first write, and again until the key loads: close a line cut by a kill, and move aside files from an older DEK.
-    // Only a key that loads but reads no line at all counts as a key change. Returns false to retry.
-    private fun prepareFiles(): Boolean =
+    // Once per process: cut a line left half-written by a kill.
+    private fun prepareFiles() {
         try {
-            fileStore.endIncompleteLine()
-            if (!fileStore.hasNoLines() && !fileStore.anyLine(cipher::isReadable)) {
-                logger.e("Audit key changed; old audit files kept as unreadable", event = LogEvent.AUDIT_TRAIL_KEY_CHANGED)
-                fileStore.markAllUnreadable()
+            if (fileStore.dropIncompleteLine()) {
+                logger.w("Dropped a partial audit record cut by a kill", event = LogEvent.AUDIT_TRAIL_WRITE_FAILED)
             }
-            true
         } catch (e: Exception) {
             logger.e("Audit file check failed", e, event = LogEvent.AUDIT_TRAIL_WRITE_FAILED)
-            false
         }
+    }
 
     private suspend fun buildRecord(queuedEvent: AuditQueueItem.QueuedEvent): AuditRecord {
         val (tag, data) = AuditJson.tagAndData(queuedEvent.event)
@@ -182,6 +192,8 @@ class AuditLogger @Inject constructor(
         data class SessionStarted(val identity: AuditIdentity) : AuditQueueItem
 
         data object SessionEnded : AuditQueueItem
+
+        data class CloseFile(val onlyIfDayEnded: Boolean) : AuditQueueItem
     }
 
     companion object {

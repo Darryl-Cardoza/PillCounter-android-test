@@ -8,6 +8,7 @@ import com.dispensesure.retail.core.audit.model.OfflineModeExited
 import com.dispensesure.retail.core.audit.model.OfflineTrigger
 import com.dispensesure.retail.core.audit.model.ServerConfigChanged
 import com.dispensesure.retail.core.audit.model.ServerSetting
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.health.domain.data.IHealthRepository
 import com.dispensesure.retail.core.health.domain.model.HealthState
 import com.dispensesure.retail.core.utils.common.DateUtils
@@ -73,7 +74,9 @@ class SessionHealthController @Inject constructor(
     // OFFLINE -> HEALTHY sync trigger fires, by which point every graph node exists.
     private val dispenseHl7Repository: Lazy<DispenseHl7Repository>,
     private val stockHl7Repository: Lazy<StockHl7Repository>,
-    private val auditLogger: AuditLogger
+    private val auditLogger: AuditLogger,
+    // Lazy for the same cycle as the HL7 repositories above.
+    private val auditLogUploader: Lazy<AuditLogUploader>
 ) {
 
     private val logger = AppLogger.create<SessionHealthController>()
@@ -157,12 +160,14 @@ class SessionHealthController @Inject constructor(
     val syncTrigger: SharedFlow<Unit> = _syncTrigger.asSharedFlow()
 
     init {
-        // Drain HL7 backlog whenever the state transitions OFFLINE -> HEALTHY. Owning this
+        // Drain HL7 backlog and audit uploads whenever the state transitions OFFLINE -> HEALTHY. Owning this
         // observer inside the controller keeps `MainActivity` free of the layering jump
         // (Activity -> Repository) and centralises the recovery-time workflow next to the
         // state machine that fires it.
         scope.launch {
             syncTrigger.collect {
+                // Returns at once, so an HL7 failure below can't skip it.
+                auditLogUploader.get().requestUpload()
                 try {
                     dispenseHl7Repository.get().resendPendingDispenses()
                     stockHl7Repository.get().sendPendingBatches()
