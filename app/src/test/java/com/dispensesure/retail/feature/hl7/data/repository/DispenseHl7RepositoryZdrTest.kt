@@ -22,6 +22,7 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7MessageSender
 import com.dispensesure.retail.feature.hl7.data.Hl7ConfigProvider
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
+import com.dispensesure.retail.feature.hl7.parsing.Hl7DrugResolver
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -138,6 +139,17 @@ class DispenseHl7RepositoryZdrTest {
             drugMasterDao = drugMasterDao,
             drugRepository = iDrugRepository,
             drugImageDownloader = drugImageDownloader,
+            regionProvider = regionProvider,
+        ),
+        hl7DrugResolver = Hl7DrugResolver(
+            context = context,
+            drugResolver = DrugResolver(
+                drugMasterDao = drugMasterDao,
+                drugRepository = iDrugRepository,
+                drugImageDownloader = drugImageDownloader,
+                regionProvider = regionProvider,
+            ),
+            notifier = notifier,
             regionProvider = regionProvider,
         ),
         notifier = notifier,

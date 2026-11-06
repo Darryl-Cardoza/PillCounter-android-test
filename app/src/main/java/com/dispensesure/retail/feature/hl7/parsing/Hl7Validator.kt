@@ -33,10 +33,12 @@ class Hl7Validator @Inject constructor(
 
     fun validateStructure(message: HL7Message): ValidationResult {
         val libraryResult = libValidator.validate(message)
-        // The library only knows NDC formats, and its issue text names no RXE index, so a code
-        // issue cannot be attributed to a particular RXE in a multi-order message. Drop its RXE
-        // drug-code issues unconditionally and re-validate every RXE's give code ourselves (NDC,
-        // plus DIN where the region accepts it), one issue per bad code.
+        // The library only knows NDC formats, so it rejects a DIN the region accepts. It does
+        // identify which RXE a code issue belongs to — "Invalid NDC in RXE (order 1)", "(order 2)"
+        // for several RXEs, plain "Invalid NDC in RXE" for one — but every one of those issues is
+        // wrong wherever a DIN is valid. Drop its RXE drug-code issues unconditionally and
+        // re-validate every RXE's give code ourselves (NDC, plus DIN where the region accepts
+        // it), one issue per bad code.
         val rxeSegments = message.segments<RXESegment>(RXESegment.NAME)
         val kept = libraryResult.issues.filterNot { issue -> issue.isLibraryRxeDrugCodeIssue() }
         val acceptsDin = regionProvider.current.hl7OrdersAcceptDin
@@ -72,8 +74,9 @@ class Hl7Validator @Inject constructor(
     }
 }
 
-// The library raises an "Invalid NDC in RXE" issue (segmentId=RXE, fieldPosition=2) for RXE-2 that
-// fails NDC validation; it cannot be attributed to a specific RXE, so it is replaced by our own.
+// The library raises an "Invalid NDC in RXE" issue (segmentId=RXE, fieldPosition=2) for an RXE-2
+// that fails NDC validation — suffixed "(order n)" when the message carries several RXEs. Matched
+// on the stem so both forms are caught, and replaced by our own region-aware check.
 private fun ValidationIssue.isLibraryRxeDrugCodeIssue(): Boolean =
     segmentId == "RXE" && fieldPosition == "2" && errorText.contains("Invalid NDC", ignoreCase = true)
 

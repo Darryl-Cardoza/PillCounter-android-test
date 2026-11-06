@@ -40,6 +40,7 @@ import com.dispensesure.retail.feature.hl7.core.Hl7MessageSender
 import com.dispensesure.retail.feature.hl7.data.Hl7ConfigProvider
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.order.NativeOrderKey
+import com.dispensesure.retail.feature.hl7.parsing.Hl7DrugResolver
 import com.dispensesure.retail.feature.hl7.parsing.Hl7Parser
 import com.dispensesure.retail.feature.hl7.util.DispenseMessageBuilder
 import com.dispensesure.retail.feature.hl7.util.isRejectAck
@@ -80,6 +81,7 @@ class DispenseHl7Repository @Inject constructor(
     private val preferenceHelper: PreferenceHelper,
     private val hl7MessageSender: Hl7MessageSender,
     private val drugResolver: DrugResolver,
+    private val hl7DrugResolver: Hl7DrugResolver,
     private val notifier: Hl7Notifier,
     private val hl7ConfigProvider: Hl7ConfigProvider,
     private val regionProvider: RegionProvider,
@@ -709,27 +711,9 @@ class DispenseHl7Repository @Inject constructor(
     private fun DispenseTxnEntity.isZdrFinished() =
         status == CountStatus.COMPLETED || status == CountStatus.FORCE_COMPLETED
 
-    private suspend fun zdrResolveDrug(ndc: String, drugName: String?): DrugMasterEntity? {
-        val name = drugName?.takeIf { it.isNotBlank() }
-        return when (val lookup = drugResolver.resolve(ndc, expectedNdc = ndc, nameIfMissing = name, nameIfUnknown = name)) {
-            is DrugLookup.Found -> lookup.drug
-            is DrugLookup.Failed -> {
-                notifier.show(
-                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                    message = context.getString(regionProvider.current.wording(R.string.hl7_notification_drug_not_found_api_failed), ndc),
-                )
-                null
-            }
-            DrugLookup.NoName, DrugLookup.NotFound -> {
-                logger.w("ZDR: no drug found for NDC=$ndc")
-                notifier.show(
-                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                    message = context.getString(regionProvider.current.wording(R.string.hl7_notification_drug_not_found_no_drug), ndc),
-                )
-                null
-            }
-        }
-    }
+    private suspend fun zdrResolveDrug(ndc: String, drugName: String?): DrugMasterEntity? =
+        hl7DrugResolver.resolve(ndc, drugName)
+            .also { if (it == null) logger.w("ZDR: no drug resolved for NDC=$ndc") }
 
     // ZNI / ZUI packets always insert a new order (txnId 0 upserts as an insert).
     private fun logPacketTxnCreated(txnId: Long, txn: DispenseTxnEntity, ndc: String) {
