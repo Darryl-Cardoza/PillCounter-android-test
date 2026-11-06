@@ -119,9 +119,10 @@ object DatabaseKeyProvider {
             val dek = KeystoreAesGcm.unwrap(alias, wrapped)
             try {
                 val newWrapped = KeystoreAesGcm.wrapPcwrp(alias, dek)
-                prefs.putString(KEY_DEK_WRAPPED, Base64.encodeToString(newWrapped, Base64.NO_WRAP), commit = true)
                 // Every KEK, local or server, is AES-256-GCM.
+                // Written before the wrap: a kill in between leaves the old wrap, so the conversion reruns.
                 prefs.putString(KEY_KEK_ALGORITHM, BOOTSTRAP_KEK_ALGORITHM, commit = true)
+                prefs.putString(KEY_DEK_WRAPPED, Base64.encodeToString(newWrapped, Base64.NO_WRAP), commit = true)
             } finally {
                 dek.fill(0)
             }
