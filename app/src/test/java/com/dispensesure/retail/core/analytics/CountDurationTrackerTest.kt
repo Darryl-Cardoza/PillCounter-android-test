@@ -85,17 +85,17 @@ class CountDurationTrackerTest {
         assertEquals(0, tracker.pendingCount)
     }
 
-    /** Stock and dispense id sequences overlap, so the keys must not collide. */
+    /** Batch and dispense id sequences overlap, so the keys must not collide. */
     @Test
-    fun `stock and dispense ids with the same value are separate timers`() {
+    fun `batch and dispense ids with the same value are separate timers`() {
         val tracker = tracker()
         tracker.start(7L)
         now += 10_000L
-        tracker.start(CountDurationTracker.stockKey(7L))
+        tracker.start(CountDurationTracker.batchKey(7L))
         now += 20_000L
 
         assertEquals(30L, tracker.finish(7L))
-        assertEquals(20L, tracker.finish(CountDurationTracker.stockKey(7L)))
+        assertEquals(20L, tracker.finish(CountDurationTracker.batchKey(7L)))
     }
 
     @Test

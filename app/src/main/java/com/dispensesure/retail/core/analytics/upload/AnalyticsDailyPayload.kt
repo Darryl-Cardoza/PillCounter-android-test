@@ -14,10 +14,11 @@ import com.squareup.moshi.JsonClass
  * exactly — nothing extra, nothing omitted — and fields with no data source yet are sent as 0
  * rather than left out. Adding or removing a key here fails the whole batch, not one field.
  *
- * Three counters are collected locally but NOT sent, because the contract has no field for them:
- * safetyExpiredBlocked, accuracyCountMismatch and accuracyManualEntry. They stay on the row so the
- * data exists if the contract gains them back. The `expiry` block is sent as zeros for the same
- * reason in reverse: the key is mandatory, and no Android flow fills it yet.
+ * Two counters are collected locally but NOT sent, because the contract has no field for them:
+ * accuracyCountMismatch and accuracyManualEntry. Both are written on every dispense; they stay on
+ * the row so the data exists if the contract gains them back. The `expiry` block is sent as zeros
+ * for the same reason in reverse: the key is mandatory, and no Android flow fills it yet, so
+ * omitting it would 4xx the whole batch.
  *
  * The server has no field for how many counts were actually timed, so it computes duration
  * averages as sum/count. A count whose duration was discarded moves count without moving sum;

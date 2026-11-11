@@ -159,7 +159,6 @@ class AnalyticsStore(
             AnalyticsField.SAFETY_DRUG_CODE_VERIFIED -> copy(safetyDrugCodeVerified = safetyDrugCodeVerified + inc.delta)
             AnalyticsField.SAFETY_WRONG_DRUG_BLOCKED -> copy(safetyWrongDrugBlocked = safetyWrongDrugBlocked + inc.delta)
             AnalyticsField.SAFETY_SUBSTITUTE_FLAGGED -> copy(safetySubstituteFlagged = safetySubstituteFlagged + inc.delta)
-            AnalyticsField.SAFETY_EXPIRED_BLOCKED -> copy(safetyExpiredBlocked = safetyExpiredBlocked + inc.delta)
             AnalyticsField.EXPIRY_EXPIRED_SHOWN -> copy(expiryExpiredShown = expiryExpiredShown + inc.delta)
             AnalyticsField.EXPIRY_BEFORE_DOSAGE_END -> copy(expiryBeforeDosageEnd = expiryBeforeDosageEnd + inc.delta)
             AnalyticsField.EXPIRY_NEAR_SHOWN -> copy(expiryNearShown = expiryNearShown + inc.delta)

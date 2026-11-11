@@ -79,6 +79,7 @@ class StockBatchDetailViewModelTest {
             preferenceHelper,
             regionProvider,
             io.mockk.mockk(relaxed = true),
+            com.dispensesure.retail.core.analytics.collect.CountDurationTracker { 0L },
         )
     }
 

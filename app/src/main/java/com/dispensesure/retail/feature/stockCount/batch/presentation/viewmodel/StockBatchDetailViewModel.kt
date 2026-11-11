@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.stockCount.batch.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.analytics.collect.CountDurationTracker
 import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.audit.model.BatchDeleted
 import com.dispensesure.retail.core.region.RegionProvider
@@ -40,7 +41,8 @@ class StockBatchDetailViewModel @Inject constructor(
     private val stockBatchDao: StockBatchDao,
     private val preferenceHelper: PreferenceHelper,
     private val regionProvider: RegionProvider,
-    private val auditLogger: AuditLogger
+    private val auditLogger: AuditLogger,
+    private val durationTracker: CountDurationTracker,
 ) : ViewModel() {
 
     private val argBatchId: Long = savedStateHandle["batch_id"] ?: 0
@@ -95,6 +97,9 @@ class StockBatchDetailViewModel @Inject constructor(
                     val rowsToDelete = stockBatchDao.getSyncStatesByIds(listOf(id))
                     stockBatchDao.softDelete(id)
                     stockTxnDao.deleteByBatchIds(listOf(id))
+                    // The batch's transactions are gone, so nothing will arrive to finish its
+                    // count timer. Release it now instead of holding a slot until eviction.
+                    durationTracker.cancel(CountDurationTracker.batchKey(id))
                     auditLogger.log(
                         BatchDeleted(
                             batchIds = listOf(id),

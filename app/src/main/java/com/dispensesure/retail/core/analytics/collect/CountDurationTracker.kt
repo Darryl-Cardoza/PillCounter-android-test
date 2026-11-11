@@ -17,6 +17,18 @@ import javax.inject.Singleton
  * inventory duration came out ~0, pinning `min` at zero permanently. The elapsed time that matters
  * (row created → count finished) is never persisted, so no timestamp arithmetic can recover it.
  *
+ * **Keyed on the batch, not the transaction.** A stock transaction has no open interval of its own
+ * — it is created already COMPLETED at its first line. The interval a user would recognise as "how
+ * long the count took" belongs to the *batch*: it opens when the count session starts
+ * (`ensureBatchCreated`, or the loose screen's first commit) and runs until counting stops. Timing
+ * per transaction would measure the same few milliseconds the derived duration already did.
+ *
+ * One consequence, deliberate: the batch's elapsed time is claimed by the **first** transaction to
+ * complete in it, and later transactions in that batch are reported untimed. A batch's duration is
+ * one measurement; splitting it across its drugs would invent samples, and repeating it for each
+ * would multiply the same seconds into `sum`. The resulting `count` > `samples` gap is what the
+ * `*DurationSamples` columns exist to show.
+ *
  * Ported from the iOS `CountDurationTracker` so both platforms report comparable numbers.
  *
  * Design notes, each answering an objection design §5.6 raised against porting it:
@@ -86,7 +98,12 @@ class CountDurationTracker @Inject constructor(
         return seconds
     }
 
-    /** Discards a count abandoned without completing, so it does not hold an entry. */
+    /**
+     * Discards a count abandoned without completing, so it does not hold an entry until eviction.
+     *
+     * Called when a batch is deleted — its transactions go with it, so nothing will ever arrive to
+     * finish the timer.
+     */
     fun cancel(key: Long) {
         synchronized(lock) { starts.remove(key) }
     }
@@ -96,10 +113,12 @@ class CountDurationTracker @Inject constructor(
 
     companion object {
         /**
-         * Dispense and stock transactions have independent id sequences, so a raw id is ambiguous
-         * across the two. Negating the stock id keeps both in one map without collision.
+         * Key for an inventory batch's count session.
+         *
+         * Dispense transactions and stock batches have independent id sequences, so a raw id is
+         * ambiguous across the two. Negating the batch id keeps both in one map without collision.
          */
-        fun stockKey(stockTxnId: Long): Long = -stockTxnId
+        fun batchKey(batchId: Long): Long = -batchId
 
         private const val MAX_ENTRIES = 200
 

@@ -114,6 +114,27 @@ class AnalyticsDailyPayloadTest {
     }
 
     /**
+     * A manual stock count raises both the stock count and the manual counter, so the two cancel
+     * and nothing is reported as PMS work. Without the manual increment the subtraction would
+     * silently attribute every manual inventory count to the PMS.
+     */
+    @Test
+    fun `a manual stock count is not a pms transaction`() {
+        val record = entity(
+            stockCount = 3L,
+            manualTransactions = 3L,
+        ).toRecord(zeroPms())
+        assertEquals(0L, record.origin.pmsTransactions)
+    }
+
+    /** A PMS-requested cycle count raises no manual counter, so it stays PMS work. */
+    @Test
+    fun `a pms cycle count remains a pms transaction`() {
+        val record = entity(cycleCount = 3L, manualTransactions = 0L).toRecord(zeroPms())
+        assertEquals(3L, record.origin.pmsTransactions)
+    }
+
+    /**
      * Hazardous is a cross-cutting tag, not a fourth bucket: the same dispense already appears in
      * normal or controlled. Counting it again would invent a PMS transaction on every hazardous
      * manual dispense.
@@ -157,6 +178,64 @@ class AnalyticsDailyPayloadTest {
         assertFalse("safety_expired_blocked must not appear", json.contains("\"expired_blocked\""))
         assertFalse("accuracy_count_mismatch must not appear", json.contains("\"count_mismatch\""))
         assertFalse("accuracy_manual_entry must not appear", json.contains("\"manual_entry\""))
+    }
+
+    /**
+     * The server rejects unknown keys ("Extra inputs are not permitted") and requires every known
+     * one ("Field required"), so a single added, renamed or dropped key fails the whole batch —
+     * not one field. This pins the entire nested shape, which the per-block tests only sample.
+     *
+     * Update this only alongside a confirmed server-side contract change.
+     */
+    @Test
+    fun `full nested JSON shape matches the contract exactly`() {
+        val record = entity().toRecord(zeroPms())
+        val request = AnalyticsDailyRequest(deviceKey = "dev1", records = listOf(record))
+        val json = moshi.adapter(AnalyticsDailyRequest::class.java).toJson(request)
+        val recordJson = JSONObject(json).getJSONArray("records").getJSONObject(0)
+
+        val duration = setOf("sum", "min", "max")
+        val dispenseWork = setOf("count", "duration_seconds")
+        val inventoryWork = setOf("count", "duration_seconds", "sealed_bottles_scanned", "ndc_scanned")
+        val lifecycle = setOf("received", "completed", "synced", "pending_at_day_end")
+
+        val expected = mapOf(
+            "" to setOf(
+                "business_date", "revision", "terminal_name", "operator_id",
+                "context", "volume", "origin", "pms", "safety", "expiry", "compliance", "accuracy",
+            ),
+            "context" to setOf("region", "timezone_offset_min", "app_version"),
+            "volume" to setOf("dispense", "inventory"),
+            "volume.dispense" to setOf("normal", "controlled", "hazardous"),
+            "volume.dispense.normal" to dispenseWork,
+            "volume.dispense.normal.duration_seconds" to duration,
+            "volume.dispense.controlled" to dispenseWork,
+            "volume.dispense.controlled.duration_seconds" to duration,
+            "volume.dispense.hazardous" to dispenseWork,
+            "volume.dispense.hazardous.duration_seconds" to duration,
+            "volume.inventory" to setOf("cycle_count", "stock_count"),
+            "volume.inventory.cycle_count" to inventoryWork,
+            "volume.inventory.cycle_count.duration_seconds" to duration,
+            "volume.inventory.stock_count" to inventoryWork,
+            "volume.inventory.stock_count.duration_seconds" to duration,
+            "origin" to setOf("manual_transactions", "pms_transactions", "rx_label_proceeded", "open_pill"),
+            "pms" to setOf("dispense", "inventory"),
+            "pms.dispense" to lifecycle,
+            "pms.inventory" to lifecycle,
+            "safety" to setOf("drug_code_verified", "wrong_drug_blocked", "substitute_flagged"),
+            "expiry" to setOf("expired_shown", "before_dosage_end", "near_shown"),
+            "compliance" to setOf("gloves_detected", "gloves_not_detected", "hazardous_tray_detected"),
+            "accuracy" to setOf(
+                "variance_abs_sum", "backcount_performed", "backcount_mismatch", "recount_attempts_sum",
+            ),
+        )
+
+        expected.forEach { (path, keys) ->
+            val node = path.split('.')
+                .filter { it.isNotEmpty() }
+                .fold(recordJson) { obj, segment -> obj.getJSONObject(segment) }
+            assertEquals("key set at '${path.ifEmpty { "<record>" }}'", keys, node.keys().asSequence().toSet())
+        }
     }
 
     @Test

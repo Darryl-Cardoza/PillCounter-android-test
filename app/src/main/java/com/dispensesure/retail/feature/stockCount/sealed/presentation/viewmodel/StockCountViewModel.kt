@@ -272,6 +272,12 @@ class StockCountViewModel @Inject constructor(
             val bucket = if (FtueController.state.isActive) TutorialData.BUCKET else _bucketId.value
             val newId = stockBatchDao.insertNewInProgressBatch(bucketId = bucket, region = regionProvider.current)
             resolvedBatchId.value = newId
+            // The count session starts here, before any bottle is persisted. The stock_txn rows
+            // this batch produces are each created already COMPLETED, so this is the only point
+            // at which the elapsed time of a count can begin to be measured.
+            if (AnalyticsService.isEnabled) {
+                durationTracker.start(CountDurationTracker.batchKey(newId))
+            }
             auditLogger.logOutsideTour(BatchCreated(batchId = newId, source = BatchSource.MANUAL, bucket = bucket, requestedNdcs = emptyList()))
             newId
         } catch (e: Exception) {
@@ -678,6 +684,13 @@ class StockCountViewModel @Inject constructor(
                 // Card dropped to 0 bottles: an empty line would never be found again, so remove it.
                 stockBottleInfoDao.delete(existing.bottleId)
                 logger.d("INV_SCAN persistActive DELETED empty bottleId=${existing.bottleId}")
+                // Removing a line lowers the transaction's totals; the ledger reconciles to the
+                // new figures and applies a negative delta, undoing what this line contributed.
+                if (AnalyticsService.isEnabled) {
+                    domainEventBus.tryPost(
+                        DomainEvent.StockBottleRecorded(existing.stockTxnId, existing.bottleId)
+                    )
+                }
                 auditLogger.logOutsideTour(
                     BottleLineDeleted(
                         batchId = batchId,
@@ -696,6 +709,15 @@ class StockCountViewModel @Inject constructor(
                     )
                 )
                 logger.d("INV_SCAN persistActive UPDATED bottleId=${existing.bottleId} drugId=$drugId bottles=${active.bottles}")
+                // A rescan or +/- tap rewrites an existing line's quantity rather than inserting.
+                // Analytics reconciles the transaction's totals against its ledger on every event,
+                // so this must be announced too — otherwise the bottles added after the first
+                // scan are never counted.
+                if (existing.bottleQty != active.bottles && AnalyticsService.isEnabled) {
+                    domainEventBus.tryPost(
+                        DomainEvent.StockBottleRecorded(existing.stockTxnId, existing.bottleId)
+                    )
+                }
                 // A flush with nothing new (row tap, scan pills) writes the same count and logs nothing.
                 if (existing.bottleQty != active.bottles) {
                     auditLogger.logOutsideTour(
@@ -725,7 +747,6 @@ class StockCountViewModel @Inject constructor(
                 // a sealed bottle line. The loose pills live on their own line from SCAN PILLS.
                 logger.d("INV_SCAN persistActive SKIP insert: bottles<=0 (open-pills-only)")
             } else {
-                val isNewStockTxn = stockTxn?.txnId == null
                 val stockTxnId = stockTxn?.txnId ?: stockTxnDao.upsertPreservingId(
                     StockTxnEntity(
                         drugId = drugId,
@@ -734,13 +755,6 @@ class StockCountViewModel @Inject constructor(
                         bucketId = _bucketId.value,
                     )
                 )
-                // Starts the inventory stopwatch on a genuinely new transaction only, so
-                // re-persisting an in-progress count does not reset its timer. The row's own
-                // createdAt cannot serve here: it is stamped in this same block, milliseconds
-                // before the count finishes.
-                if (isNewStockTxn && AnalyticsService.isEnabled) {
-                    durationTracker.start(CountDurationTracker.stockKey(stockTxnId))
-                }
                 val bottleId = stockBottleInfoDao.insert(
                     StockBottleInfoEntity(
                         stockTxnId = stockTxnId,

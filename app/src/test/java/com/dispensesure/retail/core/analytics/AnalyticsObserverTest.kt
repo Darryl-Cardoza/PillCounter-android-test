@@ -250,17 +250,99 @@ class AnalyticsObserverTest {
         assertTrue(lastIncrements.any { it.field == AnalyticsField.INVENTORY_STOCK_COUNT && it.delta == 1L })
     }
 
+    /** A replayed event finds the totals unchanged, so it must contribute nothing. */
     @Test
-    fun `StockBottleRecorded for an already counted txn is a no-op`() = runTest(UnconfinedTestDispatcher()) {
+    fun `StockBottleRecorded with nothing new is a no-op`() = runTest(UnconfinedTestDispatcher()) {
         val observer = makeObserver()
         observer.startObserving(backgroundScope)
 
-        coEvery { countedDao.exists(AnalyticsCountedEntity.KIND_STOCK_TXN, 10L) } returns true
+        stubStockTxn(
+            stockTxnId = 10L,
+            sealedQty = 4L,
+            ledger = ledgerRow(10L, sealedQty = 4L),
+        )
 
         bus.tryPost(DomainEvent.StockBottleRecorded(stockTxnId = 10L, bottleId = 21L))
         advanceUntilIdle()
 
         assertEquals(0, applyCalls)
+    }
+
+    /**
+     * A second lot of the same drug, or a `+/-` edit, grows a transaction already counted. Only
+     * the difference may be applied — the transaction itself is not counted twice.
+     */
+    @Test
+    fun `later bottles on a counted txn apply only the difference`() = runTest(UnconfinedTestDispatcher()) {
+        val observer = makeObserver()
+        observer.startObserving(backgroundScope)
+
+        stubStockTxn(
+            stockTxnId = 16L,
+            sealedQty = 12L,
+            ledger = ledgerRow(16L, sealedQty = 1L),
+        )
+
+        bus.tryPost(DomainEvent.StockBottleRecorded(stockTxnId = 16L, bottleId = 27L))
+        advanceUntilIdle()
+
+        val sealed = lastIncrements.first { it.field == AnalyticsField.INVENTORY_STOCK_SEALED_BOTTLES_SCANNED }
+        assertEquals(11L, sealed.delta)
+        assertTrue(lastIncrements.none { it.field == AnalyticsField.INVENTORY_STOCK_COUNT })
+        assertTrue(lastIncrements.none { it.field == AnalyticsField.ORIGIN_MANUAL_TRANSACTIONS })
+    }
+
+    /** Deleting a line lowers the total, which has to undo what it contributed. */
+    @Test
+    fun `a removed line applies a negative delta`() = runTest(UnconfinedTestDispatcher()) {
+        val observer = makeObserver()
+        observer.startObserving(backgroundScope)
+
+        stubStockTxn(
+            stockTxnId = 17L,
+            sealedQty = 2L,
+            ledger = ledgerRow(17L, sealedQty = 5L),
+        )
+
+        bus.tryPost(DomainEvent.StockBottleRecorded(stockTxnId = 17L, bottleId = 28L))
+        advanceUntilIdle()
+
+        val sealed = lastIncrements.first { it.field == AnalyticsField.INVENTORY_STOCK_SEALED_BOTTLES_SCANNED }
+        assertEquals(-3L, sealed.delta)
+    }
+
+    /** The ledger has to move forward, or the next event re-applies the same bottles. */
+    @Test
+    fun `applying a delta advances the ledger to the new totals`() = runTest(UnconfinedTestDispatcher()) {
+        val observer = makeObserver()
+        observer.startObserving(backgroundScope)
+
+        stubStockTxn(stockTxnId = 18L, sealedQty = 9L, looseLines = 2L)
+
+        bus.tryPost(DomainEvent.StockBottleRecorded(stockTxnId = 18L, bottleId = 29L))
+        advanceUntilIdle()
+
+        coVerify {
+            countedDao.upsert(
+                match { it.entityId == 18L && it.countedSealedQty == 9L && it.countedLooseLines == 2L }
+            )
+        }
+    }
+
+    /** A manual inventory count must raise the manual counter, or subtraction calls it PMS work. */
+    @Test
+    fun `a manual stock count increments origin_manual_transactions`() = runTest(UnconfinedTestDispatcher()) {
+        val observer = makeObserver()
+        observer.startObserving(backgroundScope)
+
+        stubStockTxn(stockTxnId = 19L, sealedQty = 1L)
+
+        bus.tryPost(DomainEvent.StockBottleRecorded(stockTxnId = 19L, bottleId = 30L))
+        advanceUntilIdle()
+
+        assertTrue(
+            lastIncrements.any { it.field == AnalyticsField.ORIGIN_MANUAL_TRANSACTIONS && it.delta == 1L }
+        )
     }
 
     /** Sealed bottles are counted by quantity, read once at completion — not one per line. */
@@ -317,7 +399,7 @@ class AnalyticsObserverTest {
         val observer = makeObserver()
         observer.startObserving(backgroundScope)
 
-        durationTracker.start(CountDurationTracker.stockKey(14L))
+        durationTracker.start(CountDurationTracker.batchKey(5L))
         now += 90_000L
         stubStockTxn(stockTxnId = 14L, sealedQty = 1L)
 
@@ -385,13 +467,29 @@ class AnalyticsObserverTest {
         coEvery { countedDao.insertIgnore(any()) } returns 1L
     }
 
+    /** An existing ledger row — what a transaction already contributed to today's analytics. */
+    private fun ledgerRow(
+        stockTxnId: Long,
+        sealedQty: Long = 0L,
+        looseLines: Long = 0L,
+    ) = AnalyticsCountedEntity(
+        kind = AnalyticsCountedEntity.KIND_STOCK_TXN,
+        entityId = stockTxnId,
+        businessDate = "2025-01-15",
+        countedSealedQty = sealedQty,
+        countedLooseLines = looseLines,
+    )
+
     private fun stubStockTxn(
         stockTxnId: Long,
         sealedQty: Long = 0L,
         looseLines: Long = 0L,
         ndc: String = "12345678901",
+        ledger: AnalyticsCountedEntity? = null,
     ) {
-        coEvery { countedDao.exists(AnalyticsCountedEntity.KIND_STOCK_TXN, stockTxnId) } returns false
+        coEvery { countedDao.exists(AnalyticsCountedEntity.KIND_STOCK_TXN, stockTxnId) } returns (ledger != null)
+        coEvery { countedDao.find(AnalyticsCountedEntity.KIND_STOCK_TXN, stockTxnId) } returns ledger
+        coEvery { countedDao.upsert(any()) } returns Unit
         coEvery { stockTxnDao.getById(stockTxnId) } returns
             StockTxnEntity(txnId = stockTxnId, batchId = 5L, drugId = 77L)
         coEvery { stockBatchDao.getById(5L) } returns StockBatchEntity(batchId = 5L, requestIdFromPMS = null)

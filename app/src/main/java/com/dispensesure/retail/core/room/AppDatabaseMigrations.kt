@@ -62,7 +62,7 @@ object AppDatabaseMigrations {
                     "`originManualTransactions` INTEGER NOT NULL, `originRxLabelProceeded` INTEGER NOT NULL, " +
                     "`originOpenPill` INTEGER NOT NULL, `safetyDrugCodeVerified` INTEGER NOT NULL, " +
                     "`safetyWrongDrugBlocked` INTEGER NOT NULL, `safetySubstituteFlagged` INTEGER NOT NULL, " +
-                    "`safetyExpiredBlocked` INTEGER NOT NULL, `expiryExpiredShown` INTEGER NOT NULL, " +
+                    "`expiryExpiredShown` INTEGER NOT NULL, " +
                     "`expiryBeforeDosageEnd` INTEGER NOT NULL, `expiryNearShown` INTEGER NOT NULL, " +
                     "`complianceGlovesDetected` INTEGER NOT NULL, `complianceGlovesNotDetected` INTEGER NOT NULL, " +
                     "`complianceHazardousTrayDetected` INTEGER NOT NULL, `accuracyCountMismatch` INTEGER NOT NULL, " +
@@ -81,7 +81,9 @@ object AppDatabaseMigrations {
             )
             db.execSQL(
                 "CREATE TABLE IF NOT EXISTS `analytics_counted` (`kind` TEXT NOT NULL, " +
-                    "`entityId` INTEGER NOT NULL, `businessDate` TEXT NOT NULL, PRIMARY KEY(`kind`, `entityId`))"
+                    "`entityId` INTEGER NOT NULL, `businessDate` TEXT NOT NULL, " +
+                    "`countedSealedQty` INTEGER NOT NULL, `countedLooseLines` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`kind`, `entityId`))"
             )
             db.execSQL(
                 "CREATE INDEX IF NOT EXISTS `index_analytics_counted_businessDate` " +

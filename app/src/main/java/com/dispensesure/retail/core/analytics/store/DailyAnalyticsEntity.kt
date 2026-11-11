@@ -17,10 +17,10 @@ import androidx.room.PrimaryKey
  *   4-hour ceiling) moves `count` without moving `sum`. This column exists to diagnose exactly
  *   that divergence.
  *
- * Collected but deliberately never sent: `accuracyCountMismatch`, `accuracyManualEntry` and
- * `safetyExpiredBlocked`. The upload contract is strict — unknown keys are rejected — and it has
- * no field for them. They stay on the row so the data exists if the contract gains them back.
- * See `AnalyticsDailyPayload.kt`.
+ * Collected but deliberately never sent: `accuracyCountMismatch` and `accuracyManualEntry`. Both
+ * are written on every dispense (see `AnalyticsFieldMapping.dispenseIncrements`), but the upload
+ * contract is strict — unknown keys are rejected — and has no field for them. They stay on the row
+ * so the data exists if the contract gains them back. See `AnalyticsDailyPayload.kt`.
  */
 @Entity(
     tableName = "daily_analytics",
@@ -100,7 +100,6 @@ data class DailyAnalyticsEntity(
     val safetyDrugCodeVerified: Long = 0L,
     val safetyWrongDrugBlocked: Long = 0L,
     val safetySubstituteFlagged: Long = 0L,
-    val safetyExpiredBlocked: Long = 0L,
 
     // ── Expiry ─────────────────────────────────────────────────────────────────
     val expiryExpiredShown: Long = 0L,

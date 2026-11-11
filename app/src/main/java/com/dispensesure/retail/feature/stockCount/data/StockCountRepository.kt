@@ -55,7 +55,8 @@ class StockCountRepository @Inject constructor(
         controlledImagePaths: List<String>?,
     ): Long {
         val saved = appDatabase.withTransaction {
-            val savedBatchId = if (batchId != 0L) {
+            val isNewBatch = batchId == 0L
+            val savedBatchId = if (!isNewBatch) {
                 batchId
             } else {
                 stockBatchDao.insertNewInProgressBatch(bucketId = bucketId, region = regionProvider.current)
@@ -92,7 +93,7 @@ class StockCountRepository @Inject constructor(
                 batchId = savedBatchId,
                 stockTxnId = stockTxnId,
                 bottleId = bottleId,
-                isNewTxn = existingTxnId == null,
+                isNewBatch = isNewBatch,
             )
         }
 
@@ -100,8 +101,10 @@ class StockCountRepository @Inject constructor(
         // another thread, so posting inside the transaction races it against the commit — it would
         // find nothing and drop the event, or count a line a rollback then discarded.
         if (AnalyticsService.isEnabled) {
-            if (saved.isNewTxn) {
-                durationTracker.start(CountDurationTracker.stockKey(saved.stockTxnId))
+            // A loose count that opened its own batch is a count session beginning here. One that
+            // joined an existing batch is already being timed by whoever opened it.
+            if (saved.isNewBatch) {
+                durationTracker.start(CountDurationTracker.batchKey(saved.batchId))
             }
             domainEventBus.tryPost(DomainEvent.StockBottleRecorded(saved.stockTxnId, saved.bottleId))
         }
@@ -113,7 +116,7 @@ class StockCountRepository @Inject constructor(
         val batchId: Long,
         val stockTxnId: Long,
         val bottleId: Long,
-        val isNewTxn: Boolean,
+        val isNewBatch: Boolean,
     )
 
     /**

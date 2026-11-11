@@ -146,15 +146,22 @@ class AnalyticsObserver(
     }
 
     /**
-     * Counts one inventory transaction, on the first bottle line recorded against it.
+     * Counts one inventory transaction, re-read in full on every bottle line recorded against it.
      *
      * Android creates the `StockTxnEntity` already COMPLETED in the same operation as its first
-     * bottle line, so there is no separate "transaction completed" moment to hang this on (design
-     * §5.7). Later lines for the same transaction are skipped by the transaction-level marker;
-     * the aggregate queries read whatever lines exist when the first event is handled.
+     * bottle line, so there is no "transaction completed" moment to hang this on. A stock
+     * transaction is one *drug in a batch*, and it keeps growing afterwards: a second lot of that
+     * drug, a later loose count, or a `+/-` edit that rewrites an existing line's `bottleQty`.
+     *
+     * So this reads the transaction's current totals each time and applies only the difference
+     * against what [AnalyticsCountedEntity] says was already counted. The transaction-count
+     * increment and the duration sample are emitted once, on the first event; the bottle and
+     * loose-line figures keep catching up. A replayed event yields a delta of zero and changes
+     * nothing.
      */
     private suspend fun handleStock(event: DomainEvent.StockBottleRecorded) {
-        if (countedDao.exists(AnalyticsCountedEntity.KIND_STOCK_TXN, event.stockTxnId)) return
+        val ledger = countedDao.find(AnalyticsCountedEntity.KIND_STOCK_TXN, event.stockTxnId)
+        val isFirstEvent = ledger == null
 
         val stockTxn = stockTxnDao.getById(event.stockTxnId) ?: return
         val batch = stockTxn.batchId?.let { stockBatchDao.getById(it) }
@@ -167,21 +174,40 @@ class AnalyticsObserver(
             isPmsInitiated = batch?.requestIdFromPMS != null,
         )
 
+        val sealedQty = stockBottleInfoDao.sumSealedBottleQty(event.stockTxnId)
+        val looseLines = stockBottleInfoDao.countLooseLines(event.stockTxnId)
+
         val input = StockAnalyticsInput(
             workType = workType,
-            sealedBottleQty = stockBottleInfoDao.sumSealedBottleQty(event.stockTxnId),
-            looseLineCount = stockBottleInfoDao.countLooseLines(event.stockTxnId),
+            sealedBottleQty = sealedQty - (ledger?.countedSealedQty ?: 0L),
+            looseLineCount = looseLines - (ledger?.countedLooseLines ?: 0L),
             ndc = drug?.ndc,
+            countTransaction = isFirstEvent,
         )
 
         val increments = AnalyticsFieldMapping.stockIncrements(input)
         val insertions = AnalyticsFieldMapping.stockInsertions(input)
-        val duration = durationTracker
-            .finish(CountDurationTracker.stockKey(event.stockTxnId))
+        // The stopwatch runs per batch, so the first transaction to complete in it claims the
+        // session's elapsed time and the rest are untimed. Timing each transaction separately
+        // would measure the few milliseconds between its row being created and its first line.
+        val duration = stockTxn.batchId
+            ?.let { durationTracker.finish(CountDurationTracker.batchKey(it)) }
             ?.let { AnalyticsDuration(workType, it) }
 
+        // Nothing moved and the transaction is already on the row — don't rewrite the ledger.
+        if (increments.isEmpty() && insertions.isEmpty() && duration == null) return
+
         if (applyAnalytics(increments, listOfNotNull(duration), insertions)) {
-            markCounted(AnalyticsCountedEntity.KIND_STOCK_TXN, event.stockTxnId)
+            countedDao.upsert(
+                AnalyticsCountedEntity(
+                    kind = AnalyticsCountedEntity.KIND_STOCK_TXN,
+                    entityId = event.stockTxnId,
+                    businessDate = ledger?.businessDate
+                        ?: dateBoundary.businessDate(clock.nowMillis()),
+                    countedSealedQty = sealedQty,
+                    countedLooseLines = looseLines,
+                )
+            )
         }
     }
 
