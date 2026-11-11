@@ -1,8 +1,8 @@
 package com.dispensesure.retail.core.analytics.collect
 
-import com.dispensesure.retail.core.analytics.model.AnalyticsDuration
 import com.dispensesure.retail.core.analytics.model.AnalyticsField
 import com.dispensesure.retail.core.analytics.model.AnalyticsIncrement
+import com.dispensesure.retail.core.analytics.model.AnalyticsSetInsertion
 import com.dispensesure.retail.core.analytics.model.AnalyticsWorkType
 import kotlin.math.abs
 import kotlin.math.roundToLong
@@ -27,15 +27,24 @@ data class DispenseAnalyticsInput(
     val completedAt: Long,
 )
 
+/**
+ * One completed stock transaction, ready to be turned into increments.
+ *
+ * Counted at transaction completion rather than per scan: a sealed lot uses fetch-or-create, so
+ * N scans of one lot produce a single bottle line with `bottleQty = N`. Reading the final quantity
+ * once reports bottles rather than lines, and also captures quantities edited after the first scan,
+ * which a per-scan event never sees.
+ *
+ * @property sealedBottleQty Total sealed bottles across the transaction's lines; 0 when the count
+ *   was loose pills only.
+ * @property looseLineCount Lines holding loose pills — each is one opened container.
+ * @property ndc The drug code, recorded into the work type's distinct-code set.
+ */
 data class StockAnalyticsInput(
     val workType: AnalyticsWorkType,
-    val isFirstBottleOfTxn: Boolean,
-    val isSealed: Boolean,
-    val hasNdc: Boolean,
-)
-
-data class StockAnalyticsResult(
-    val increments: List<AnalyticsIncrement>,
+    val sealedBottleQty: Long,
+    val looseLineCount: Long,
+    val ndc: String?,
 )
 
 /**
@@ -87,44 +96,53 @@ object AnalyticsFieldMapping {
             if (input.backcountMismatch) add(AnalyticsIncrement(AnalyticsField.ACCURACY_BACKCOUNT_MISMATCH, 1L))
         }
 
-    fun stockIncrements(input: StockAnalyticsInput): StockAnalyticsResult {
-        val increments = buildList<AnalyticsIncrement> {
-            if (input.isFirstBottleOfTxn) {
-                val countField = when (input.workType) {
-                    AnalyticsWorkType.INVENTORY_CYCLE_COUNT -> AnalyticsField.INVENTORY_CYCLE_COUNT
-                    else -> AnalyticsField.INVENTORY_STOCK_COUNT
-                }
-                add(AnalyticsIncrement(countField, 1L))
+    fun stockIncrements(input: StockAnalyticsInput): List<AnalyticsIncrement> =
+        buildList {
+            val isCycle = input.workType == AnalyticsWorkType.INVENTORY_CYCLE_COUNT
 
-                if (input.hasNdc) {
-                    val ndcField = when (input.workType) {
-                        AnalyticsWorkType.INVENTORY_CYCLE_COUNT -> AnalyticsField.INVENTORY_CYCLE_NDC_COUNT
-                        else -> AnalyticsField.INVENTORY_STOCK_NDC_COUNT
-                    }
-                    add(AnalyticsIncrement(ndcField, 1L))
-                }
+            add(
+                AnalyticsIncrement(
+                    if (isCycle) AnalyticsField.INVENTORY_CYCLE_COUNT
+                    else AnalyticsField.INVENTORY_STOCK_COUNT,
+                    1L,
+                )
+            )
+
+            if (input.sealedBottleQty > 0) {
+                add(
+                    AnalyticsIncrement(
+                        if (isCycle) AnalyticsField.INVENTORY_CYCLE_SEALED_BOTTLES_SCANNED
+                        else AnalyticsField.INVENTORY_STOCK_SEALED_BOTTLES_SCANNED,
+                        input.sealedBottleQty,
+                    )
+                )
             }
 
-            if (input.isSealed) {
-                val sealedField = when (input.workType) {
-                    AnalyticsWorkType.INVENTORY_CYCLE_COUNT -> AnalyticsField.INVENTORY_CYCLE_SEALED_BOTTLES_SCANNED
-                    else -> AnalyticsField.INVENTORY_STOCK_SEALED_BOTTLES_SCANNED
-                }
-                add(AnalyticsIncrement(sealedField, 1L))
-            } else {
-                add(AnalyticsIncrement(AnalyticsField.ORIGIN_OPEN_PILL, 1L))
+            if (input.looseLineCount > 0) {
+                add(AnalyticsIncrement(AnalyticsField.ORIGIN_OPEN_PILL, input.looseLineCount))
             }
         }
 
-        return StockAnalyticsResult(increments)
+    /** The drug code to record in the work type's distinct-code set, if there is one. */
+    fun stockInsertions(input: StockAnalyticsInput): List<AnalyticsSetInsertion> {
+        val ndc = input.ndc?.trim().orEmpty()
+        if (ndc.isEmpty()) return emptyList()
+        return listOf(AnalyticsSetInsertion(input.workType, ndc))
     }
 
     /**
-     * The final pill count for a dispense, applying step precedence:
-     * reverification > verification > untyped (null step or empty step).
+     * The final pill count for a dispense.
+     *
+     * Reads the [com.dispensesure.retail.core.models.DISPENSED_QUANTITY_STEP] rows, falling back to
+     * untyped rows, and deliberately **ignores the recount step**. This is the same number the HL7
+     * message sends to the pharmacy system, so `variance_abs_sum` describes the variance the PMS
+     * actually recorded and the two systems reconcile during an audit. Preferring the recount would
+     * report a different quantity than the PMS holds for the same dispense.
+     *
+     * The recount is not lost: `backcount_performed`, `backcount_mismatch` and
+     * `recount_attempts_sum` all carry it on the wire.
      */
-    fun finalPillCount(reverification: Int?, verification: Int?, untyped: Int?): Int? =
-        reverification ?: verification ?: untyped
+    fun finalPillCount(verification: Int?, untyped: Int?): Int? = verification ?: untyped
 
     /**
      * Derived duration from [createdAt] to [completedAt] in seconds.

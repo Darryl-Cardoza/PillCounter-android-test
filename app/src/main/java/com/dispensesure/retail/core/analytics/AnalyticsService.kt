@@ -1,6 +1,5 @@
 package com.dispensesure.retail.core.analytics
 
-import com.dispensesure.retail.BuildConfig
 import com.dispensesure.retail.core.analytics.collect.AnalyticsObserver
 import com.dispensesure.retail.core.analytics.di.AnalyticsDispatcher
 import com.dispensesure.retail.core.analytics.store.AnalyticsStore
@@ -35,7 +34,7 @@ class AnalyticsService @Inject constructor(
         scope.launch { store.pruneIfNeeded() }
     }
 
-    /** Called from [com.dispensesure.retail.feature.main.MainActivity.onResume]. */
+    /** Called from [com.dispensesure.retail.MainActivity.onResume]. */
     fun applicationDidBecomeActive() {
         if (!isEnabled) return
         scope.launch {
@@ -49,24 +48,6 @@ class AnalyticsService @Inject constructor(
         if (!isEnabled) return
         scope.launch {
             store.pruneIfNeeded()
-            uploader.drainIfNeeded()
-        }
-    }
-
-    /**
-     * DEBUG ONLY — forces an immediate upload of today's row without waiting for midnight.
-     *
-     * Shifts the store's view of "now" by 25 hours (making today look like yesterday to the
-     * upload query), clears backoff on all pending rows so they are eligible immediately,
-     * then runs a drain. Call from a debug menu / adb shell command to test end-of-day upload.
-     *
-     * Compiled out of release builds via [BuildConfig.DEBUG] guard.
-     */
-    fun debugForceUploadNow() {
-        if (!BuildConfig.DEBUG) return
-        if (!isEnabled) return
-        scope.launch {
-            store.debugShiftClockAndClearBackoff()
             uploader.drainIfNeeded()
         }
     }

@@ -1,9 +1,28 @@
 package com.dispensesure.retail.core.analytics.upload
 
 import com.dispensesure.retail.core.analytics.collect.PmsLifecycle
+import com.dispensesure.retail.core.analytics.store.AnalyticsNdcSet
 import com.dispensesure.retail.core.analytics.store.DailyAnalyticsEntity
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+
+/*
+ * Wire shape for POST mobile/analytics/daily.
+ *
+ * The server's schema is STRICT: unknown keys are rejected ("Extra inputs are not permitted") and
+ * every known key is mandatory ("Field required"). So this file must mirror the server's body
+ * exactly — nothing extra, nothing omitted — and fields with no data source yet are sent as 0
+ * rather than left out. Adding or removing a key here fails the whole batch, not one field.
+ *
+ * Three counters are collected locally but NOT sent, because the contract has no field for them:
+ * safetyExpiredBlocked, accuracyCountMismatch and accuracyManualEntry. They stay on the row so the
+ * data exists if the contract gains them back. The `expiry` block is sent as zeros for the same
+ * reason in reverse: the key is mandatory, and no Android flow fills it yet.
+ *
+ * The server has no field for how many counts were actually timed, so it computes duration
+ * averages as sum/count. A count whose duration was discarded moves count without moving sum;
+ * `*DurationSamples` is kept on the row to diagnose that skew and is deliberately not sent.
+ */
 
 // ── Request ──────────────────────────────────────────────────────────────────
 
@@ -139,8 +158,17 @@ data class AnalyticsPmsLifecycleBlock(
 // ── Mapping ───────────────────────────────────────────────────────────────────
 
 fun DailyAnalyticsEntity.toRecord(pms: PmsLifecycle): AnalyticsDailyRecord {
-    val totalDispenseVolume = dispenseNormalCount + dispenseControlledCount + dispenseHazardousCount
-    val pmsTransactions = maxOf(0L, totalDispenseVolume - originManualTransactions)
+    // Every completed count is either PMS-initiated or manual, so the PMS share is whatever the
+    // manual counter did not claim; storing both halves of a complement invites drift.
+    //
+    // The total covers dispense AND inventory — a PMS-initiated cycle count is a PMS transaction
+    // just as a PMS-initiated dispense is. Hazardous is excluded on purpose: it is a cross-cutting
+    // tag, not a fourth bucket, so a hazardous dispense already appears in normal or controlled
+    // (see AnalyticsFieldMapping.dispenseIncrements). Adding it would count that transaction twice
+    // and invent a PMS transaction on every hazardous manual dispense.
+    val totalVolume = dispenseNormalCount + dispenseControlledCount +
+            inventoryCycleCount + inventoryStockCount
+    val pmsTransactions = maxOf(0L, totalVolume - originManualTransactions)
 
     return AnalyticsDailyRecord(
         businessDate = businessDate,
@@ -188,7 +216,7 @@ fun DailyAnalyticsEntity.toRecord(pms: PmsLifecycle): AnalyticsDailyRecord {
                         max = inventoryCycleDurationMax,
                     ),
                     sealedBottlesScanned = inventoryCycleSealedBottlesScanned,
-                    ndcScanned = inventoryCycleNdcCount,
+                    ndcScanned = AnalyticsNdcSet.size(inventoryCycleNdcs).toLong(),
                 ),
                 stockCount = AnalyticsInventoryWorkTypeBlock(
                     count = inventoryStockCount,
@@ -198,7 +226,7 @@ fun DailyAnalyticsEntity.toRecord(pms: PmsLifecycle): AnalyticsDailyRecord {
                         max = inventoryStockDurationMax,
                     ),
                     sealedBottlesScanned = inventoryStockSealedBottlesScanned,
-                    ndcScanned = inventoryStockNdcCount,
+                    ndcScanned = AnalyticsNdcSet.size(inventoryStockNdcs).toLong(),
                 ),
             ),
         ),

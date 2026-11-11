@@ -13,10 +13,6 @@ enum class AnalyticsWorkType {
     INVENTORY_CYCLE_COUNT,
     INVENTORY_STOCK_COUNT;
 
-    /** True for the three dispense types, false for the two inventory types. */
-    val isDispense: Boolean
-        get() = this == DISPENSE_NORMAL || this == DISPENSE_CONTROLLED || this == DISPENSE_HAZARDOUS
-
     companion object {
 
         /**

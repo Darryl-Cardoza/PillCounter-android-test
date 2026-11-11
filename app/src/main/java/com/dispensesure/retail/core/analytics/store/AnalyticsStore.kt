@@ -1,9 +1,9 @@
 package com.dispensesure.retail.core.analytics.store
 
-import com.dispensesure.retail.BuildConfig
 import com.dispensesure.retail.core.analytics.model.AnalyticsDuration
 import com.dispensesure.retail.core.analytics.model.AnalyticsField
 import com.dispensesure.retail.core.analytics.model.AnalyticsIncrement
+import com.dispensesure.retail.core.analytics.model.AnalyticsSetInsertion
 import com.dispensesure.retail.core.analytics.model.AnalyticsWorkType
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import kotlinx.coroutines.CoroutineDispatcher
@@ -22,8 +22,6 @@ class AnalyticsStore(
     private val dao: DailyAnalyticsDao,
     private val countedDao: AnalyticsCountedDao,
     private val clock: AnalyticsClock = SystemAnalyticsClock,
-    // Debug-only: when set, overrides clock.nowMillis() for upload eligibility checks.
-    @Volatile private var debugClockOverrideMs: Long? = null,
     private val pharmacyUserId: () -> String,
     private val terminalName: () -> String,
     private val operatorId: () -> String,
@@ -35,21 +33,35 @@ class AnalyticsStore(
     private val logger = AppLogger.create<AnalyticsStore>()
     private val dateBoundary = AnalyticsDateBoundary()
 
-    private fun nowMillis(): Long = debugClockOverrideMs ?: clock.nowMillis()
+    private fun nowMillis(): Long = clock.nowMillis()
 
+    /**
+     * Folds [increments], [durations] and [insertions] into today's row.
+     *
+     * Returns **true only when the row was written**. The caller needs that answer: the observer
+     * records a de-duplication marker for the transaction it just counted, and a marker written
+     * for work that was never applied excludes that transaction permanently, since the marker
+     * survives restarts. Errors are still caught here rather than thrown, so analytics cannot
+     * break a calling flow — the failure is reported, not propagated.
+     *
+     * An empty call returns true: there was nothing to write, and the caller should still mark the
+     * transaction counted so it is not re-examined on every event.
+     */
     suspend fun apply(
         increments: List<AnalyticsIncrement>,
         durations: List<AnalyticsDuration>,
-        insertions: List<Nothing> = emptyList(),
-    ) {
-        if (increments.isEmpty() && durations.isEmpty()) return
-        runSafe("apply") {
+        insertions: List<AnalyticsSetInsertion> = emptyList(),
+    ): Boolean {
+        if (increments.isEmpty() && durations.isEmpty() && insertions.isEmpty()) return true
+        return runSafeResult("apply", default = false) {
             withContext(dispatcher) {
                 val row = fetchOrCreate()
                 var updated = row
                 for (inc in increments) updated = updated.applyIncrement(inc)
                 for (dur in durations) updated = updated.applyDuration(dur)
+                for (ins in insertions) updated = updated.applyInsertion(ins)
                 dao.update(updated)
+                true
             }
         }
     }
@@ -109,34 +121,6 @@ class AnalyticsStore(
         }
     }
 
-    // ── Debug helpers (no-op in release) ────────────────────────────────────────
-
-    /**
-     * Shifts the store's clock 25 hours into the future and clears backoff on all pending rows
-     * so they are immediately eligible for upload. Use via [AnalyticsService.debugForceUploadNow].
-     *
-     * The override resets automatically after the next successful drain (it is cleared in
-     * [debugResetClock]) so normal operation resumes without a restart.
-     */
-    suspend fun debugShiftClockAndClearBackoff() {
-        if (!BuildConfig.DEBUG) return
-        runSafe("debugShiftClockAndClearBackoff") {
-            withContext(dispatcher) {
-                // Shift 25 hours: today's row becomes "yesterday" for the upload query.
-                debugClockOverrideMs = clock.nowMillis() + 25L * 3_600_000L
-                // Zero out nextAttemptAt on all rows so backoff doesn't block them.
-                dao.debugClearAllBackoff()
-                logger.w("[DEBUG] Analytics clock shifted +25 h; all backoff cleared. Call debugForceUploadNow to drain.")
-            }
-        }
-    }
-
-    /** Resets the debug clock override so the store returns to real time. */
-    fun debugResetClock() {
-        if (!BuildConfig.DEBUG) return
-        debugClockOverrideMs = null
-    }
-
     // ── Private helpers ──────────────────────────────────────────────────────────
 
     private suspend fun fetchOrCreate(): DailyAnalyticsEntity {
@@ -163,24 +147,12 @@ class AnalyticsStore(
     private fun DailyAnalyticsEntity.applyIncrement(inc: AnalyticsIncrement): DailyAnalyticsEntity =
         when (inc.field) {
             AnalyticsField.DISPENSE_NORMAL_COUNT -> copy(dispenseNormalCount = dispenseNormalCount + inc.delta)
-            AnalyticsField.DISPENSE_NORMAL_DURATION_SAMPLES -> copy(dispenseNormalDurationSamples = dispenseNormalDurationSamples + inc.delta)
-            AnalyticsField.DISPENSE_NORMAL_DURATION_SUM -> copy(dispenseNormalDurationSum = dispenseNormalDurationSum + inc.delta)
             AnalyticsField.DISPENSE_CONTROLLED_COUNT -> copy(dispenseControlledCount = dispenseControlledCount + inc.delta)
-            AnalyticsField.DISPENSE_CONTROLLED_DURATION_SAMPLES -> copy(dispenseControlledDurationSamples = dispenseControlledDurationSamples + inc.delta)
-            AnalyticsField.DISPENSE_CONTROLLED_DURATION_SUM -> copy(dispenseControlledDurationSum = dispenseControlledDurationSum + inc.delta)
             AnalyticsField.DISPENSE_HAZARDOUS_COUNT -> copy(dispenseHazardousCount = dispenseHazardousCount + inc.delta)
-            AnalyticsField.DISPENSE_HAZARDOUS_DURATION_SAMPLES -> copy(dispenseHazardousDurationSamples = dispenseHazardousDurationSamples + inc.delta)
-            AnalyticsField.DISPENSE_HAZARDOUS_DURATION_SUM -> copy(dispenseHazardousDurationSum = dispenseHazardousDurationSum + inc.delta)
             AnalyticsField.INVENTORY_CYCLE_COUNT -> copy(inventoryCycleCount = inventoryCycleCount + inc.delta)
-            AnalyticsField.INVENTORY_CYCLE_DURATION_SAMPLES -> copy(inventoryCycleDurationSamples = inventoryCycleDurationSamples + inc.delta)
-            AnalyticsField.INVENTORY_CYCLE_DURATION_SUM -> copy(inventoryCycleDurationSum = inventoryCycleDurationSum + inc.delta)
             AnalyticsField.INVENTORY_CYCLE_SEALED_BOTTLES_SCANNED -> copy(inventoryCycleSealedBottlesScanned = inventoryCycleSealedBottlesScanned + inc.delta)
-            AnalyticsField.INVENTORY_CYCLE_NDC_COUNT -> copy(inventoryCycleNdcCount = inventoryCycleNdcCount + inc.delta)
             AnalyticsField.INVENTORY_STOCK_COUNT -> copy(inventoryStockCount = inventoryStockCount + inc.delta)
-            AnalyticsField.INVENTORY_STOCK_DURATION_SAMPLES -> copy(inventoryStockDurationSamples = inventoryStockDurationSamples + inc.delta)
-            AnalyticsField.INVENTORY_STOCK_DURATION_SUM -> copy(inventoryStockDurationSum = inventoryStockDurationSum + inc.delta)
             AnalyticsField.INVENTORY_STOCK_SEALED_BOTTLES_SCANNED -> copy(inventoryStockSealedBottlesScanned = inventoryStockSealedBottlesScanned + inc.delta)
-            AnalyticsField.INVENTORY_STOCK_NDC_COUNT -> copy(inventoryStockNdcCount = inventoryStockNdcCount + inc.delta)
             AnalyticsField.ORIGIN_MANUAL_TRANSACTIONS -> copy(originManualTransactions = originManualTransactions + inc.delta)
             AnalyticsField.ORIGIN_RX_LABEL_PROCEEDED -> copy(originRxLabelProceeded = originRxLabelProceeded + inc.delta)
             AnalyticsField.ORIGIN_OPEN_PILL -> copy(originOpenPill = originOpenPill + inc.delta)
@@ -234,6 +206,23 @@ class AnalyticsStore(
                 inventoryStockDurationMin = if (inventoryStockDurationMin < 0) d.seconds else minOf(inventoryStockDurationMin, d.seconds),
                 inventoryStockDurationMax = maxOf(inventoryStockDurationMax, d.seconds),
             )
+        }
+
+    /**
+     * Adds a drug code to one of the inventory NDC sets.
+     *
+     * Dispense work types have no set — `ndc_scanned` is an inventory-only wire field — so they
+     * are ignored rather than silently routed to the wrong column.
+     */
+    private fun DailyAnalyticsEntity.applyInsertion(ins: AnalyticsSetInsertion): DailyAnalyticsEntity =
+        when (ins.workType) {
+            AnalyticsWorkType.INVENTORY_CYCLE_COUNT ->
+                copy(inventoryCycleNdcs = AnalyticsNdcSet.insert(inventoryCycleNdcs, ins.value))
+            AnalyticsWorkType.INVENTORY_STOCK_COUNT ->
+                copy(inventoryStockNdcs = AnalyticsNdcSet.insert(inventoryStockNdcs, ins.value))
+            AnalyticsWorkType.DISPENSE_NORMAL,
+            AnalyticsWorkType.DISPENSE_CONTROLLED,
+            AnalyticsWorkType.DISPENSE_HAZARDOUS -> this
         }
 
     private fun backoffSeconds(attempt: Int): Long = when (attempt) {

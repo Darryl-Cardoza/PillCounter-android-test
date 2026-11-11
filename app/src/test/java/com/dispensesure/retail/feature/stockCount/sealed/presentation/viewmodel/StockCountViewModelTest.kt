@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.stockCount.sealed.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.analytics.collect.CountDurationTracker
 import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.audit.model.BatchCompleted
 import com.dispensesure.retail.core.audit.model.BottleCountAdjusted
@@ -142,6 +143,7 @@ class StockCountViewModelTest {
             regionProvider,
             auditLogger,
             mockk(relaxed = true),
+            CountDurationTracker { 0L },
         )
     }
 

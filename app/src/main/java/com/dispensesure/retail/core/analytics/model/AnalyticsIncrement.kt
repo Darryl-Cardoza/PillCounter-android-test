@@ -24,36 +24,43 @@ data class AnalyticsDuration(
 )
 
 /**
+ * A value to add to one of the row's string sets.
+ *
+ * Only the inventory NDC sets use this. `ndc_scanned` on the wire counts **distinct** drug codes —
+ * five bottles of one drug is 1 — so the codes are stored and counted, not incremented. Inserting
+ * a value already present leaves the row untouched.
+ *
+ * @property workType Which inventory bucket's set to add to; dispense work types are ignored.
+ * @property value The drug code to record. Blank values are dropped by the store.
+ */
+data class AnalyticsSetInsertion(
+    val workType: AnalyticsWorkType,
+    val value: String,
+)
+
+/**
  * Every counter column that [com.dispensesure.retail.core.analytics.store.AnalyticsStore]
  * can increment atomically.
  *
  * Using an enum instead of a raw column name means a typo is a compile error, not a silent no-op.
+ *
+ * Duration aggregates are deliberately absent: they are written through
+ * [AnalyticsDuration] / `applyDuration`, which updates samples, sum, min and max together. An
+ * increment path for them would allow sum to move without min, producing a row no reader could
+ * trust. The NDC sets are likewise absent — they go through [AnalyticsSetInsertion], because
+ * `ndc_scanned` counts distinct codes rather than events.
  */
 enum class AnalyticsField {
-    // Dispense — normal
+    // Dispense
     DISPENSE_NORMAL_COUNT,
-    DISPENSE_NORMAL_DURATION_SAMPLES,
-    DISPENSE_NORMAL_DURATION_SUM,
-    // Dispense — controlled
     DISPENSE_CONTROLLED_COUNT,
-    DISPENSE_CONTROLLED_DURATION_SAMPLES,
-    DISPENSE_CONTROLLED_DURATION_SUM,
-    // Dispense — hazardous
     DISPENSE_HAZARDOUS_COUNT,
-    DISPENSE_HAZARDOUS_DURATION_SAMPLES,
-    DISPENSE_HAZARDOUS_DURATION_SUM,
     // Inventory — cycle count
     INVENTORY_CYCLE_COUNT,
-    INVENTORY_CYCLE_DURATION_SAMPLES,
-    INVENTORY_CYCLE_DURATION_SUM,
     INVENTORY_CYCLE_SEALED_BOTTLES_SCANNED,
-    INVENTORY_CYCLE_NDC_COUNT,
     // Inventory — stock count
     INVENTORY_STOCK_COUNT,
-    INVENTORY_STOCK_DURATION_SAMPLES,
-    INVENTORY_STOCK_DURATION_SUM,
     INVENTORY_STOCK_SEALED_BOTTLES_SCANNED,
-    INVENTORY_STOCK_NDC_COUNT,
     // Origin
     ORIGIN_MANUAL_TRANSACTIONS,
     ORIGIN_RX_LABEL_PROCEEDED,

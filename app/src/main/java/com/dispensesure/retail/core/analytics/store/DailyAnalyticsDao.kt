@@ -4,7 +4,6 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import androidx.room.Transaction
 import androidx.room.Update
 
 @Dao
@@ -59,11 +58,4 @@ interface DailyAnalyticsDao {
 
     @Query("DELETE FROM daily_analytics WHERE businessDate < :cutoff")
     suspend fun pruneOlderThan(cutoff: String): Int
-
-    @Query("SELECT * FROM daily_analytics")
-    suspend fun getAll(): List<DailyAnalyticsEntity>
-
-    /** DEBUG ONLY — resets backoff so all rows are immediately eligible for upload. */
-    @Query("UPDATE daily_analytics SET nextAttemptAt = 0")
-    suspend fun debugClearAllBackoff()
 }

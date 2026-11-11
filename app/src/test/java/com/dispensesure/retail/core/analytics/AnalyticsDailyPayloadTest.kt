@@ -23,13 +23,15 @@ class AnalyticsDailyPayloadTest {
     }
 
     private fun entity(
-        cycleNdcCount: Long = 0L,
-        stockNdcCount: Long = 0L,
+        cycleNdcs: String? = null,
+        stockNdcs: String? = null,
         normalMin: Long = -1L,
         manualTransactions: Long = 0L,
         normalCount: Long = 0L,
         controlledCount: Long = 0L,
         hazardousCount: Long = 0L,
+        cycleCount: Long = 0L,
+        stockCount: Long = 0L,
     ) = DailyAnalyticsEntity(
         pharmacyUserId = "u1",
         terminalName = "term1",
@@ -40,11 +42,13 @@ class AnalyticsDailyPayloadTest {
         timezoneOffsetMin = -300,
         dispenseNormalCount = normalCount,
         dispenseNormalDurationMin = normalMin,
-        inventoryCycleNdcCount = cycleNdcCount,
-        inventoryStockNdcCount = stockNdcCount,
+        inventoryCycleNdcs = cycleNdcs,
+        inventoryStockNdcs = stockNdcs,
         originManualTransactions = manualTransactions,
         dispenseControlledCount = controlledCount,
         dispenseHazardousCount = hazardousCount,
+        inventoryCycleCount = cycleCount,
+        inventoryStockCount = stockCount,
     )
 
     private fun zeroPms() = PmsLifecycle(
@@ -71,14 +75,14 @@ class AnalyticsDailyPayloadTest {
     }
 
     @Test
-    fun `ndc_scanned equals inventoryCycleNdcCount`() {
-        val record = entity(cycleNdcCount = 3L).toRecord(zeroPms())
+    fun `ndc_scanned is the number of distinct codes in the set`() {
+        val record = entity(cycleNdcs = """["a","b","c"]""").toRecord(zeroPms())
         assertEquals(3L, record.volume.inventory.cycleCount.ndcScanned)
     }
 
     @Test
-    fun `ndc_scanned is 0 when inventoryCycleNdcCount is 0`() {
-        val record = entity(cycleNdcCount = 0L).toRecord(zeroPms())
+    fun `ndc_scanned is 0 when no codes were scanned`() {
+        val record = entity(cycleNdcs = null).toRecord(zeroPms())
         assertEquals(0L, record.volume.inventory.cycleCount.ndcScanned)
     }
 
@@ -91,6 +95,36 @@ class AnalyticsDailyPayloadTest {
     @Test
     fun `pms_transactions floored at 0 when manual exceeds volume`() {
         val record = entity(normalCount = 2L, manualTransactions = 5L).toRecord(zeroPms())
+        assertEquals(0L, record.origin.pmsTransactions)
+    }
+
+    /**
+     * A PMS-initiated cycle or stock count is a PMS transaction just as a PMS-initiated dispense
+     * is, so inventory belongs in the total the manual count is subtracted from.
+     */
+    @Test
+    fun `pms_transactions includes inventory volume`() {
+        val record = entity(
+            normalCount = 4L,
+            cycleCount = 3L,
+            stockCount = 2L,
+            manualTransactions = 1L,
+        ).toRecord(zeroPms())
+        assertEquals(8L, record.origin.pmsTransactions)
+    }
+
+    /**
+     * Hazardous is a cross-cutting tag, not a fourth bucket: the same dispense already appears in
+     * normal or controlled. Counting it again would invent a PMS transaction on every hazardous
+     * manual dispense.
+     */
+    @Test
+    fun `pms_transactions excludes the hazardous tag`() {
+        val record = entity(
+            normalCount = 1L,
+            hazardousCount = 1L,
+            manualTransactions = 1L,
+        ).toRecord(zeroPms())
         assertEquals(0L, record.origin.pmsTransactions)
     }
 

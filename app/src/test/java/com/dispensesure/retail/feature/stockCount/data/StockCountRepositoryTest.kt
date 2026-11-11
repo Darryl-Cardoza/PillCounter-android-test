@@ -2,6 +2,9 @@ package com.dispensesure.retail.feature.stockCount.data
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.dispensesure.retail.core.analytics.collect.CountDurationTracker
+import com.dispensesure.retail.core.events.DomainEvent
+import com.dispensesure.retail.core.events.DomainEventBus
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.region.Region
@@ -17,6 +20,15 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -58,12 +70,65 @@ class StockCountRepositoryTest {
             operatorNameProvider = operatorNameProvider,
             regionProvider = regionProvider,
             domainEventBus = mockk(relaxed = true),
+            durationTracker = CountDurationTracker { 0L },
         )
     }
 
     @After
     fun tearDown() {
         db.close()
+    }
+
+    /**
+     * A consumer reads the announced rows back from another thread, so the event must not be
+     * posted while the writing transaction is still open — it would find nothing and drop the
+     * event, or count a line a rollback then discarded.
+     */
+    @Test
+    fun `StockBottleRecorded is posted only after the transaction commits`() = runBlocking {
+        seedDrugs()
+        val bus = DomainEventBus()
+        val seen = CompletableDeferred<StockBottleInfoEntity?>()
+
+        val scope = CoroutineScope(Dispatchers.Default)
+        val observer = scope.launch {
+            bus.events.collect { event ->
+                if (event is DomainEvent.StockBottleRecorded) {
+                    seen.complete(db.stockBottleInfoDao().getById(event.bottleId))
+                }
+            }
+        }
+        // The bus replays nothing, so wait until the collector is actually attached.
+        while (!observer.isActive) { delay(1) }
+        delay(50)
+
+        val repo = StockCountRepository(
+            appDatabase = db,
+            stockBatchDao = db.stockBatchDao(),
+            stockTxnDao = db.stockTxnDao(),
+            stockBottleInfoDao = db.stockBottleInfoDao(),
+            operatorNameProvider = operatorNameProvider,
+            regionProvider = regionProvider,
+            domainEventBus = bus,
+            durationTracker = CountDurationTracker { 0L },
+        )
+
+        repo.commitLooseCount(
+            batchId = 0L,
+            bucketId = null,
+            drugId = 100L,
+            lotNumber = null,
+            expirationDate = null,
+            serialNumber = null,
+            loosePills = 7,
+            controlledImagePaths = null,
+        )
+
+        val row = withTimeout(5_000) { seen.await() }
+        observer.cancel()
+
+        assertNotNull("the committed bottle row must be readable when the event fires", row)
+        assertEquals(7, row?.looseQty)
     }
 
     private suspend fun seedDrugs() {

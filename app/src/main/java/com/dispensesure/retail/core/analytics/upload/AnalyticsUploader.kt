@@ -1,7 +1,9 @@
 package com.dispensesure.retail.core.analytics.upload
 
+import com.dispensesure.retail.core.analytics.collect.PmsLifecycle
 import com.dispensesure.retail.core.analytics.collect.PmsLifecycleQuery
 import com.dispensesure.retail.core.analytics.store.AnalyticsStore
+import com.dispensesure.retail.core.analytics.store.DailyAnalyticsEntity
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -51,9 +53,7 @@ class AnalyticsUploader(
         if (rows.isEmpty()) return
 
         val ids = rows.map { it.id }
-        val pms = pmsLifecycleQuery.query(rows.first().businessDate)
-        val records = rows.map { it.toRecord(pms) }
-        val body = AnalyticsDailyRequest(deviceKey = deviceKey, records = records)
+        val body = AnalyticsDailyRequest(deviceKey = deviceKey, records = buildRecords(rows))
 
         val outcome = try {
             val response = api.uploadDaily(bearer, body)
@@ -70,13 +70,44 @@ class AnalyticsUploader(
         }
 
         when (outcome) {
-            AnalyticsUploadOutcome.UPLOADED -> {
-                store.markUploaded(ids)
-                store.debugResetClock()
-            }
+            AnalyticsUploadOutcome.UPLOADED -> store.markUploaded(ids)
             AnalyticsUploadOutcome.SKIP_AUTH -> logger.w("Analytics upload skipped: 401 — will retry after re-auth")
             AnalyticsUploadOutcome.RETRY_LATER -> store.markFailed(ids)
             AnalyticsUploadOutcome.POISON -> {} // handled above
+        }
+    }
+
+    /**
+     * Encodes [rows] into wire records, attaching the PMS lifecycle block correctly.
+     *
+     * Two things this gets right that a naive `rows.map` does not:
+     *
+     * 1. **One query per business date.** A drain takes up to 50 rows and a backlog spans several
+     *    days, so the block must be queried for each row's own date. Querying once and reusing it
+     *    stamps every day with one day's numbers.
+     * 2. **One block per date, not per record.** The row key includes the operator, but the PMS
+     *    lifecycle is terminal-wide — [PmsLifecycleQuery] filters by day, never by operator. Three
+     *    operators on one day would otherwise send the same `received` three times, which a server
+     *    that sums records reads as triple the orders. The real block goes on the lowest-id record
+     *    for each date and the rest send zeros, so the day's totals are stated exactly once.
+     *
+     * The lowest-id pick is deterministic, so a retry of the same rows produces a byte-identical
+     * body.
+     */
+    private suspend fun buildRecords(rows: List<DailyAnalyticsEntity>): List<AnalyticsDailyRecord> {
+        val pmsByDate = rows.map { it.businessDate }.distinct()
+            .associateWith { pmsLifecycleQuery.query(it) }
+        val pmsCarrierIds = rows.groupBy { it.businessDate }
+            .mapNotNull { (_, sameDate) -> sameDate.minByOrNull { it.id }?.id }
+            .toSet()
+
+        return rows.map { row ->
+            val pms = if (row.id in pmsCarrierIds) {
+                pmsByDate[row.businessDate] ?: PmsLifecycle.ZERO
+            } else {
+                PmsLifecycle.ZERO
+            }
+            row.toRecord(pms)
         }
     }
 }

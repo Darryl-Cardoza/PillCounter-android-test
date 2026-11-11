@@ -530,15 +530,6 @@ class MainActivity : ComponentActivity() {
             auditLogUploader.requestUpload()
         }
         analyticsService.applicationDidBecomeActive()
-        // DEBUG: adb shell am broadcast -a com.dispensesure.retail.DEBUG_ANALYTICS_UPLOAD
-        // triggers an immediate force-upload without waiting for midnight. Remove before release.
-        if (BuildConfig.DEBUG) {
-            val prefs = getSharedPreferences("debug_flags", android.content.Context.MODE_PRIVATE)
-            if (prefs.getBoolean("force_analytics_upload", false)) {
-                prefs.edit().remove("force_analytics_upload").apply()
-                analyticsService.debugForceUploadNow()
-            }
-        }
     }
 
     override fun onStart() {

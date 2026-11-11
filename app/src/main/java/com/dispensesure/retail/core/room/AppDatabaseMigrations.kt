@@ -55,10 +55,10 @@ object AppDatabaseMigrations {
                     "`inventoryCycleCount` INTEGER NOT NULL, `inventoryCycleDurationSamples` INTEGER NOT NULL, " +
                     "`inventoryCycleDurationSum` INTEGER NOT NULL, `inventoryCycleDurationMin` INTEGER NOT NULL, " +
                     "`inventoryCycleDurationMax` INTEGER NOT NULL, `inventoryCycleSealedBottlesScanned` INTEGER NOT NULL, " +
-                    "`inventoryCycleNdcCount` INTEGER NOT NULL DEFAULT 0, `inventoryStockCount` INTEGER NOT NULL, " +
+                    "`inventoryCycleNdcs` TEXT, `inventoryStockCount` INTEGER NOT NULL, " +
                     "`inventoryStockDurationSamples` INTEGER NOT NULL, `inventoryStockDurationSum` INTEGER NOT NULL, " +
                     "`inventoryStockDurationMin` INTEGER NOT NULL, `inventoryStockDurationMax` INTEGER NOT NULL, " +
-                    "`inventoryStockSealedBottlesScanned` INTEGER NOT NULL, `inventoryStockNdcCount` INTEGER NOT NULL DEFAULT 0, " +
+                    "`inventoryStockSealedBottlesScanned` INTEGER NOT NULL, `inventoryStockNdcs` TEXT, " +
                     "`originManualTransactions` INTEGER NOT NULL, `originRxLabelProceeded` INTEGER NOT NULL, " +
                     "`originOpenPill` INTEGER NOT NULL, `safetyDrugCodeVerified` INTEGER NOT NULL, " +
                     "`safetyWrongDrugBlocked` INTEGER NOT NULL, `safetySubstituteFlagged` INTEGER NOT NULL, " +

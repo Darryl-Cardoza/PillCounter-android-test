@@ -183,23 +183,18 @@ class AnalyticsFieldMappingTest {
     // ── finalPillCount precedence ─────────────────────────────────────────────
 
     @Test
-    fun `finalPillCount picks reverification over verification`() {
-        assertEquals(10, AnalyticsFieldMapping.finalPillCount(reverification = 10, verification = 5, untyped = 2))
+    fun `finalPillCount picks verification over untyped`() {
+        assertEquals(5, AnalyticsFieldMapping.finalPillCount(verification = 5, untyped = 2))
     }
 
     @Test
-    fun `finalPillCount picks verification over untyped when no reverification`() {
-        assertEquals(5, AnalyticsFieldMapping.finalPillCount(reverification = null, verification = 5, untyped = 2))
-    }
-
-    @Test
-    fun `finalPillCount uses untyped when others null`() {
-        assertEquals(2, AnalyticsFieldMapping.finalPillCount(reverification = null, verification = null, untyped = 2))
+    fun `finalPillCount uses untyped when verification null`() {
+        assertEquals(2, AnalyticsFieldMapping.finalPillCount(verification = null, untyped = 2))
     }
 
     @Test
     fun `finalPillCount returns null when all null`() {
-        assertNull(AnalyticsFieldMapping.finalPillCount(null, null, null))
+        assertNull(AnalyticsFieldMapping.finalPillCount(null, null))
     }
 
     // ── derivedDurationSeconds ────────────────────────────────────────────────
@@ -229,58 +224,75 @@ class AnalyticsFieldMappingTest {
 
     // ── Stock increments ──────────────────────────────────────────────────────
 
+    private fun stockInput(
+        workType: AnalyticsWorkType = AnalyticsWorkType.INVENTORY_STOCK_COUNT,
+        sealedBottleQty: Long = 0L,
+        looseLineCount: Long = 0L,
+        ndc: String? = null,
+    ) = StockAnalyticsInput(workType, sealedBottleQty, looseLineCount, ndc)
+
     @Test
-    fun `stock increments include count, sealed bottle, and NDC count when hasNdc is true`() {
-        val result = AnalyticsFieldMapping.stockIncrements(
-            StockAnalyticsInput(
-                workType = AnalyticsWorkType.INVENTORY_STOCK_COUNT,
-                isFirstBottleOfTxn = true,
-                isSealed = true,
-                hasNdc = true,
-            )
-        )
-        assertTrue(result.increments.any { it.field == AnalyticsField.INVENTORY_STOCK_COUNT })
-        assertTrue(result.increments.any { it.field == AnalyticsField.INVENTORY_STOCK_SEALED_BOTTLES_SCANNED })
-        assertTrue(result.increments.any { it.field == AnalyticsField.INVENTORY_STOCK_NDC_COUNT })
+    fun `stock increments count the transaction once`() {
+        val result = AnalyticsFieldMapping.stockIncrements(stockInput(sealedBottleQty = 3L))
+        assertEquals(1, result.count { it.field == AnalyticsField.INVENTORY_STOCK_COUNT })
+        assertEquals(1L, result.first { it.field == AnalyticsField.INVENTORY_STOCK_COUNT }.delta)
+    }
+
+    /** The whole point of counting at completion: bottles, not lines. */
+    @Test
+    fun `sealed bottles increment by quantity not by one`() {
+        val result = AnalyticsFieldMapping.stockIncrements(stockInput(sealedBottleQty = 12L))
+        val sealed = result.first { it.field == AnalyticsField.INVENTORY_STOCK_SEALED_BOTTLES_SCANNED }
+        assertEquals(12L, sealed.delta)
     }
 
     @Test
-    fun `stock increments no NDC count when hasNdc is false`() {
-        val result = AnalyticsFieldMapping.stockIncrements(
-            StockAnalyticsInput(
-                workType = AnalyticsWorkType.INVENTORY_STOCK_COUNT,
-                isFirstBottleOfTxn = true,
-                isSealed = true,
-                hasNdc = false,
-            )
-        )
-        assertTrue(result.increments.none { it.field == AnalyticsField.INVENTORY_STOCK_NDC_COUNT })
+    fun `no sealed increment when nothing sealed was counted`() {
+        val result = AnalyticsFieldMapping.stockIncrements(stockInput(sealedBottleQty = 0L, looseLineCount = 2L))
+        assertTrue(result.none { it.field == AnalyticsField.INVENTORY_STOCK_SEALED_BOTTLES_SCANNED })
     }
 
     @Test
-    fun `stock non-sealed increments openPill not sealedBottles`() {
-        val result = AnalyticsFieldMapping.stockIncrements(
-            StockAnalyticsInput(
-                workType = AnalyticsWorkType.INVENTORY_STOCK_COUNT,
-                isFirstBottleOfTxn = false,
-                isSealed = false,
-                hasNdc = true,
-            )
-        )
-        assertTrue(result.increments.any { it.field == AnalyticsField.ORIGIN_OPEN_PILL })
-        assertTrue(result.increments.none { it.field == AnalyticsField.INVENTORY_STOCK_SEALED_BOTTLES_SCANNED })
+    fun `loose lines increment openPill by line count`() {
+        val result = AnalyticsFieldMapping.stockIncrements(stockInput(looseLineCount = 3L))
+        assertEquals(3L, result.first { it.field == AnalyticsField.ORIGIN_OPEN_PILL }.delta)
     }
 
     @Test
-    fun `stock second bottle does not re-increment count`() {
+    fun `no openPill increment when no loose lines`() {
+        val result = AnalyticsFieldMapping.stockIncrements(stockInput(sealedBottleQty = 1L, looseLineCount = 0L))
+        assertTrue(result.none { it.field == AnalyticsField.ORIGIN_OPEN_PILL })
+    }
+
+    @Test
+    fun `cycle count routes to the cycle columns`() {
         val result = AnalyticsFieldMapping.stockIncrements(
-            StockAnalyticsInput(
-                workType = AnalyticsWorkType.INVENTORY_STOCK_COUNT,
-                isFirstBottleOfTxn = false,
-                isSealed = true,
-                hasNdc = true,
-            )
+            stockInput(workType = AnalyticsWorkType.INVENTORY_CYCLE_COUNT, sealedBottleQty = 2L)
         )
-        assertTrue(result.increments.none { it.field == AnalyticsField.INVENTORY_STOCK_COUNT })
+        assertTrue(result.any { it.field == AnalyticsField.INVENTORY_CYCLE_COUNT })
+        assertTrue(result.any { it.field == AnalyticsField.INVENTORY_CYCLE_SEALED_BOTTLES_SCANNED })
+        assertTrue(result.none { it.field == AnalyticsField.INVENTORY_STOCK_COUNT })
+    }
+
+    // ── Stock insertions (distinct NDC set) ───────────────────────────────────
+
+    @Test
+    fun `stock insertion carries the drug code for its work type`() {
+        val result = AnalyticsFieldMapping.stockInsertions(stockInput(ndc = "12345-678-90"))
+        assertEquals(1, result.size)
+        assertEquals("12345-678-90", result.first().value)
+        assertEquals(AnalyticsWorkType.INVENTORY_STOCK_COUNT, result.first().workType)
+    }
+
+    @Test
+    fun `stock insertion trims the drug code`() {
+        val result = AnalyticsFieldMapping.stockInsertions(stockInput(ndc = "  12345  "))
+        assertEquals("12345", result.first().value)
+    }
+
+    @Test
+    fun `no insertion when the drug has no code`() {
+        assertTrue(AnalyticsFieldMapping.stockInsertions(stockInput(ndc = null)).isEmpty())
+        assertTrue(AnalyticsFieldMapping.stockInsertions(stockInput(ndc = "   ")).isEmpty())
     }
 }

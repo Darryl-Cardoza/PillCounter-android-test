@@ -7,13 +7,15 @@ import androidx.room.Index
  * Persisted deduplification table — one row per (kind, entityId) pair that has already been
  * counted in today's analytics row.
  *
- * Three [kind] values replace three in-memory sets:
+ * Two [kind] values replace two in-memory sets:
  * - `DISPENSE` — [entityId] is a `DispenseTxnEntity.txnId`
  * - `STOCK_TXN` — [entityId] is a `StockTxnEntity.txnId`
- * - `BOTTLE`   — [entityId] is a `StockBottleInfoEntity.bottleId`
  *
- * The id sequences are independent across the three kinds, so `kind` prevents a `txnId` from
- * colliding with a `bottleId` that happens to share the same numeric value.
+ * The id sequences are independent across the kinds, so `kind` prevents a dispense `txnId` from
+ * colliding with a stock `txnId` that happens to share the same numeric value.
+ *
+ * There is no per-bottle kind: inventory is counted once per stock transaction, reading the final
+ * bottle quantities at that point, so individual bottle lines never need their own marker.
  *
  * Pruned on date rollover: `DELETE WHERE businessDate < :today`. Bounded to one day of work.
  */
@@ -30,6 +32,5 @@ data class AnalyticsCountedEntity(
     companion object {
         const val KIND_DISPENSE = "DISPENSE"
         const val KIND_STOCK_TXN = "STOCK_TXN"
-        const val KIND_BOTTLE = "BOTTLE"
     }
 }

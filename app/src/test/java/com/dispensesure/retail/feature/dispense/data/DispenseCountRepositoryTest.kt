@@ -3,6 +3,15 @@ package com.dispensesure.retail.feature.dispense.data
 import android.graphics.Bitmap
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.dispensesure.retail.core.events.DomainEvent
+import com.dispensesure.retail.core.events.DomainEventBus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.StepState
@@ -28,6 +37,7 @@ import io.mockk.mockkObject
 import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -473,6 +483,65 @@ class DispenseCountRepositoryTest {
 
         assertEquals(CountStatus.PARTIAL, repository.complete(txnId))
         assertEquals(CountStatus.PARTIAL, db.dispenseTxnDao().getById(txnId)?.status)
+    }
+
+    // ───────────────────────── analytics events ─────────────────────────
+
+    /**
+     * Collects every event the repository announces while [block] runs.
+     *
+     * Real dispatchers rather than the test scheduler: `complete` writes through Room, which
+     * resumes the coroutine on its own executor, so the post lands on a thread a `TestScheduler`
+     * does not drive and `advanceUntilIdle` would return before the collector ever woke.
+     */
+    private suspend fun eventsFrom(
+        block: suspend (DispenseCountRepository) -> Unit,
+    ): List<DomainEvent> {
+        val bus = DomainEventBus()
+        val seen = java.util.Collections.synchronizedList(mutableListOf<DomainEvent>())
+        val scope = CoroutineScope(Dispatchers.Default)
+        val collector = scope.launch { bus.events.collect { seen += it } }
+        // The bus replays nothing, so give the collector time to attach before provoking a post.
+        while (!collector.isActive) { delay(1) }
+        delay(50)
+
+        val repo = DispenseCountRepository(
+            context = ApplicationProvider.getApplicationContext(),
+            appDatabase = db,
+            dispenseTxnDao = db.dispenseTxnDao(),
+            dispenseCountDao = db.dispenseCountDao(),
+            drugMasterDao = db.drugMasterDao(),
+            operatorNameProvider = operatorNameProvider,
+            dispenseHl7Repository = dispenseHl7Repository,
+            regionProvider = regionProvider,
+            auditLogger = io.mockk.mockk(relaxed = true),
+            domainEventBus = bus,
+        )
+        block(repo)
+        delay(200)
+        collector.cancel()
+        return seen.toList()
+    }
+
+    @Test
+    fun `completing a full dispense announces DispenseCompleted`() = runBlocking {
+        val txnId = insertTxn(targetCount = 5)
+        insertCount(txnId, StepState.TARGET_VERIFICATION, 5)
+
+        val events = eventsFrom { it.complete(txnId) }
+
+        assertEquals(listOf(DomainEvent.DispenseCompleted(txnId)), events)
+    }
+
+    /** Short counts are deliberately outside analytics volume. */
+    @Test
+    fun `a PARTIAL dispense announces nothing`() = runBlocking {
+        val txnId = insertTxn(targetCount = 20)
+        insertCount(txnId, StepState.TARGET_VERIFICATION, 15)
+
+        val events = eventsFrom { it.complete(txnId) }
+
+        assertTrue(events.isEmpty())
     }
 
     @Test

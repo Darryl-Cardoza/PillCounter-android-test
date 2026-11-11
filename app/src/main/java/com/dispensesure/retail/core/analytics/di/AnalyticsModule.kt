@@ -2,7 +2,9 @@ package com.dispensesure.retail.core.analytics.di
 
 import com.dispensesure.retail.BuildConfig
 import com.dispensesure.retail.core.analytics.collect.AnalyticsObserver
+import com.dispensesure.retail.core.analytics.collect.CountDurationTracker
 import com.dispensesure.retail.core.analytics.collect.PmsLifecycleQuery
+import com.dispensesure.retail.core.analytics.store.AnalyticsClock
 import com.dispensesure.retail.core.analytics.store.AnalyticsCountedDao
 import com.dispensesure.retail.core.analytics.store.AnalyticsStore
 import com.dispensesure.retail.core.analytics.store.DailyAnalyticsDao
@@ -43,18 +45,30 @@ object AnalyticsModule {
     @AnalyticsDispatcher
     fun provideAnalyticsDispatcher(): CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1)
 
+    /**
+     * One clock for the whole subsystem.
+     *
+     * The store, the observer and the PMS query all derive a business date. If they read different
+     * clocks, an event handled either side of midnight can be marked under one date and counted
+     * under another.
+     */
+    @Provides
+    @Singleton
+    fun provideAnalyticsClock(): AnalyticsClock = SystemAnalyticsClock
+
     @Provides
     @Singleton
     fun provideAnalyticsStore(
         dao: DailyAnalyticsDao,
         countedDao: AnalyticsCountedDao,
+        clock: AnalyticsClock,
         preferenceHelper: PreferenceHelper,
         sessionLockController: SessionLockController,
         regionProvider: RegionProvider,
     ): AnalyticsStore = AnalyticsStore(
         dao = dao,
         countedDao = countedDao,
-        clock = SystemAnalyticsClock,
+        clock = clock,
         pharmacyUserId = { preferenceHelper.getUserId() ?: "" },
         terminalName = { preferenceHelper.getSelectedTerminalName() ?: "" },
         operatorId = {
@@ -90,6 +104,8 @@ object AnalyticsModule {
         stockTxnDao: StockTxnDao,
         stockBottleInfoDao: StockBottleInfoDao,
         stockBatchDao: StockBatchDao,
+        durationTracker: CountDurationTracker,
+        clock: AnalyticsClock,
         preferenceHelper: PreferenceHelper,
         store: AnalyticsStore,
     ): AnalyticsObserver = AnalyticsObserver(
@@ -101,6 +117,8 @@ object AnalyticsModule {
         stockTxnDao = stockTxnDao,
         stockBottleInfoDao = stockBottleInfoDao,
         stockBatchDao = stockBatchDao,
+        durationTracker = durationTracker,
+        clock = clock,
         isHazardousDrugEnabled = { preferenceHelper.isHazardousDrugEnabled() },
         applyAnalytics = { increments, durations, insertions ->
             store.apply(increments, durations, insertions)

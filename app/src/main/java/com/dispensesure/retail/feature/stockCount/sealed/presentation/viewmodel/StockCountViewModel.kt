@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.analytics.AnalyticsService
+import com.dispensesure.retail.core.analytics.collect.CountDurationTracker
 import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.events.DomainEvent
 import com.dispensesure.retail.core.events.DomainEventBus
@@ -100,6 +101,7 @@ class StockCountViewModel @Inject constructor(
     private val regionProvider: RegionProvider,
     private val auditLogger: AuditLogger,
     private val domainEventBus: DomainEventBus,
+    private val durationTracker: CountDurationTracker,
 ) : ViewModel() {
 
     private val logger = AppLogger("StockCountVM")
@@ -723,6 +725,7 @@ class StockCountViewModel @Inject constructor(
                 // a sealed bottle line. The loose pills live on their own line from SCAN PILLS.
                 logger.d("INV_SCAN persistActive SKIP insert: bottles<=0 (open-pills-only)")
             } else {
+                val isNewStockTxn = stockTxn?.txnId == null
                 val stockTxnId = stockTxn?.txnId ?: stockTxnDao.upsertPreservingId(
                     StockTxnEntity(
                         drugId = drugId,
@@ -731,6 +734,13 @@ class StockCountViewModel @Inject constructor(
                         bucketId = _bucketId.value,
                     )
                 )
+                // Starts the inventory stopwatch on a genuinely new transaction only, so
+                // re-persisting an in-progress count does not reset its timer. The row's own
+                // createdAt cannot serve here: it is stamped in this same block, milliseconds
+                // before the count finishes.
+                if (isNewStockTxn && AnalyticsService.isEnabled) {
+                    durationTracker.start(CountDurationTracker.stockKey(stockTxnId))
+                }
                 val bottleId = stockBottleInfoDao.insert(
                     StockBottleInfoEntity(
                         stockTxnId = stockTxnId,

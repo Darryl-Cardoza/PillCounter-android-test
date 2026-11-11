@@ -47,43 +47,14 @@ sealed interface DomainEvent {
     data object RxLabelProceeded : DomainEvent
 
     /**
-     * An expiry warning was shown to the operator and they answered it.
+     * Why a count was refused — see [CountBlocked].
      *
-     * No Android flow posts this yet — the app has no expiry warning step. The event exists so the
-     * consumer side is complete, and so adding that step later is one `tryPost` call.
-     *
-     * @property reason Why the warning was raised.
-     * @property outcome What the operator chose.
+     * Expiry is not here. The app has no expiry check that can refuse a count, so an `EXPIRED`
+     * reason would be a value nothing could ever post, and the counter it fed is not on the upload
+     * contract either. Add it alongside the flow that raises it.
      */
-    data class ExpiryWarningResolved(
-        val reason: ExpiryReason,
-        val outcome: ExpiryOutcome,
-    ) : DomainEvent
-
-    /** Why a count was refused — see [CountBlocked]. */
     enum class BlockReason {
         /** The scanned container is a different drug than the order expects. */
         WRONG_DRUG,
-
-        /** The scanned container is past its expiry date. */
-        EXPIRED,
-    }
-
-    /** Why an expiry warning was raised — see [ExpiryWarningResolved]. */
-    enum class ExpiryReason {
-        /** The expiry date has already passed. */
-        ALREADY_EXPIRED,
-
-        /** The stock expires before the patient would finish the prescribed course. */
-        BEFORE_DOSAGE_END,
-
-        /** The expiry date is close, but not yet passed. */
-        NEAR_EXPIRY,
-    }
-
-    /** What the operator chose when answering an expiry warning — see [ExpiryWarningResolved]. */
-    enum class ExpiryOutcome {
-        PROCEEDED,
-        CANCELLED,
     }
 }

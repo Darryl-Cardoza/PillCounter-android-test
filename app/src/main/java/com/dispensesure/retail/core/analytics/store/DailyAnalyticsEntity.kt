@@ -12,7 +12,15 @@ import androidx.room.PrimaryKey
  *
  * Duration columns:
  * - `*DurationMin` defaults to -1 (sentinel = no sample yet). Encodes to 0 on the wire.
- * - `*DurationSamples` is stored but never sent — it exists to diagnose `sum / count` averages.
+ * - `*DurationSamples` is stored but never sent — the server has no `samples` field and computes
+ *   averages as `sum / count`, so a count whose duration was discarded (process death, over the
+ *   4-hour ceiling) moves `count` without moving `sum`. This column exists to diagnose exactly
+ *   that divergence.
+ *
+ * Collected but deliberately never sent: `accuracyCountMismatch`, `accuracyManualEntry` and
+ * `safetyExpiredBlocked`. The upload contract is strict — unknown keys are rejected — and it has
+ * no field for them. They stay on the row so the data exists if the contract gains them back.
+ * See `AnalyticsDailyPayload.kt`.
  */
 @Entity(
     tableName = "daily_analytics",
@@ -70,7 +78,8 @@ data class DailyAnalyticsEntity(
     val inventoryCycleDurationMin: Long = -1L,
     val inventoryCycleDurationMax: Long = 0L,
     val inventoryCycleSealedBottlesScanned: Long = 0L,
-    val inventoryCycleNdcCount: Long = 0L,
+    /** JSON array of distinct drug codes; see [AnalyticsNdcSet]. Null until the first scan. */
+    val inventoryCycleNdcs: String? = null,
 
     // ── Inventory — stock count ────────────────────────────────────────────────
     val inventoryStockCount: Long = 0L,
@@ -79,7 +88,8 @@ data class DailyAnalyticsEntity(
     val inventoryStockDurationMin: Long = -1L,
     val inventoryStockDurationMax: Long = 0L,
     val inventoryStockSealedBottlesScanned: Long = 0L,
-    val inventoryStockNdcCount: Long = 0L,
+    /** JSON array of distinct drug codes; see [AnalyticsNdcSet]. Null until the first scan. */
+    val inventoryStockNdcs: String? = null,
 
     // ── Origin ─────────────────────────────────────────────────────────────────
     val originManualTransactions: Long = 0L,
