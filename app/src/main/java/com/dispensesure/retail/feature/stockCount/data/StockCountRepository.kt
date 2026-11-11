@@ -1,6 +1,10 @@
 package com.dispensesure.retail.feature.stockCount.data
 
 import androidx.room.withTransaction
+import com.dispensesure.retail.core.analytics.AnalyticsService
+import com.dispensesure.retail.core.analytics.collect.CountDurationTracker
+import com.dispensesure.retail.core.events.DomainEvent
+import com.dispensesure.retail.core.events.DomainEventBus
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.room.AppDatabase
@@ -26,6 +30,8 @@ class StockCountRepository @Inject constructor(
     private val stockBottleInfoDao: StockBottleInfoDao,
     private val operatorNameProvider: OperatorNameProvider,
     private val regionProvider: RegionProvider,
+    private val domainEventBus: DomainEventBus,
+    private val durationTracker: CountDurationTracker,
 ) {
 
     private val logger = AppLogger("StockCountRepository")
@@ -47,41 +53,71 @@ class StockCountRepository @Inject constructor(
         serialNumber: String?,
         loosePills: Int,
         controlledImagePaths: List<String>?,
-    ): Long = appDatabase.withTransaction {
-        val savedBatchId = if (batchId != 0L) {
-            batchId
-        } else {
-            stockBatchDao.insertNewInProgressBatch(bucketId = bucketId, region = regionProvider.current)
-        }
-        val stockTxnId = stockTxnDao.findByDrugInBatch(savedBatchId, drugId)?.txnId
-            ?: stockTxnDao.upsertPreservingId(
-                StockTxnEntity(
-                    drugId = drugId,
-                    status = CountStatus.PARTIAL,
+    ): Long {
+        val saved = appDatabase.withTransaction {
+            val isNewBatch = batchId == 0L
+            val savedBatchId = if (!isNewBatch) {
+                batchId
+            } else {
+                stockBatchDao.insertNewInProgressBatch(bucketId = bucketId, region = regionProvider.current)
+            }
+            val existingTxnId = stockTxnDao.findByDrugInBatch(savedBatchId, drugId)?.txnId
+            val stockTxnId = existingTxnId
+                ?: stockTxnDao.upsertPreservingId(
+                    StockTxnEntity(
+                        drugId = drugId,
+                        status = CountStatus.PARTIAL,
+                        batchId = savedBatchId,
+                        bucketId = bucketId,
+                    )
+                )
+            // Each count is its own line holding only loose pills; bottleQty 0 keeps it from
+            // counting as a sealed bottle.
+            val bottleId = stockBottleInfoDao.insert(
+                StockBottleInfoEntity(
+                    stockTxnId = stockTxnId,
                     batchId = savedBatchId,
-                    bucketId = bucketId,
+                    lotNo = lotNumber,
+                    expNo = expirationDate,
+                    serialNo = serialNumber,
+                    bottleQty = 0,
+                    looseQty = loosePills,
+                    controlledImagePaths = controlledImagePaths,
                 )
             )
-        // Each count is its own line holding only loose pills; bottleQty 0 keeps it from
-        // counting as a sealed bottle.
-        stockBottleInfoDao.insert(
-            StockBottleInfoEntity(
-                stockTxnId = stockTxnId,
+            stockTxnDao.refreshBatchTotalNdcs(savedBatchId)
+            stockTxnDao.updateBatchUserName(savedBatchId, operatorNameProvider().display())
+            stockTxnDao.updateStatus(stockTxnId, CountStatus.COMPLETED)
+            logger.i("Saved loose count. loosePills=$loosePills drugId=$drugId batchId=$savedBatchId stockTxnId=$stockTxnId controlledPaths=${controlledImagePaths?.size ?: 0}")
+            LooseCountCommit(
                 batchId = savedBatchId,
-                lotNo = lotNumber,
-                expNo = expirationDate,
-                serialNo = serialNumber,
-                bottleQty = 0,
-                looseQty = loosePills,
-                controlledImagePaths = controlledImagePaths,
+                stockTxnId = stockTxnId,
+                bottleId = bottleId,
+                isNewBatch = isNewBatch,
             )
-        )
-        stockTxnDao.refreshBatchTotalNdcs(savedBatchId)
-        stockTxnDao.updateBatchUserName(savedBatchId, operatorNameProvider().display())
-        stockTxnDao.updateStatus(stockTxnId, CountStatus.COMPLETED)
-        logger.i("Saved loose count. loosePills=$loosePills drugId=$drugId batchId=$savedBatchId stockTxnId=$stockTxnId controlledPaths=${controlledImagePaths?.size ?: 0}")
-        savedBatchId
+        }
+
+        // Announced only once the transaction has committed. A consumer reads the rows back from
+        // another thread, so posting inside the transaction races it against the commit — it would
+        // find nothing and drop the event, or count a line a rollback then discarded.
+        if (AnalyticsService.isEnabled) {
+            // A loose count that opened its own batch is a count session beginning here. One that
+            // joined an existing batch is already being timed by whoever opened it.
+            if (saved.isNewBatch) {
+                durationTracker.start(CountDurationTracker.batchKey(saved.batchId))
+            }
+            domainEventBus.tryPost(DomainEvent.StockBottleRecorded(saved.stockTxnId, saved.bottleId))
+        }
+        return saved.batchId
     }
+
+    /** What [commitLooseCount]'s transaction produced, carried out so events can be posted after it. */
+    private data class LooseCountCommit(
+        val batchId: Long,
+        val stockTxnId: Long,
+        val bottleId: Long,
+        val isNewBatch: Boolean,
+    )
 
     /**
      * Keeps reset availability live. A count that has reached the pharmacy system can no

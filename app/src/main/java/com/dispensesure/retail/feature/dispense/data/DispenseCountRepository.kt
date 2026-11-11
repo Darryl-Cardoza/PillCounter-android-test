@@ -4,8 +4,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.room.withTransaction
+import com.dispensesure.retail.core.analytics.AnalyticsService
 import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.audit.model.DispenseCompleted
+import com.dispensesure.retail.core.events.DomainEvent
+import com.dispensesure.retail.core.events.DomainEventBus
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.DISPENSED_QUANTITY_STEP
 import com.dispensesure.retail.core.models.StepState
@@ -53,6 +56,7 @@ class DispenseCountRepository @Inject constructor(
     private val dispenseHl7Repository: DispenseHl7Repository,
     private val regionProvider: RegionProvider,
     private val auditLogger: AuditLogger,
+    private val domainEventBus: DomainEventBus,
 ) {
 
     private val logger = AppLogger("DispenseCountRepository")
@@ -357,6 +361,9 @@ class DispenseCountRepository @Inject constructor(
             dispenseTxnDao.updateTxnStatus(txnId, status)
         }
         auditLogger.logOutsideTour(DispenseCompleted(txnId, status.name, dispensed = dispensedCount, target = txn.targetCount))
+        if (status == CountStatus.COMPLETED && AnalyticsService.isEnabled) {
+            domainEventBus.tryPost(DomainEvent.DispenseCompleted(txnId))
+        }
 
         // Send the dispense to the PMS now, not on the next reconnect. Completion used to
         // only persist the status; the HL7 message went out when the MLLP connection next

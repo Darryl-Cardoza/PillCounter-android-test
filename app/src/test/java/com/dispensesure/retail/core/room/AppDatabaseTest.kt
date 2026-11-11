@@ -35,8 +35,8 @@ class AppDatabaseTest {
     }
 
     @Test
-    fun `database opens at version 9`() {
-        assertEquals(9, sqliteDatabase.version)
+    fun `database opens at version 10`() {
+        assertEquals(10, sqliteDatabase.version)
     }
 
     @Test

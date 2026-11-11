@@ -35,4 +35,60 @@ object AppDatabaseMigrations {
             db.execSQL("ALTER TABLE `stock_batch` ADD COLUMN `orderReferenceFromPMS` TEXT")
         }
     }
+
+    /** v9 → v10: adds `daily_analytics` and `analytics_counted`. No existing table changes. */
+    val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `daily_analytics` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`pharmacyUserId` TEXT NOT NULL, `terminalName` TEXT NOT NULL, `operatorId` TEXT NOT NULL, " +
+                    "`businessDate` TEXT NOT NULL, `region` TEXT NOT NULL, `appVersion` TEXT NOT NULL, " +
+                    "`timezoneOffsetMin` INTEGER NOT NULL, `uploadAttempts` INTEGER NOT NULL, " +
+                    "`nextAttemptAt` INTEGER NOT NULL, `dispenseNormalCount` INTEGER NOT NULL, " +
+                    "`dispenseNormalDurationSamples` INTEGER NOT NULL, `dispenseNormalDurationSum` INTEGER NOT NULL, " +
+                    "`dispenseNormalDurationMin` INTEGER NOT NULL, `dispenseNormalDurationMax` INTEGER NOT NULL, " +
+                    "`dispenseControlledCount` INTEGER NOT NULL, `dispenseControlledDurationSamples` INTEGER NOT NULL, " +
+                    "`dispenseControlledDurationSum` INTEGER NOT NULL, `dispenseControlledDurationMin` INTEGER NOT NULL, " +
+                    "`dispenseControlledDurationMax` INTEGER NOT NULL, `dispenseHazardousCount` INTEGER NOT NULL, " +
+                    "`dispenseHazardousDurationSamples` INTEGER NOT NULL, `dispenseHazardousDurationSum` INTEGER NOT NULL, " +
+                    "`dispenseHazardousDurationMin` INTEGER NOT NULL, `dispenseHazardousDurationMax` INTEGER NOT NULL, " +
+                    "`inventoryCycleCount` INTEGER NOT NULL, `inventoryCycleDurationSamples` INTEGER NOT NULL, " +
+                    "`inventoryCycleDurationSum` INTEGER NOT NULL, `inventoryCycleDurationMin` INTEGER NOT NULL, " +
+                    "`inventoryCycleDurationMax` INTEGER NOT NULL, `inventoryCycleSealedBottlesScanned` INTEGER NOT NULL, " +
+                    "`inventoryCycleNdcs` TEXT, `inventoryStockCount` INTEGER NOT NULL, " +
+                    "`inventoryStockDurationSamples` INTEGER NOT NULL, `inventoryStockDurationSum` INTEGER NOT NULL, " +
+                    "`inventoryStockDurationMin` INTEGER NOT NULL, `inventoryStockDurationMax` INTEGER NOT NULL, " +
+                    "`inventoryStockSealedBottlesScanned` INTEGER NOT NULL, `inventoryStockNdcs` TEXT, " +
+                    "`originManualTransactions` INTEGER NOT NULL, `originRxLabelProceeded` INTEGER NOT NULL, " +
+                    "`originOpenPill` INTEGER NOT NULL, `safetyDrugCodeVerified` INTEGER NOT NULL, " +
+                    "`safetyWrongDrugBlocked` INTEGER NOT NULL, `safetySubstituteFlagged` INTEGER NOT NULL, " +
+                    "`expiryExpiredShown` INTEGER NOT NULL, " +
+                    "`expiryBeforeDosageEnd` INTEGER NOT NULL, `expiryNearShown` INTEGER NOT NULL, " +
+                    "`complianceGlovesDetected` INTEGER NOT NULL, `complianceGlovesNotDetected` INTEGER NOT NULL, " +
+                    "`complianceHazardousTrayDetected` INTEGER NOT NULL, `accuracyCountMismatch` INTEGER NOT NULL, " +
+                    "`accuracyVarianceAbsSum` INTEGER NOT NULL, `accuracyBackcountPerformed` INTEGER NOT NULL, " +
+                    "`accuracyBackcountMismatch` INTEGER NOT NULL, `accuracyRecountAttemptsSum` INTEGER NOT NULL, " +
+                    "`accuracyManualEntry` INTEGER NOT NULL)"
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                    "`index_daily_analytics_pharmacyUserId_terminalName_operatorId_businessDate_region` " +
+                    "ON `daily_analytics` (`pharmacyUserId`, `terminalName`, `operatorId`, `businessDate`, `region`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_daily_analytics_businessDate` " +
+                    "ON `daily_analytics` (`businessDate`)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `analytics_counted` (`kind` TEXT NOT NULL, " +
+                    "`entityId` INTEGER NOT NULL, `businessDate` TEXT NOT NULL, " +
+                    "`countedSealedQty` INTEGER NOT NULL, `countedLooseLines` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`kind`, `entityId`))"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_analytics_counted_businessDate` " +
+                    "ON `analytics_counted` (`businessDate`)"
+            )
+        }
+    }
 }

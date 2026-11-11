@@ -5,6 +5,8 @@ import android.util.Base64
 import androidx.room.Room
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.AppDatabaseMigrations
+import com.dispensesure.retail.core.analytics.store.AnalyticsCountedDao
+import com.dispensesure.retail.core.analytics.store.DailyAnalyticsDao
 import com.dispensesure.retail.core.room.dao.DekVersionDao
 import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
@@ -42,7 +44,12 @@ object DatabaseModule {
         )
             // v6 → v7 keeps the data: it only adds the drug region.
             // v7 → v8 only adds the dek_versions table.
-            .addMigrations(AppDatabaseMigrations.MIGRATION_6_7, AppDatabaseMigrations.MIGRATION_7_8, AppDatabaseMigrations.MIGRATION_8_9)
+            .addMigrations(
+                AppDatabaseMigrations.MIGRATION_6_7,
+                AppDatabaseMigrations.MIGRATION_7_8,
+                AppDatabaseMigrations.MIGRATION_8_9,
+                AppDatabaseMigrations.MIGRATION_9_10,
+            )
             // Stock-count normalization (v3 → v4) restructures local tables; existing local
             // rows are disposable (synced to PMS), so recreate rather than migrate.
             .fallbackToDestructiveMigration()
@@ -104,4 +111,12 @@ object DatabaseModule {
     /** Provides the [DekVersionDao]. */
     @Provides
     fun provideDekVersionDao(db: AppDatabase): DekVersionDao = db.dekVersionDao()
+
+    /** Provides the [DailyAnalyticsDao]. */
+    @Provides
+    fun provideDailyAnalyticsDao(db: AppDatabase): DailyAnalyticsDao = db.dailyAnalyticsDao()
+
+    /** Provides the [AnalyticsCountedDao]. */
+    @Provides
+    fun provideAnalyticsCountedDao(db: AppDatabase): AnalyticsCountedDao = db.analyticsCountedDao()
 }

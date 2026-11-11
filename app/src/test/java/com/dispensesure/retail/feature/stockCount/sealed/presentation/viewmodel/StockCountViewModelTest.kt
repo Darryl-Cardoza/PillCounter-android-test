@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.stockCount.sealed.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.analytics.collect.CountDurationTracker
 import com.dispensesure.retail.core.audit.AuditLogger
 import com.dispensesure.retail.core.audit.model.BatchCompleted
 import com.dispensesure.retail.core.audit.model.BottleCountAdjusted
@@ -122,6 +123,7 @@ class StockCountViewModelTest {
     private fun createViewModel(
         batchId: Long? = null,
         bucketId: String? = null,
+        durationTracker: CountDurationTracker = CountDurationTracker { 0L },
     ): StockCountViewModel {
         val map = mutableMapOf<String, Any?>()
         if (batchId != null) map["batch_id"] = batchId
@@ -141,10 +143,57 @@ class StockCountViewModelTest {
             hl7EventHandler,
             regionProvider,
             auditLogger,
+            mockk(relaxed = true),
+            durationTracker,
         )
     }
 
     private val auditLogger = mockk<AuditLogger>(relaxed = true)
+
+    // ── Count duration ────────────────────────────────────────────────────────
+
+    /**
+     * Opening the screen on an existing batch is when counting begins. PMS batches are created by
+     * StockHl7Repository when the HL7 message arrives, so without this their duration is empty.
+     */
+    @Test
+    fun `opening an existing batch starts its count timer`() = runTest(testDispatcher) {
+        coEvery { stockBatchDao.getById(42L) } returns null
+        val tracker = CountDurationTracker { 0L }
+
+        createViewModel(batchId = 42L, durationTracker = tracker)
+        advanceUntilIdle()
+
+        assertEquals(1, tracker.pendingCount)
+    }
+
+    /** The loose count can create the batch, and the sealed screen then takes it on. */
+    @Test
+    fun `adopting a batch starts its count timer`() = runTest(testDispatcher) {
+        coEvery { stockBatchDao.getById(43L) } returns null
+        val tracker = CountDurationTracker { 0L }
+
+        val viewModel = createViewModel(durationTracker = tracker)
+        viewModel.adoptBatchId(43L)
+        advanceUntilIdle()
+
+        assertEquals(1, tracker.pendingCount)
+    }
+
+    /** Re-entering a part-counted batch must not restart its timer. */
+    @Test
+    fun `reopening a batch does not restart its timer`() = runTest(testDispatcher) {
+        coEvery { stockBatchDao.getById(44L) } returns null
+        var now = 0L
+        val tracker = CountDurationTracker { now }
+        tracker.start(CountDurationTracker.batchKey(44L))
+        now += 60_000L
+
+        createViewModel(batchId = 44L, durationTracker = tracker)
+        advanceUntilIdle()
+
+        assertEquals(60L, tracker.finish(CountDurationTracker.batchKey(44L)))
+    }
 
     @Test
     fun `a first scan logs BOTTLE_COUNTED with no old count`() = runTest(testDispatcher) {

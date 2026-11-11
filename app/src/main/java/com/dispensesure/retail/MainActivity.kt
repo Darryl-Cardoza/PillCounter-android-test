@@ -78,6 +78,8 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayScreen
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
+import com.dispensesure.retail.BuildConfig
+import com.dispensesure.retail.core.analytics.AnalyticsService
 import com.dispensesure.retail.navigation.AppNavGraph
 import com.dispensesure.retail.ui.theme.DispenseSureRetailTheme
 import com.dispensesure.retail.ui.theme.ExtendedColors
@@ -136,6 +138,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var deviceIntegrityAuditor: DeviceIntegrityAuditor
+
+    @Inject
+    lateinit var analyticsService: AnalyticsService
 
     private lateinit var navController: NavController
 
@@ -387,6 +392,7 @@ class MainActivity : ComponentActivity() {
                                             navController    = navController as NavHostController,
                                             startDestination = startDestination,
                                             onLogin          = {
+                                                analyticsService.userDidLogin()
                                                 settingsViewModel.onUserLoginOrLogOut()
                                                 // Enrolled operators verify their face before reaching the
                                                 // dashboard, but only after the permission chain finishes.
@@ -523,6 +529,7 @@ class MainActivity : ComponentActivity() {
             // Also sends any closed audit log files.
             auditLogUploader.requestUpload()
         }
+        analyticsService.applicationDidBecomeActive()
     }
 
     override fun onStart() {

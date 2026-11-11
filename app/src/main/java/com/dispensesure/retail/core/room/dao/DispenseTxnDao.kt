@@ -950,4 +950,35 @@ interface DispenseTxnDao {
         userLocalId: Long,
     ): Int
 
+    // ─── Analytics PMS lifecycle queries (read-only, additive) ───────────────
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM dispense_txn
+        WHERE isComingFromHL7 = 1 AND isDeleted = 0
+          AND createdAt >= :startMs AND createdAt < :endMs
+        """
+    )
+    suspend fun countPmsDispenseReceived(startMs: Long, endMs: Long): Long
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM dispense_txn
+        WHERE isComingFromHL7 = 1 AND isDeleted = 0
+          AND createdAt >= :startMs AND createdAt < :endMs
+          AND status = 'COMPLETED'
+        """
+    )
+    suspend fun countPmsDispenseCompleted(startMs: Long, endMs: Long): Long
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM dispense_txn
+        WHERE isComingFromHL7 = 1 AND isDeleted = 0
+          AND createdAt >= :startMs AND createdAt < :endMs
+          AND isSynced = 1
+        """
+    )
+    suspend fun countPmsDispenseSynced(startMs: Long, endMs: Long): Long
+
 }

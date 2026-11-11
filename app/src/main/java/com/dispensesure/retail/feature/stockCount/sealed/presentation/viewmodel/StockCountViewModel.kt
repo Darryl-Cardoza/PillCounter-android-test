@@ -4,7 +4,11 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.analytics.AnalyticsService
+import com.dispensesure.retail.core.analytics.collect.CountDurationTracker
 import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.events.DomainEvent
+import com.dispensesure.retail.core.events.DomainEventBus
 import com.dispensesure.retail.core.audit.model.BatchCompleted
 import com.dispensesure.retail.core.audit.model.BatchCreated
 import com.dispensesure.retail.core.audit.model.BatchSource
@@ -96,6 +100,8 @@ class StockCountViewModel @Inject constructor(
     private val hl7EventHandler: Hl7EventHandler,
     private val regionProvider: RegionProvider,
     private val auditLogger: AuditLogger,
+    private val domainEventBus: DomainEventBus,
+    private val durationTracker: CountDurationTracker,
 ) : ViewModel() {
 
     private val logger = AppLogger("StockCountVM")
@@ -223,6 +229,14 @@ class StockCountViewModel @Inject constructor(
                     resolvedBatchId.value = argBatchId
                     val batch = stockBatchDao.getById(argBatchId)
                     _bucketId.value = batch?.bucketId
+                    // Opening the screen on an existing batch is when counting begins. PMS batches
+                    // are created by StockHl7Repository the moment the message arrives, which may
+                    // be hours earlier — timing from there would measure queue time, not work, and
+                    // would usually exceed the tracker's ceiling and be discarded. start() is
+                    // idempotent, so reopening a partly counted batch does not restart it.
+                    if (AnalyticsService.isEnabled) {
+                        durationTracker.start(CountDurationTracker.batchKey(argBatchId))
+                    }
                     // PMS-requested inventory: lock scanning to the requested NDCs.
                     // The batch was pre-populated with a txn per requested drug, so
                     // those NDCs are the allowed set. Manually started batches
@@ -266,6 +280,12 @@ class StockCountViewModel @Inject constructor(
             val bucket = if (FtueController.state.isActive) TutorialData.BUCKET else _bucketId.value
             val newId = stockBatchDao.insertNewInProgressBatch(bucketId = bucket, region = regionProvider.current)
             resolvedBatchId.value = newId
+            // The count session starts here, before any bottle is persisted. The stock_txn rows
+            // this batch produces are each created already COMPLETED, so this is the only point
+            // at which the elapsed time of a count can begin to be measured.
+            if (AnalyticsService.isEnabled) {
+                durationTracker.start(CountDurationTracker.batchKey(newId))
+            }
             auditLogger.logOutsideTour(BatchCreated(batchId = newId, source = BatchSource.MANUAL, bucket = bucket, requestedNdcs = emptyList()))
             newId
         } catch (e: Exception) {
@@ -295,6 +315,12 @@ class StockCountViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 resolvedBatchId.value = batchId
+                // This screen now owns a batch it did not open, so counting is under way here
+                // whether or not the loose count already started the timer. Idempotent, so an
+                // already-running timer keeps its original start.
+                if (AnalyticsService.isEnabled) {
+                    durationTracker.start(CountDurationTracker.batchKey(batchId))
+                }
                 val batch = stockBatchDao.getById(batchId)
                 if (!batch?.requestIdFromPMS.isNullOrBlank()) {
                     expectedNdcs = stockTxnDao.getNdcsForBatch(batchId)
@@ -672,6 +698,13 @@ class StockCountViewModel @Inject constructor(
                 // Card dropped to 0 bottles: an empty line would never be found again, so remove it.
                 stockBottleInfoDao.delete(existing.bottleId)
                 logger.d("INV_SCAN persistActive DELETED empty bottleId=${existing.bottleId}")
+                // Removing a line lowers the transaction's totals; the ledger reconciles to the
+                // new figures and applies a negative delta, undoing what this line contributed.
+                if (AnalyticsService.isEnabled) {
+                    domainEventBus.tryPost(
+                        DomainEvent.StockBottleRecorded(existing.stockTxnId, existing.bottleId)
+                    )
+                }
                 auditLogger.logOutsideTour(
                     BottleLineDeleted(
                         batchId = batchId,
@@ -690,6 +723,15 @@ class StockCountViewModel @Inject constructor(
                     )
                 )
                 logger.d("INV_SCAN persistActive UPDATED bottleId=${existing.bottleId} drugId=$drugId bottles=${active.bottles}")
+                // A rescan or +/- tap rewrites an existing line's quantity rather than inserting.
+                // Analytics reconciles the transaction's totals against its ledger on every event,
+                // so this must be announced too — otherwise the bottles added after the first
+                // scan are never counted.
+                if (existing.bottleQty != active.bottles && AnalyticsService.isEnabled) {
+                    domainEventBus.tryPost(
+                        DomainEvent.StockBottleRecorded(existing.stockTxnId, existing.bottleId)
+                    )
+                }
                 // A flush with nothing new (row tap, scan pills) writes the same count and logs nothing.
                 if (existing.bottleQty != active.bottles) {
                     auditLogger.logOutsideTour(
@@ -727,7 +769,7 @@ class StockCountViewModel @Inject constructor(
                         bucketId = _bucketId.value,
                     )
                 )
-                stockBottleInfoDao.insert(
+                val bottleId = stockBottleInfoDao.insert(
                     StockBottleInfoEntity(
                         stockTxnId = stockTxnId,
                         batchId = batchId,
@@ -737,6 +779,9 @@ class StockCountViewModel @Inject constructor(
                         bottleQty = active.bottles,
                     )
                 )
+                if (AnalyticsService.isEnabled) {
+                    domainEventBus.tryPost(DomainEvent.StockBottleRecorded(stockTxnId, bottleId))
+                }
                 logger.d("INV_SCAN persistActive INSERTED new bottle line stockTxnId=$stockTxnId drugId=$drugId bottles=${active.bottles}")
                 // A new line is always a count, whichever path wrote it.
                 auditLogger.logOutsideTour(
@@ -1074,6 +1119,11 @@ class StockCountViewModel @Inject constructor(
                             noteLength = note?.takeIf { it.isNotBlank() }?.length ?: 0
                         )
                     )
+                    // The count is over here and nowhere else, so this is the only point at which
+                    // its elapsed time is known.
+                    if (AnalyticsService.isEnabled) {
+                        domainEventBus.tryPost(DomainEvent.StockBatchCompleted(batchId))
+                    }
                     if (hl7EventHandler.connectionState.value) {
                         stockHl7Repository.sendPendingBatches(firstSendBatchId = batchId)
                     }

@@ -47,6 +47,20 @@ interface StockBottleInfoDao {
     )
     suspend fun findSealedLine(stockTxnId: Long, lotNo: String?, expNo: String?): StockBottleInfoEntity?
 
+    /**
+     * Total sealed bottles across a stock transaction's lines.
+     *
+     * Analytics counts bottles, not lines: a sealed lot uses fetch-or-create, so N scans of one lot
+     * are a single row with `bottleQty = N`. Summing the final quantities also captures edits made
+     * after the first scan.
+     */
+    @Query("SELECT COALESCE(SUM(bottleQty), 0) FROM stock_bottle_info WHERE stockTxnId = :stockTxnId AND bottleQty > 0")
+    suspend fun sumSealedBottleQty(stockTxnId: Long): Long
+
+    /** Lines holding loose pills — each is one opened container. */
+    @Query("SELECT COUNT(*) FROM stock_bottle_info WHERE stockTxnId = :stockTxnId AND COALESCE(looseQty, 0) > 0")
+    suspend fun countLooseLines(stockTxnId: Long): Long
+
     @Query("DELETE FROM stock_bottle_info WHERE bottleId = :bottleId")
     suspend fun delete(bottleId: Long)
 
