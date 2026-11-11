@@ -19,15 +19,19 @@ import javax.inject.Singleton
  *
  * **Keyed on the batch, not the transaction.** A stock transaction has no open interval of its own
  * — it is created already COMPLETED at its first line. The interval a user would recognise as "how
- * long the count took" belongs to the *batch*: it opens when the count session starts
- * (`ensureBatchCreated`, or the loose screen's first commit) and runs until counting stops. Timing
- * per transaction would measure the same few milliseconds the derived duration already did.
+ * long the count took" belongs to the *batch*: it opens when the count screen takes the batch on
+ * (`ensureBatchCreated` for a new one, the `init` block or `adoptBatchId` for an existing one) and
+ * closes at END COUNT. Timing per transaction would measure the same few milliseconds the derived
+ * duration already did.
  *
- * One consequence, deliberate: the batch's elapsed time is claimed by the **first** transaction to
- * complete in it, and later transactions in that batch are reported untimed. A batch's duration is
- * one measurement; splitting it across its drugs would invent samples, and repeating it for each
- * would multiply the same seconds into `sum`. The resulting `count` > `samples` gap is what the
- * `*DurationSamples` columns exist to show.
+ * A PMS batch is deliberately **not** timed from its creation in `StockHl7Repository`: that row is
+ * written when the HL7 message arrives, possibly hours before anyone counts, so the elapsed time
+ * would be queue time and would usually exceed [MAX_DURATION_SECONDS] and be discarded.
+ *
+ * One consequence, deliberate: a batch yields **one** duration sample, recorded when it completes
+ * and attributed to the work type the batch's own origin gives it. Splitting it across the drugs
+ * counted would invent samples; repeating it for each would multiply the same seconds into `sum`.
+ * The resulting `count` > `samples` gap is what the `*DurationSamples` columns exist to show.
  *
  * Ported from the iOS `CountDurationTracker` so both platforms report comparable numbers.
  *

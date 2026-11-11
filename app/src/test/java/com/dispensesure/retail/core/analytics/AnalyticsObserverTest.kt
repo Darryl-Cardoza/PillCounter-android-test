@@ -392,8 +392,52 @@ class AnalyticsObserverTest {
      * The row's createdAt is stamped in the same operation as the first bottle, so the duration
      * has to come from the tracker started when the count began.
      */
+    /**
+     * The count is over at END COUNT, not at the first bottle. Timing the first event would
+     * measure batch-open to first-scan.
+     */
     @Test
-    fun `inventory duration comes from the tracker, not row timestamps`() = runTest(UnconfinedTestDispatcher()) {
+    fun `inventory duration is recorded when the batch completes`() = runTest(UnconfinedTestDispatcher()) {
+        var now = NOW_MS
+        durationTracker = CountDurationTracker { now }
+        val observer = makeObserver()
+        observer.startObserving(backgroundScope)
+        coEvery { stockBatchDao.getById(5L) } returns
+            StockBatchEntity(batchId = 5L, requestIdFromPMS = null)
+
+        durationTracker.start(CountDurationTracker.batchKey(5L))
+        now += 90_000L
+
+        bus.tryPost(DomainEvent.StockBatchCompleted(batchId = 5L))
+        advanceUntilIdle()
+
+        assertEquals(90L, lastDuration?.seconds)
+        assertEquals(AnalyticsWorkType.INVENTORY_STOCK_COUNT, lastDuration?.workType)
+    }
+
+    /** A PMS-requested batch's duration belongs to the cycle-count block its counts moved. */
+    @Test
+    fun `a pms batch duration is attributed to cycle count`() = runTest(UnconfinedTestDispatcher()) {
+        var now = NOW_MS
+        durationTracker = CountDurationTracker { now }
+        val observer = makeObserver()
+        observer.startObserving(backgroundScope)
+        coEvery { stockBatchDao.getById(6L) } returns
+            StockBatchEntity(batchId = 6L, requestIdFromPMS = "MSG-1")
+
+        durationTracker.start(CountDurationTracker.batchKey(6L))
+        now += 45_000L
+
+        bus.tryPost(DomainEvent.StockBatchCompleted(batchId = 6L))
+        advanceUntilIdle()
+
+        assertEquals(45L, lastDuration?.seconds)
+        assertEquals(AnalyticsWorkType.INVENTORY_CYCLE_COUNT, lastDuration?.workType)
+    }
+
+    /** Bottle events carry no duration — a transaction has no interval of its own. */
+    @Test
+    fun `a bottle event records no duration`() = runTest(UnconfinedTestDispatcher()) {
         var now = NOW_MS
         durationTracker = CountDurationTracker { now }
         val observer = makeObserver()
@@ -401,20 +445,6 @@ class AnalyticsObserverTest {
 
         durationTracker.start(CountDurationTracker.batchKey(5L))
         now += 90_000L
-        stubStockTxn(stockTxnId = 14L, sealedQty = 1L)
-
-        bus.tryPost(DomainEvent.StockBottleRecorded(stockTxnId = 14L, bottleId = 25L))
-        advanceUntilIdle()
-
-        assertEquals(90L, lastDuration?.seconds)
-        assertEquals(AnalyticsWorkType.INVENTORY_STOCK_COUNT, lastDuration?.workType)
-    }
-
-    @Test
-    fun `inventory with no started timer reports no duration`() = runTest(UnconfinedTestDispatcher()) {
-        val observer = makeObserver()
-        observer.startObserving(backgroundScope)
-
         stubStockTxn(stockTxnId = 15L, sealedQty = 1L)
 
         bus.tryPost(DomainEvent.StockBottleRecorded(stockTxnId = 15L, bottleId = 26L))
@@ -422,6 +452,18 @@ class AnalyticsObserverTest {
 
         assertEquals(null, lastDuration)
         assertTrue(lastIncrements.any { it.field == AnalyticsField.INVENTORY_STOCK_COUNT })
+    }
+
+    /** A batch whose timer never started (process death mid-count) is reported untimed. */
+    @Test
+    fun `batch completion with no started timer records nothing`() = runTest(UnconfinedTestDispatcher()) {
+        val observer = makeObserver()
+        observer.startObserving(backgroundScope)
+
+        bus.tryPost(DomainEvent.StockBatchCompleted(batchId = 99L))
+        advanceUntilIdle()
+
+        assertEquals(0, applyCalls)
     }
 
     // ── Standalone events ─────────────────────────────────────────────────────

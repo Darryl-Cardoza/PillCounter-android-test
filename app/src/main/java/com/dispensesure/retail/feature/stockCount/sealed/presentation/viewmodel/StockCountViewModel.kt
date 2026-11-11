@@ -229,6 +229,14 @@ class StockCountViewModel @Inject constructor(
                     resolvedBatchId.value = argBatchId
                     val batch = stockBatchDao.getById(argBatchId)
                     _bucketId.value = batch?.bucketId
+                    // Opening the screen on an existing batch is when counting begins. PMS batches
+                    // are created by StockHl7Repository the moment the message arrives, which may
+                    // be hours earlier — timing from there would measure queue time, not work, and
+                    // would usually exceed the tracker's ceiling and be discarded. start() is
+                    // idempotent, so reopening a partly counted batch does not restart it.
+                    if (AnalyticsService.isEnabled) {
+                        durationTracker.start(CountDurationTracker.batchKey(argBatchId))
+                    }
                     // PMS-requested inventory: lock scanning to the requested NDCs.
                     // The batch was pre-populated with a txn per requested drug, so
                     // those NDCs are the allowed set. Manually started batches
@@ -307,6 +315,12 @@ class StockCountViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 resolvedBatchId.value = batchId
+                // This screen now owns a batch it did not open, so counting is under way here
+                // whether or not the loose count already started the timer. Idempotent, so an
+                // already-running timer keeps its original start.
+                if (AnalyticsService.isEnabled) {
+                    durationTracker.start(CountDurationTracker.batchKey(batchId))
+                }
                 val batch = stockBatchDao.getById(batchId)
                 if (!batch?.requestIdFromPMS.isNullOrBlank()) {
                     expectedNdcs = stockTxnDao.getNdcsForBatch(batchId)
@@ -1105,6 +1119,11 @@ class StockCountViewModel @Inject constructor(
                             noteLength = note?.takeIf { it.isNotBlank() }?.length ?: 0
                         )
                     )
+                    // The count is over here and nowhere else, so this is the only point at which
+                    // its elapsed time is known.
+                    if (AnalyticsService.isEnabled) {
+                        domainEventBus.tryPost(DomainEvent.StockBatchCompleted(batchId))
+                    }
                     if (hl7EventHandler.connectionState.value) {
                         stockHl7Repository.sendPendingBatches(firstSendBatchId = batchId)
                     }

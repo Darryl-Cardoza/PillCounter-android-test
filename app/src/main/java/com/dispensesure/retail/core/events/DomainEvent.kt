@@ -25,9 +25,9 @@ sealed interface DomainEvent {
     /**
      * A bottle line was recorded against a stock (inventory) transaction.
      *
-     * Posted once per physical bottle line written. The stock transaction itself is created in the
-     * same operation, so the first event for a given [stockTxnId] is also that transaction's
-     * beginning.
+     * Posted whenever a line is written, rewritten or removed — a transaction keeps accumulating
+     * after its first line, so each event announces that its totals may have moved. The consumer
+     * re-reads them and reconciles against what it already counted.
      *
      * @property stockTxnId [com.dispensesure.retail.core.room.models.StockTxnEntity.txnId] the line
      *   belongs to.
@@ -35,6 +35,17 @@ sealed interface DomainEvent {
      *   of the line just written.
      */
     data class StockBottleRecorded(val stockTxnId: Long, val bottleId: Long) : DomainEvent
+
+    /**
+     * An inventory batch was closed by the operator — END COUNT, with at least one counted drug.
+     *
+     * Separate from [StockBottleRecorded] because it is the only point at which the time a count
+     * took is known. A stock transaction is created already COMPLETED alongside its first bottle
+     * line, so no transaction has an open interval of its own; the batch does, and it ends here.
+     *
+     * @property batchId [com.dispensesure.retail.core.room.models.StockBatchEntity.batchId] closed.
+     */
+    data class StockBatchCompleted(val batchId: Long) : DomainEvent
 
     /**
      * A count was refused before it could start, because the scanned container failed a check.

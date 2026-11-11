@@ -67,6 +67,7 @@ class AnalyticsObserver(
                 when (event) {
                     is DomainEvent.DispenseCompleted -> safe("DispenseCompleted") { handleDispense(event) }
                     is DomainEvent.StockBottleRecorded -> safe("StockBottleRecorded") { handleStock(event) }
+                    is DomainEvent.StockBatchCompleted -> safe("StockBatchCompleted") { handleStockBatchCompleted(event) }
                     is DomainEvent.CountBlocked -> safe("CountBlocked") { handleCountBlocked(event) }
                     is DomainEvent.RxLabelProceeded -> safe("RxLabelProceeded") { handleRxLabel() }
                 }
@@ -187,17 +188,13 @@ class AnalyticsObserver(
 
         val increments = AnalyticsFieldMapping.stockIncrements(input)
         val insertions = AnalyticsFieldMapping.stockInsertions(input)
-        // The stopwatch runs per batch, so the first transaction to complete in it claims the
-        // session's elapsed time and the rest are untimed. Timing each transaction separately
-        // would measure the few milliseconds between its row being created and its first line.
-        val duration = stockTxn.batchId
-            ?.let { durationTracker.finish(CountDurationTracker.batchKey(it)) }
-            ?.let { AnalyticsDuration(workType, it) }
 
         // Nothing moved and the transaction is already on the row — don't rewrite the ledger.
-        if (increments.isEmpty() && insertions.isEmpty() && duration == null) return
+        // The duration is not handled here: it belongs to the batch and arrives with
+        // StockBatchCompleted, which is the only point at which the count is actually over.
+        if (increments.isEmpty() && insertions.isEmpty()) return
 
-        if (applyAnalytics(increments, listOfNotNull(duration), insertions)) {
+        if (applyAnalytics(increments, emptyList(), insertions)) {
             countedDao.upsert(
                 AnalyticsCountedEntity(
                     kind = AnalyticsCountedEntity.KIND_STOCK_TXN,
@@ -209,6 +206,29 @@ class AnalyticsObserver(
                 )
             )
         }
+    }
+
+    /**
+     * Records how long an inventory batch's count took.
+     *
+     * The elapsed time is a property of the batch, not of any one transaction in it: transactions
+     * are created already COMPLETED, so none has an interval of its own. One batch therefore
+     * yields one duration sample, attributed to the work type the batch's own origin gives it —
+     * the same classification its transactions used, so the sample lands in the block whose
+     * `count` those transactions moved.
+     */
+    private suspend fun handleStockBatchCompleted(event: DomainEvent.StockBatchCompleted) {
+        val seconds = durationTracker.finish(CountDurationTracker.batchKey(event.batchId)) ?: return
+        val batch = stockBatchDao.getById(event.batchId)
+
+        val workType = AnalyticsWorkType.classify(
+            isDispense = false,
+            isHazardous = false,
+            drugType = null,
+            isPmsInitiated = batch?.requestIdFromPMS != null,
+        )
+
+        applyAnalytics(emptyList(), listOf(AnalyticsDuration(workType, seconds)), emptyList())
     }
 
     private suspend fun handleCountBlocked(event: DomainEvent.CountBlocked) {
