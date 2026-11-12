@@ -1,0 +1,146 @@
+# Qodana JVM Community configuration -- free, no licence key, runs in Docker.
+#
+# This is the pipeline's cross-module dead-code detector: Qodana's
+# UnusedDeclaration inspection resolves the whole project graph, so it finds
+# unused public classes and functions that Detekt (single-file scope) cannot.
+# It is the closest free equivalent to Python's vulture.
+#
+# Copied into the caller repo at CI time by the dead-code job.
+version: "1.0"
+linter: jetbrains/qodana-jvm-community:2024.3
+
+profile:
+  name: qodana.recommended
+
+include:
+  # --- dead code (the vulture equivalent) ---
+  - name: UnusedDeclaration
+  - name: UnusedSymbol
+  - name: KotlinUnusedImport
+  - name: UnusedReceiverParameter
+  - name: RedundantVisibilityModifier
+  - name: CanBeVal
+  # --- correctness ---
+  - name: KotlinConstantConditions
+  - name: NullChecksToSafeCall
+
+exclude:
+  - name: All
+    paths:
+      - build
+      - .gradle
+      - .github
+      - "**/generated"
+      - "**/src/test"
+      - "**/src/androidTest"
+  # DI graphs, serializers and Compose previews are referenced by generated code
+  # or by tooling, so "unused" is a false positive for them.
+  - name: UnusedDeclaration
+    paths:
+      - "**/di"
+      - "**/preview"
+
+# Report-only by default. Raise this once the baseline is triaged, or commit a
+# qodana.sarif.json baseline and flip fail_on_dead_code in the workflow.
+failThreshold: 0
+
+# The qodana-jvm-community image only bundles a single JDK (21 as of the 2024.3
+# linter), but callers commonly pin jvmToolchain(17) (Gradle's Java Toolchain
+# API, distinct from just running Gradle itself under a given JDK) to match
+# their app's compileOptions. With no toolchain resolver registered, Gradle
+# refuses to auto-download a matching JDK and fails every task with "Cannot
+# find a Java installation ... Toolchain download repositories have not been
+# configured." Since this runs inside Qodana's own ephemeral checkout (never
+# pushed back to the caller), prepend the toolchain resolver plugin to
+# settings.gradle(.kts) here rather than requiring the caller to commit it --
+# idempotent so a caller that already has it is left untouched.
+#
+# The loop this used to be written as (`for f in ...; do ... "$f" ... ; done`)
+# broke in practice: whatever hands this string to the container's shell ate
+# the "$f" references before the shell ever ran, leaving `mv` with no operand.
+# Spelled out per file instead, with no shell variables at all, so there's
+# nothing for that layer to mangle.
+#
+# A plain prepend also broke: Gradle requires `pluginManagement {}` (when
+# present) to be the FIRST block in a settings file, and `plugins {}` must
+# never appear before it -- "Unexpected `plugins` block found. `plugins` can
+# not appear before `pluginManagement`." Callers commonly declare
+# pluginManagement for repository config, so the plugins block has to be
+# spliced in right after it closes, not dropped at the top. The awk pass
+# below tracks brace depth from the `pluginManagement {` line to find where
+# it actually ends (handles nesting, e.g. its own `repositories {}` block);
+# if no pluginManagement block exists at all, the plain prepend is still safe.
+bootstrap: |
+  set -eu
+  if [ -f settings.gradle.kts ] && ! grep -q "foojay-resolver-convention" settings.gradle.kts; then
+    if grep -qE '^[ \t]*pluginManagement[ \t]*\{' settings.gradle.kts; then
+      awk '
+        BEGIN { depth = 0; active = 0; inserted = 0 }
+        !inserted && !active && $0 ~ /^[ \t]*pluginManagement[ \t]*\{/ {
+          active = 1
+          depth = 1
+          print $0
+          next
+        }
+        active {
+          print $0
+          tmp = $0
+          opens = gsub(/\{/, "{", tmp)
+          tmp = $0
+          closes = gsub(/\}/, "}", tmp)
+          depth += opens - closes
+          if (depth <= 0) {
+            active = 0
+            inserted = 1
+            print ""
+            print "plugins {"
+            print "    id(\"org.gradle.toolchains.foojay-resolver-convention\") version \"1.0.0\""
+            print "}"
+          }
+          next
+        }
+        { print }
+      ' settings.gradle.kts > settings.gradle.kts.qodana-tmp
+      mv settings.gradle.kts.qodana-tmp settings.gradle.kts
+    else
+      printf 'plugins {\n    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"\n}\n\n' > settings.gradle.kts.qodana-tmp
+      cat settings.gradle.kts >> settings.gradle.kts.qodana-tmp
+      mv settings.gradle.kts.qodana-tmp settings.gradle.kts
+    fi
+  fi
+  if [ -f settings.gradle ] && ! grep -q "foojay-resolver-convention" settings.gradle; then
+    if grep -qE '^[ \t]*pluginManagement[ \t]*\{' settings.gradle; then
+      awk '
+        BEGIN { depth = 0; active = 0; inserted = 0 }
+        !inserted && !active && $0 ~ /^[ \t]*pluginManagement[ \t]*\{/ {
+          active = 1
+          depth = 1
+          print $0
+          next
+        }
+        active {
+          print $0
+          tmp = $0
+          opens = gsub(/\{/, "{", tmp)
+          tmp = $0
+          closes = gsub(/\}/, "}", tmp)
+          depth += opens - closes
+          if (depth <= 0) {
+            active = 0
+            inserted = 1
+            print ""
+            print "plugins {"
+            print "    id(\"org.gradle.toolchains.foojay-resolver-convention\") version \"1.0.0\""
+            print "}"
+          }
+          next
+        }
+        { print }
+      ' settings.gradle > settings.gradle.qodana-tmp
+      mv settings.gradle.qodana-tmp settings.gradle
+    else
+      printf 'plugins {\n    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"\n}\n\n' > settings.gradle.qodana-tmp
+      cat settings.gradle >> settings.gradle.qodana-tmp
+      mv settings.gradle.qodana-tmp settings.gradle
+    fi
+  fi

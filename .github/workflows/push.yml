@@ -91,11 +91,10 @@ jobs:
 
   # CI for PRs and branch pushes. Builds Release directly (once) for a
   # release-tag push instead of Debug, so the `cd` job below doesn't need its
-  # own nested CI/build pass -- ops-rite-android-pipeline's release.yml no
-  # longer runs one; it just downloads and signs whatever this job built. See
-  # that pipeline's README "Consolidated CI+CD build" section.
+  # own nested CI/build pass -- _release.yml no
+  # longer runs one; it just downloads and signs whatever this job built.
   ci:
-    uses: Rite-Technologies-23/ops-rite-android-pipeline/.github/workflows/push.yml@main
+    uses: ./.github/workflows/_ci.yml
     needs: [select_runner, extract-version]
     with:
       # ---- core ----
@@ -147,8 +146,6 @@ jobs:
       fail_on_security: false
       fail_on_vulnerabilities: false
       fail_on_dead_code: false
-    secrets:
-      PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
 
   # CD for version tags. Only fires when the tag also contains "release", the
   # same condition `ci` above uses to pick build_variant -- so `ci` has
@@ -160,7 +157,7 @@ jobs:
   # v1.0.0-build-release. The is_release output (set in extract-version) guards
   # this job: a plain push to main also fires this workflow and must not run cd.
   cd:
-    uses: Rite-Technologies-23/ops-rite-android-pipeline/.github/workflows/release.yml@main
+    uses: ./.github/workflows/_release.yml
     if: needs.extract-version.outputs.is_release == 'true'
     needs: [ select_runner, extract-version, ci ]
     with:
@@ -193,10 +190,9 @@ jobs:
       KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
       ESPER_API_KEY: ${{ secrets.ESPER_API_KEY }}
-      PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
 
-  # Uploads the R8 mapping to the observability vendor. Runs here (not in the reusable
-  # pipeline) so the key stays in this repo, and only after ci + cd succeeded for the
+  # Uploads the R8 mapping to the observability vendor. Runs here (not in _release.yml)
+  # so the key stays in this job, and only after ci + cd succeeded for the
   # release tag. The version id derives from the commit SHA, so it matches the shipped build.
   upload-mapping:
     if: needs.extract-version.outputs.is_release == 'true'

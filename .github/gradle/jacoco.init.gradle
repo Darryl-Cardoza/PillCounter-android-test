@@ -1,0 +1,101 @@
+// gradle/jacoco.init.gradle
+// Injects JaCoCo into Android projects WITHOUT modifying the calling repo.
+
+allprojects { Project p ->
+
+    // Apply JaCoCo when an Android plugin is present (app or library)
+    p.plugins.withId("com.android.application") { configureJacocoForAndroid(p) }
+    p.plugins.withId("com.android.library")     { configureJacocoForAndroid(p) }
+}
+
+def configureJacocoForAndroid(Project p) {
+    p.apply plugin: "jacoco"
+
+    p.jacoco {
+        toolVersion = "0.8.11"
+    }
+
+    // Make unit tests produce exec data reliably
+    p.tasks.withType(Test).configureEach { Test t ->
+        t.jacoco {
+            includeNoLocationClasses = true
+            excludes = ["jdk.internal.*"]
+        }
+        // Helpful for JDK 17 + Robolectric sometimes
+        t.jvmArgs "--add-opens=java.base/java.lang=ALL-UNNAMED"
+    }
+
+    // Create a consistent task in EVERY Android module:
+    // :<module>:jacocoTestReport  (variant controlled by -PcoverageVariant=Debug)
+    p.tasks.register("jacocoTestReport", JacocoReport) { JacocoReport r ->
+        r.group = "verification"
+        r.description = "Generates JaCoCo coverage report for unit tests (variant via -PcoverageVariant)."
+
+        def v = (p.findProperty("coverageVariant") ?: "Debug").toString()
+        def unitTestTask = "test${v}UnitTest"
+        r.dependsOn(unitTestTask)
+
+        def fileFilter = [
+                "**/R.class",
+                "**/R\$*.class",
+                "**/BuildConfig.*",
+                "**/Manifest*.*",
+                "**/*Test*.*",
+                "android/**/*.*",
+
+                // databinding / generated
+                "**/databinding/**",
+                "**/*Binding*.*",
+                "**/BR.*",
+                "**/androidx/databinding/**",
+                "**/androidx/databinding/library/**",
+                "**/*DataBinderMapperImpl*.*",
+                "**/*DataBinderMapper*.*",
+                "**/*DataBindingTriggerClass*.*",
+                "**/generated/callback/**",
+
+                // Kotlin generated
+                "**/*\$Companion*.*",
+                "**/*\$Lambda\$*.*",
+                "**/*\$inlined\$*.*",
+                "**/*\$DefaultImpls*.*",
+                "**/*\$serializer*.*",
+
+                // Optional common exclusions
+                "**/*Dao*.*",
+                "**/*Database*.*",
+                "**/*JsonAdapter*.*",
+        ]
+
+        // Variant-aware class dirs (works for most AGP setups)
+        def vLower = v.toLowerCase()
+        def kotlinTree = p.fileTree(dir: "${p.buildDir}/tmp/kotlin-classes/${vLower}", excludes: fileFilter)
+        def javaTree   = p.fileTree(dir: "${p.buildDir}/intermediates/javac/${vLower}/classes", excludes: fileFilter)
+
+        r.classDirectories.setFrom(p.files(kotlinTree, javaTree))
+
+        r.sourceDirectories.setFrom(p.files(
+                "${p.projectDir}/src/main/java",
+                "${p.projectDir}/src/main/kotlin"
+        ))
+
+        // Execution data locations (AGP differs by version)
+        r.executionData.setFrom(p.files(
+                p.fileTree(dir: p.buildDir, includes: [
+                        "jacoco/${unitTestTask}.exec",
+                        "outputs/unit_test_code_coverage/${vLower}UnitTest/${unitTestTask}.exec"
+                ])
+        ))
+
+        r.reports {
+            xml.required = true
+            html.required = true
+            csv.required = false
+        }
+
+        // Don’t fail if exec file missing (ex: no tests)
+        r.onlyIf {
+            r.executionData.files.any { it.exists() }
+        }
+    }
+}

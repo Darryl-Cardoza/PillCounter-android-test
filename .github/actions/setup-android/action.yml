@@ -1,0 +1,126 @@
+name: "Setup Android Build Environment"
+description: >-
+  Shared setup for every CI job: installs the JDK, restores the Gradle cache and
+  bootstraps the Gradle wrapper. Optionally installs the Android SDK for
+  self-hosted runners.
+
+inputs:
+  java_version:
+    required: true
+    description: "Java version to install (e.g. 17)"
+
+  cache_key_suffix:
+    required: false
+    default: "shared"
+    description: >-
+      Distinguishes cache entries between jobs. Jobs that write very different
+      Gradle state (e.g. lint vs unit test) should use different suffixes.
+
+  install_sdk:
+    required: false
+    default: "false"
+    description: >-
+      Install the Android SDK. GitHub-hosted ubuntu runners ship it already, so
+      this is only needed on self-hosted runners.
+
+  bootstrap_wrapper:
+    required: false
+    default: "true"
+    description: "Generate the Gradle wrapper if the caller repo is missing gradle-wrapper.jar"
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: Install Java (Temurin)
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java_version }}
+
+    - name: Cache Gradle
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ inputs.cache_key_suffix }}-${{ hashFiles('**/*.gradle*','**/settings.gradle*','**/gradle-wrapper.properties','**/gradle.properties','**/libs.versions.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-${{ inputs.cache_key_suffix }}-
+          ${{ runner.os }}-gradle-
+
+    - name: Install Android SDK
+      if: ${{ inputs.install_sdk == 'true' }}
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/install_sdk.sh"
+
+    - name: Verify environment
+      if: ${{ inputs.install_sdk == 'true' }}
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/verify_env.sh"
+
+    # ----------------------------------------------------------------------
+    # Bootstrap the wrapper NON-DESTRUCTIVELY: the caller's declared Gradle
+    # version always wins. We only generate a wrapper when the jar is genuinely
+    # missing, and we never rewrite gradle-wrapper.properties.
+    # ----------------------------------------------------------------------
+    - name: Bootstrap Gradle wrapper
+      if: ${{ inputs.bootstrap_wrapper == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        WRAPPER_PROPS="gradle/wrapper/gradle-wrapper.properties"
+        WRAPPER_JAR="gradle/wrapper/gradle-wrapper.jar"
+
+        if [ ! -f "$WRAPPER_PROPS" ]; then
+          echo "::error::$WRAPPER_PROPS not found. The caller repo must declare its Gradle version."
+          exit 1
+        fi
+
+        if [ -f "gradlew" ] && [ -f "$WRAPPER_JAR" ]; then
+          chmod +x gradlew
+          echo "Gradle wrapper already present -> $(./gradlew --version | grep -m1 Gradle || true)"
+          exit 0
+        fi
+
+        DIST_URL=$(grep '^distributionUrl' "$WRAPPER_PROPS" | cut -d= -f2-)
+        GRADLE_VERSION=$(echo "$DIST_URL" | sed -E 's/.*gradle-([0-9]+(\.[0-9]+)*)-.*/\1/')
+
+        if [ -z "$GRADLE_VERSION" ]; then
+          echo "::error::Could not parse a Gradle version out of: $DIST_URL"
+          exit 1
+        fi
+
+        echo "Wrapper jar missing -> generating wrapper for Gradle $GRADLE_VERSION"
+
+        TMP_DIR="$(mktemp -d)"
+        curl -sSLo "$TMP_DIR/gradle.zip" \
+          "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+        curl -sSLo "$TMP_DIR/gradle.zip.sha256" \
+          "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip.sha256"
+        echo "$(cat "$TMP_DIR/gradle.zip.sha256")  $TMP_DIR/gradle.zip" | sha256sum -c -
+        unzip -q "$TMP_DIR/gradle.zip" -d "$TMP_DIR"
+
+        "$TMP_DIR/gradle-${GRADLE_VERSION}/bin/gradle" wrapper \
+          --gradle-version "$GRADLE_VERSION" \
+          --no-daemon
+
+        chmod +x gradlew
+        rm -rf "$TMP_DIR"
+
+        echo "Gradle wrapper ready."
+
+    - name: Configure Gradle for CI
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.gradle
+        {
+          echo "org.gradle.daemon=false"
+          echo "org.gradle.parallel=true"
+          echo "org.gradle.caching=true"
+          echo "org.gradle.configureondemand=false"
+          echo "kotlin.incremental=false"
+        } >> ~/.gradle/gradle.properties
+        echo "Gradle CI defaults applied."
