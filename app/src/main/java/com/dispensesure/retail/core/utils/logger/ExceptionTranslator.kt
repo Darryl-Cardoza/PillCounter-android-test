@@ -19,11 +19,11 @@ import java.net.UnknownHostException
  */
 object ExceptionTranslator {
 
-    fun translate(throwable: Throwable): String = when (throwable) {
+    fun translate(throwable: Throwable): String = when (val t = throwable.unmasked()) {
         is SocketTimeoutException -> "The request timed out while communicating with the server."
         is UnknownHostException -> "Unable to reach the server. Check the network connection."
         is ConnectException -> "Unable to establish a connection with the server."
-        is HttpException -> "The server returned an unexpected response (HTTP ${throwable.code()})."
+        is HttpException -> "The server returned an unexpected response (HTTP ${t.code()})."
         is FileNotFoundException -> "The requested file could not be found."
         is IOException -> "An input/output error occurred."
         is JsonSyntaxException -> "The server response could not be parsed."

@@ -1,13 +1,19 @@
 package com.dispensesure.retail.feature.history.data
 
+import androidx.room.withTransaction
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.BatchDeleted
+import com.dispensesure.retail.core.audit.model.HistoryBulkDeleted
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.AppDatabase
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
+import com.dispensesure.retail.core.room.models.dtos.unsyncedIds
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
-import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -16,9 +22,12 @@ import java.time.ZoneId
 import javax.inject.Inject
 
 class HistoryRepository @Inject constructor(
-    private val dao: PillCountTxnDao,
-    private val batchDao: BatchDao,
-    private val stockTxnDao: StockTxnDao
+    private val dispenseTxnDao: DispenseTxnDao,
+    private val stockBatchDao: StockBatchDao,
+    private val stockTxnDao: StockTxnDao,
+    private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
+    private val appDatabase: AppDatabase,
 ) {
 
     private fun LocalDate.toEpochRange(): Pair<Long, Long> {
@@ -31,13 +40,26 @@ class HistoryRepository @Inject constructor(
     suspend fun deleteTransactionsForDate(
         startDate: LocalDate,
         endDate: LocalDate,
-        isDispense: Boolean?,
         isCompleted: Boolean?,
         userLocalId: Long
     ) {
         val (startStartDate, _) = startDate.toEpochRange()
         val (_, endEndDate) = endDate.toEpochRange()
-        dao.deleteTransactionsByDate(startStartDate, endEndDate, isDispense, isCompleted, userLocalId)
+        // Read with the delete's own filter, so the audit event names exactly the rows removed.
+        val deletedRows =
+            dispenseTxnDao.deleteTransactionsByDateReturningSyncStates(startStartDate, endEndDate, isCompleted, userLocalId)
+        if (deletedRows.isNotEmpty()) {
+            auditLogger.log(
+                HistoryBulkDeleted(
+                    rangeStart = startStartDate,
+                    rangeEnd = endEndDate,
+                    statusFilter = statusFilterName(isCompleted),
+                    count = deletedRows.size,
+                    txnIds = deletedRows.map { it.id },
+                    unsyncedIds = deletedRows.unsyncedIds()
+                )
+            )
+        }
     }
 
     suspend fun deleteBatchesForDateRange(
@@ -50,11 +72,32 @@ class HistoryRepository @Inject constructor(
         val startMillis = startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
         val endMillis = endDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
 
-        val batchIds = batchDao.getBatchIdsByDate(startMillis, endMillis, isCompleted)
-        if (batchIds.isNotEmpty()) {
-            batchDao.softDeleteBatchesByDate(startMillis, endMillis, isCompleted)
-            stockTxnDao.deleteByBatchIds(batchIds)
+        // Read and delete in one transaction so the event names exactly the batches removed.
+        val (batchIds, rowsToDelete) = appDatabase.withTransaction {
+            val ids = stockBatchDao.getBatchIdsByDate(startMillis, endMillis, isCompleted, regionProvider.current)
+            if (ids.isEmpty()) return@withTransaction ids to emptyList()
+            val syncStates = stockBatchDao.getSyncStatesByIds(ids)
+            stockBatchDao.softDeleteBatchesByDate(startMillis, endMillis, isCompleted, regionProvider.current)
+            stockTxnDao.deleteByBatchIds(ids)
+            ids to syncStates
         }
+        if (batchIds.isNotEmpty()) {
+            auditLogger.log(
+                BatchDeleted(
+                    batchIds = batchIds,
+                    rangeStart = startMillis,
+                    rangeEnd = endMillis,
+                    unsyncedIds = rowsToDelete.unsyncedIds()
+                )
+            )
+        }
+    }
+
+    // ALL / COMPLETED / PENDING, matching the History delete filter.
+    private fun statusFilterName(isCompleted: Boolean?): String = when (isCompleted) {
+        null -> "ALL"
+        true -> "COMPLETED"
+        false -> "PENDING"
     }
 
     fun getBatchSummaries(
@@ -66,7 +109,7 @@ class HistoryRepository @Inject constructor(
         val startMillis = startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
         val endMillis = endDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
 
-        return batchDao.getBatchSummaries(startMillis, endMillis).map { dtos ->
+        return stockBatchDao.getBatchSummaries(startMillis, endMillis, regionProvider.current).map { dtos ->
             dtos.map { dto ->
                 BatchSummary(
                     batchId = dto.batchId,
@@ -83,10 +126,8 @@ class HistoryRepository @Inject constructor(
     fun getTransactionsForDateRange(
         startDate: LocalDate,
         endDate: LocalDate,
-        isDispense: Boolean?,
-        status: CountStatus?,
         userLocalId: Long
-    ): Flow<List<TxnWithDrugDto>> {
+    ): Flow<List<DispenseTxnSummary>> {
 
         val zoneId = ZoneId.systemDefault()
 
@@ -101,12 +142,11 @@ class HistoryRepository @Inject constructor(
             .toInstant()
             .toEpochMilli()
 
-        return dao.getTransactionsForDateRange(
+        return dispenseTxnDao.getTransactionsForDateRange(
             startDate = startMillis,
             endDate = endMillis,
             stepType = StepState.TARGET_VERIFICATION,
-            isDispense = isDispense,
-            status = status,
+            status = null,
             userLocalId = userLocalId
         )
     }

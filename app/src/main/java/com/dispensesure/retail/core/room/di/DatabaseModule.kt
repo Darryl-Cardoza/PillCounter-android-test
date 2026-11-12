@@ -4,13 +4,17 @@ import android.content.Context
 import android.util.Base64
 import androidx.room.Room
 import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.AppDatabaseMigrations
+import com.dispensesure.retail.core.analytics.store.AnalyticsCountedDao
+import com.dispensesure.retail.core.analytics.store.DailyAnalyticsDao
+import com.dispensesure.retail.core.room.dao.DekVersionDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.FaceEmbeddingDao
 import com.dispensesure.retail.core.room.dao.FaceProfileDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.security.DatabaseKeyProvider
@@ -38,6 +42,14 @@ object DatabaseModule {
             AppDatabase::class.java,
             DatabaseKeyProvider.DATABASE_NAME
         )
+            // v6 → v7 keeps the data: it only adds the drug region.
+            // v7 → v8 only adds the dek_versions table.
+            .addMigrations(
+                AppDatabaseMigrations.MIGRATION_6_7,
+                AppDatabaseMigrations.MIGRATION_7_8,
+                AppDatabaseMigrations.MIGRATION_8_9,
+                AppDatabaseMigrations.MIGRATION_9_10,
+            )
             // Stock-count normalization (v3 → v4) restructures local tables; existing local
             // rows are disposable (synced to PMS), so recreate rather than migrate.
             .fallbackToDestructiveMigration()
@@ -63,30 +75,30 @@ object DatabaseModule {
     fun provideDrugMasterDao(db: AppDatabase): DrugMasterDao =
         db.drugMasterDao()
 
-    /** Provides the [PillCountTxnDao]. */
+    /** Provides the [DispenseTxnDao]. */
     @Provides
-    fun providePillCountTxnDao(db: AppDatabase): PillCountTxnDao =
-        db.pillCountTxnDao()
+    fun provideDispenseTxnDao(db: AppDatabase): DispenseTxnDao =
+        db.dispenseTxnDao()
 
-    /** Provides the [PillCountTxnDetailsDao]. */
+    /** Provides the [DispenseCountDao]. */
     @Provides
-    fun providePillCountTxnDetailsDao(db: AppDatabase): PillCountTxnDetailsDao =
-        db.pillCountTxnDetailsDao()
+    fun provideDispenseCountDao(db: AppDatabase): DispenseCountDao =
+        db.dispenseCountDao()
 
-    /** Provides the [BatchDao]. */
+    /** Provides the [StockBatchDao]. */
     @Provides
-    fun provideBatchDao(db: AppDatabase): BatchDao =
-        db.batchDao()
+    fun provideStockBatchDao(db: AppDatabase): StockBatchDao =
+        db.stockBatchDao()
 
     /** Provides the [StockTxnDao]. */
     @Provides
     fun provideStockTxnDao(db: AppDatabase): StockTxnDao =
         db.stockTxnDao()
 
-    /** Provides the [BottleInfoDao]. */
+    /** Provides the [StockBottleInfoDao]. */
     @Provides
-    fun provideBottleInfoDao(db: AppDatabase): BottleInfoDao =
-        db.bottleInfoDao()
+    fun provideStockBottleInfoDao(db: AppDatabase): StockBottleInfoDao =
+        db.stockBottleInfoDao()
 
     /** Provides the [FaceProfileDao]. */
     @Provides
@@ -95,4 +107,16 @@ object DatabaseModule {
     /** Provides the [FaceEmbeddingDao]. */
     @Provides
     fun provideFaceEmbeddingDao(db: AppDatabase): FaceEmbeddingDao = db.faceEmbeddingDao()
+
+    /** Provides the [DekVersionDao]. */
+    @Provides
+    fun provideDekVersionDao(db: AppDatabase): DekVersionDao = db.dekVersionDao()
+
+    /** Provides the [DailyAnalyticsDao]. */
+    @Provides
+    fun provideDailyAnalyticsDao(db: AppDatabase): DailyAnalyticsDao = db.dailyAnalyticsDao()
+
+    /** Provides the [AnalyticsCountedDao]. */
+    @Provides
+    fun provideAnalyticsCountedDao(db: AppDatabase): AnalyticsCountedDao = db.analyticsCountedDao()
 }

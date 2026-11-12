@@ -5,16 +5,16 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
-import com.dispensesure.retail.core.room.di.PillCountTxnConverters
+import com.dispensesure.retail.core.room.di.CountStatusConverters
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 
 /**
  * Stock/inventory transaction header — one row per drug counted inside a batch.
  *
- * Part of the normalized stock model: `batch` → [StockTxnEntity] → [BottleInfoEntity].
- * A [StockTxnEntity] groups all the physical bottle/loose lines ([BottleInfoEntity])
- * counted for a single drug within one [BatchEntity]. Dispense transactions stay in
- * [PillCountTxnEntity]; stock transactions never touch that table.
+ * Part of the normalized stock model: `stock_batch` → [StockTxnEntity] → [StockBottleInfoEntity].
+ * A [StockTxnEntity] groups all the physical bottle/loose lines ([StockBottleInfoEntity])
+ * counted for a single drug within one [StockBatchEntity]. Dispense transactions stay in
+ * [DispenseTxnEntity]; stock transactions never touch that table.
  *
  * @property txnId     Auto-generated primary key.
  * @property drugId    FK to [DrugMasterEntity.drugId]. Null if the drug is deleted.
@@ -23,7 +23,7 @@ import com.dispensesure.retail.core.room.models.enums.CountStatus
  * @property createdAt Creation timestamp (epoch millis).
  * @property updatedAt Last update timestamp (epoch millis).
  * @property bucketId  Optional container/bucket label.
- * @property batchId   FK to [BatchEntity.batchId]. Null if the batch is deleted.
+ * @property batchId   FK to [StockBatchEntity.batchId]. Null if the batch is deleted.
  */
 @Entity(
     tableName = "stock_txn",
@@ -35,7 +35,7 @@ import com.dispensesure.retail.core.room.models.enums.CountStatus
             onDelete = ForeignKey.SET_NULL
         ),
         ForeignKey(
-            entity = BatchEntity::class,
+            entity = StockBatchEntity::class,
             parentColumns = ["batchId"],
             childColumns = ["batchId"],
             onDelete = ForeignKey.SET_NULL
@@ -46,7 +46,7 @@ import com.dispensesure.retail.core.room.models.enums.CountStatus
         Index(value = ["batchId"], name = "idx_stock_txn_batchId"),
     ]
 )
-@TypeConverters(PillCountTxnConverters::class)
+@TypeConverters(CountStatusConverters::class)
 data class StockTxnEntity(
     @PrimaryKey(autoGenerate = true)
     val txnId: Long = 0L,

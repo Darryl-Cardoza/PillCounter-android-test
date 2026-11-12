@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.utils.common
 
 import androidx.compose.ui.text.AnnotatedString
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.activeOtpIndex
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.sanitizeOtpInput
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.DEFAULT_BOOST_ON_PHONE
@@ -113,17 +114,17 @@ class UserInterfaceUtilsTest {
     @Test
     fun toFormattedDate_null_returnsDash() {
         val value: Long? = null
-        assertEquals("-", value.toFormattedDate())
+        assertEquals("-", value.toFormattedDate(Region.US))
     }
 
     @Test
     fun toFormattedDate_zero_returnsDash() {
-        assertEquals("-", 0L.toFormattedDate())
+        assertEquals("-", 0L.toFormattedDate(Region.US))
     }
 
     @Test
     fun toFormattedDate_negative_returnsDash() {
-        assertEquals("-", (-5L).toFormattedDate())
+        assertEquals("-", (-5L).toFormattedDate(Region.US))
     }
 
     @Test
@@ -132,7 +133,7 @@ class UserInterfaceUtilsTest {
         try {
             TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
             // 1609459200000 = 01 Jan 2021 00:00 UTC; AM/PM case is locale-dependent.
-            assertEquals("01/01/21 12:00 am", 1609459200000L.toFormattedDate().lowercase())
+            assertEquals("01/01/21 12:00 am", 1609459200000L.toFormattedDate(Region.US).lowercase())
         } finally {
             TimeZone.setDefault(tz)
         }
@@ -148,7 +149,22 @@ class UserInterfaceUtilsTest {
                 clear()
                 set(2026, Calendar.OCTOBER, 6, 12, 0)
             }.timeInMillis
-            assertEquals("10/06/26 12:00 pm", epoch.toFormattedDate().lowercase())
+            assertEquals("10/06/26 12:00 pm", epoch.toFormattedDate(Region.US).lowercase())
+        } finally {
+            TimeZone.setDefault(tz)
+        }
+    }
+
+    @Test
+    fun toFormattedDate_canada_isIsoDateFirst() {
+        val tz = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+            val epoch = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                clear()
+                set(2026, Calendar.OCTOBER, 6, 12, 0)
+            }.timeInMillis
+            assertEquals("2026-10-06 12:00 pm", epoch.toFormattedDate(Region.CA).lowercase())
         } finally {
             TimeZone.setDefault(tz)
         }

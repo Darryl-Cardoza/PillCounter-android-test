@@ -46,13 +46,15 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.regionStringResource
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toDateString
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toTimeString
-import com.dispensesure.retail.feature.batchCount.presentation.compose.BatchNdcCard
-import com.dispensesure.retail.feature.batchCount.presentation.viewmodel.BatchViewModel
-import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
+import com.dispensesure.retail.feature.stockCount.batch.presentation.compose.BatchNdcCard
+import com.dispensesure.retail.feature.stockCount.batch.presentation.viewmodel.StockBatchDetailViewModel
+import com.dispensesure.retail.core.utils.compose.HeadlineBar
 import com.dispensesure.retail.feature.history.presentation.compose.BatchStockCountPdfExporter
 import com.dispensesure.retail.ui.theme.AppTheme
 import java.io.File
@@ -60,7 +62,7 @@ import java.io.File
 @Composable
 fun BatchHistoryDetailScreen(
     navController: NavController,
-    viewModel: BatchViewModel = hiltViewModel()
+    viewModel: StockBatchDetailViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val displayBatchId by viewModel.displayBatchId.collectAsStateWithLifecycle()
@@ -68,7 +70,8 @@ fun BatchHistoryDetailScreen(
     val uniqueNdcCount by viewModel.uniqueNdcCount.collectAsStateWithLifecycle()
     val drugGroups by viewModel.drugGroups.collectAsStateWithLifecycle()
 
-    val pdfExporter = remember { BatchStockCountPdfExporter(context) }
+    val loggedInRegion = LocalRegion.current
+    val pdfExporter = remember(loggedInRegion) { BatchStockCountPdfExporter(context, loggedInRegion) }
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var expandedDrugId by remember { mutableStateOf<Long?>(null) }
@@ -143,7 +146,7 @@ fun BatchHistoryDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = stringResource(R.string.total_ndc_count),
+                                text = regionStringResource(R.string.total_ndc_count),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = AppTheme.extendedColors.textColor
@@ -171,7 +174,7 @@ fun BatchHistoryDetailScreen(
                                 )
                                 Text(
                                     text =
-                                        "${batchEntity!!.endDateTime!!.toDateString()} ${batchEntity!!.endDateTime!!.toTimeString()}",
+                                        "${batchEntity!!.endDateTime!!.toDateString(LocalRegion.current.numericDatePattern)} ${batchEntity!!.endDateTime!!.toTimeString()}",
                                     fontSize = 14.sp,
                                     color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f)
                                 )

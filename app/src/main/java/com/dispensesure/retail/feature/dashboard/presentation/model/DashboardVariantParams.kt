@@ -2,6 +2,7 @@ package com.dispensesure.retail.feature.dashboard.presentation.model
 
 import androidx.compose.runtime.Immutable
 import androidx.navigation.NavController
+import com.dispensesure.retail.core.tourguide.TourGuideState
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardUiState
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
@@ -40,7 +41,7 @@ data class DashboardVariantParams(
     val onRecentBatchClick: (batchId: Long) -> Unit,
     /** Tap on a partial dispense row in Today's Queue — resumes the DispenseFlow to continue counting. */
     val onQueueDispenseClick: (txnId: Long) -> Unit,
-    /** Tap on an in-progress inventory batch in Today's Queue — resumes the new InventoryScan. */
+    /** Tap on an in-progress inventory batch in Today's Queue — resumes the new StockCount screen. */
     val onQueueInventoryClick: (batchId: Long) -> Unit,
     /** KPI cards not available in standalone mode (Disp. High Priority, Inv. Cycle Count). */
     val disabledKpiFilters: Set<KpiFilter>,
@@ -48,4 +49,10 @@ data class DashboardVariantParams(
     val onDisabledKpiFilterTapped: (KpiFilter) -> Unit,
     /** Pager drew this tab's page — start loading it. */
     val onTabVisible: (DashboardTab) -> Unit,
+    /**
+     * Hoisted at [com.dispensesure.retail.feature.dashboard.presentation.DashboardScreen] so it
+     * survives the dispatcher swapping between variants — e.g. a portrait/landscape rotation —
+     * instead of restarting the tour from step 1 each time.
+     */
+    val tourState: TourGuideState,
 )

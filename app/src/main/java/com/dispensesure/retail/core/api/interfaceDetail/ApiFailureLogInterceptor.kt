@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.api.interfaceDetail
 
 import com.dispensesure.retail.core.utils.constants.URLConstant
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.ENDPOINT_FAULT_CODES
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -12,8 +13,8 @@ import java.net.SocketTimeoutException
  * Central ERROR log for failed API requests: any non-2xx response or [IOException] on the main
  * client. Logs method + path only (no query string, no bodies) to keep PHI/device keys out of logs.
  *
- * Levels: 5xx and non-offline IO failures are ERROR; 4xx and offline failures (no host/connection)
- * are WARN, being mostly expected (wrong OTP, no network).
+ * Levels: 5xx, wrong-endpoint 4xx (403, 404, 405, 410) and non-offline IO failures are ERROR; other
+ * 4xx and offline failures (no host/connection) are WARN, being mostly expected (wrong OTP, no network).
  *
  * Skipped on purpose: synthetic offline 599 (the health gate already logs it), 401 (the
  * authenticator logs the refresh outcome), cancelled calls, `/mobile/logs` itself, and `/health`
@@ -44,7 +45,7 @@ class ApiFailureLogInterceptor : Interceptor {
 
         if (!skip && !response.isSuccessful && response.code != 401 && response.code != 599) {
             val message = "${request.method} $path -> HTTP ${response.code}"
-            if (response.code >= 500) logger.e(message, event = LogEvent.NETWORK_ERROR)
+            if (response.code >= 500 || response.code in ENDPOINT_FAULT_CODES) logger.e(message, event = LogEvent.NETWORK_ERROR)
             else logger.w(message, event = LogEvent.NETWORK_ERROR)
         }
         return response

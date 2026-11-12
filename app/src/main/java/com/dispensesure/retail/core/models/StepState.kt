@@ -3,7 +3,6 @@ package com.dispensesure.retail.core.models
 import com.dispensesure.retail.R
 
 enum class StepState {
-    STOCK_COUNT,
     RX_LABEL,
     SCAN,
     CONTAINER_INITIATE,
@@ -15,7 +14,7 @@ enum class StepState {
 
 /**
  * The only step whose pill rows are the dispensed quantity. The `getPillCountForStep` query
- * and HL7MessageBuilder's filter both read this so they cannot drift apart.
+ * and DispenseMessageBuilder's filter both read this so they cannot drift apart.
  */
 val DISPENSED_QUANTITY_STEP = StepState.TARGET_VERIFICATION
 
@@ -32,7 +31,6 @@ fun StepState.imageLabel(): String {
         StepState.VIAL -> "dispense_vial"
         StepState.CONTAINER_PENDING -> "after_dispense_stock_bottle_count"
         StepState.RX_LABEL -> name.lowercase()
-        StepState.STOCK_COUNT -> name.lowercase()
     }
 }
 
@@ -51,7 +49,6 @@ fun StepState.icon(): Int {
         StepState.VIAL -> R.drawable.vial_capture
         StepState.CONTAINER_PENDING -> R.drawable.count_pills_container
         StepState.RX_LABEL -> -1
-        StepState.STOCK_COUNT -> -1
     }
 }
 
@@ -64,7 +61,6 @@ fun StepState.titleRes(): Int {
         StepState.VIAL -> R.string.capture_photo_of_counted_pills_vial
         StepState.CONTAINER_PENDING -> R.string.count_pills_from_the_container
         StepState.RX_LABEL -> R.string.scan_rx_label
-        StepState.STOCK_COUNT -> R.string.scan_stock_bottle
 
     }
 }

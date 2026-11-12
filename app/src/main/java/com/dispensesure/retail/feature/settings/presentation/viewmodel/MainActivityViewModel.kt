@@ -3,17 +3,28 @@ package com.dispensesure.retail.feature.settings.presentation.viewmodel
 import android.content.SharedPreferences
 import android.os.Build
 import androidx.lifecycle.ViewModel
+import androidx.room.withTransaction
 import com.dispensesure.retail.R
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DataPurged
+import com.dispensesure.retail.core.audit.model.LocalDataCleared
+import com.dispensesure.retail.core.audit.model.PurgeReason
+import com.dispensesure.retail.core.audit.model.SecuritySetting
+import com.dispensesure.retail.core.audit.model.SettingChanged
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.hl7.service.HL7Config
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.models.ApiResponse
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.room.AppDatabase
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.dtos.unsyncedIds
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.feature.settings.domain.data.IApplicationSettingsRepository
 import com.dispensesure.retail.feature.settings.domain.data.IApplicationSettingsViewModel
 import com.dispensesure.retail.feature.settings.domain.model.ApplicationSettingsUiState
@@ -27,6 +38,7 @@ import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
+import com.dispensesure.retail.core.tourguide.TutorialDataCleaner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
@@ -60,17 +72,27 @@ import javax.inject.Inject
 class MainActivityViewModel @Inject constructor(
     private val repository: IApplicationSettingsRepository,
     private val preferenceHelper: PreferenceHelper,
-    private val txnDao: PillCountTxnDao,
-    private val batchDao: BatchDao,
+    private val dispenseTxnDao: DispenseTxnDao,
+    private val stockBatchDao: StockBatchDao,
     private val stockTxnDao: StockTxnDao,
-    private val bottleInfoDao: BottleInfoDao,
+    private val stockBottleInfoDao: StockBottleInfoDao,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val hl7EventHandler: Hl7EventHandler,
+    private val tutorialDataCleaner: TutorialDataCleaner,
     private val sessionHealthController: SessionHealthController,
     private val ioDispatcher: CoroutineDispatcher,
+    private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
+    private val appDatabase: AppDatabase,
 ) : ViewModel(), IApplicationSettingsViewModel {
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
+
+    suspend fun purgeTutorialData(force: Boolean = false) = tutorialDataCleaner.purge(force)
+
+    fun purgeTutorialDataAsync() {
+        viewModelScope.launch(ioDispatcher) { tutorialDataCleaner.purge() }
+    }
 
     // The full config identity HL7 last started with, so a later settings/auth-me fetch
     // that returns different values (e.g. HL7 was preloaded from stale cached prefs on a
@@ -233,6 +255,9 @@ class MainActivityViewModel @Inject constructor(
     val faceLockTimeoutMinutes: StateFlow<Int> = _faceLockTimeoutMinutes
 
     init {
+        // A tour killed mid-run leaves tutorial rows behind; drop them before HL7 can see them.
+        viewModelScope.launch(ioDispatcher) { tutorialDataCleaner.purge() }
+
         // Load cached/fallback theme instantly
         loadCachedOrFallbackTheme()
 
@@ -421,6 +446,7 @@ class MainActivityViewModel @Inject constructor(
     }
 
     fun updateHistoryOption(optionDays: Int) {
+        logSettingChange(SecuritySetting.HISTORY_RETENTION_DAYS, _selectedHistoryOption.value, optionDays)
         _selectedHistoryOption.value = optionDays
         preferenceHelper.saveHistoryRetention(optionDays)
 
@@ -442,38 +468,56 @@ class MainActivityViewModel @Inject constructor(
             logger.d("Retention days: $optionDays, cutoff=${Date(cutoff)}")
 
             // Get all transactions older than cutoff regardless of isDeleted
-            val oldTransactions = txnDao.getTransactionsBefore(cutoff)
+            val oldTransactions = dispenseTxnDao.getTransactionsBefore(cutoff)
             logger.d("Found ${oldTransactions.size} transactions to delete")
+            // Only rows actually deleted go on DATA_PURGED, even if a later one fails.
+            val purgedTransactions = mutableListOf<DispenseTxnEntity>()
 
-            oldTransactions.forEach { txn ->
-                val filesToDelete = mutableListOf<String>()
+            try {
+                oldTransactions.forEach { txn ->
+                    val filesToDelete = mutableListOf<String>()
 
-                // Collect barcode images
-                BottleInfoJson.decode(txn.bottleInfoListJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
+                    // Collect barcode images
+                    DispenseBottleJson.decode(txn.bottlesJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
 
-                // Collect details images
-                val detailImages = txnDao.getTransactionDetailsImages(txn.txnId)
-                filesToDelete.addAll(detailImages)
+                    // Collect details images
+                    val detailImages = dispenseTxnDao.getTransactionDetailsImages(txn.txnId)
+                    filesToDelete.addAll(detailImages)
 
-                // Delete transaction (assumes cascade deletes details)
-                txnDao.deleteTransaction(txn.txnId)
+                    // Delete transaction (assumes cascade deletes details)
+                    if (dispenseTxnDao.deleteTransaction(txn.txnId) > 0) purgedTransactions.add(txn)
 
-                // Delete files from storage
-                filesToDelete.forEach { path ->
-                    val file = File(path)
-                    if (file.exists()) {
-                        if (file.delete()) {
-                            logger.d("Deleted file: $path")
-                        } else {
-                            logger.w("Failed to delete file: $path")
+                    // Delete files from storage
+                    filesToDelete.forEach { path ->
+                        val file = File(path)
+                        if (file.exists()) {
+                            if (file.delete()) {
+                                logger.d("Deleted file: $path")
+                            } else {
+                                logger.w("Failed to delete file: $path")
+                            }
                         }
                     }
                 }
+            } finally {
+                logRetentionPurge(purgedTransactions)
             }
 
         } catch (e: Exception) {
             logger.e("Error deleting old transactions", e, event = LogEvent.TRANSACTION_PURGE_FAILED)
         }
+    }
+
+    private fun logRetentionPurge(purgedTransactions: List<DispenseTxnEntity>) {
+        if (purgedTransactions.isEmpty()) return
+        auditLogger.log(
+            DataPurged(
+                reason = PurgeReason.RETENTION_PERIOD,
+                count = purgedTransactions.size,
+                txnIds = purgedTransactions.map { it.txnId },
+                unsyncedIds = purgedTransactions.filter { it.isSynced != true }.map { it.txnId }
+            )
+        )
     }
 
 
@@ -670,6 +714,7 @@ class MainActivityViewModel @Inject constructor(
     }
 
     fun toggleRequireBackCountOnOff(newValue: Boolean) {
+        logSettingChange(SecuritySetting.REQUIRE_BACK_COUNT, _isRequireBackCountEnable.value, newValue)
         preferenceHelper.setRequireBackCountEnabled(newValue)
         _isRequireBackCountEnable.value = newValue
     }
@@ -682,10 +727,21 @@ class MainActivityViewModel @Inject constructor(
     fun deleteAllTransaction() {
         viewModelScope.launch {
             try {
-                txnDao.deleteAllTransactions()
-                bottleInfoDao.deleteAll()
-                stockTxnDao.deleteAll()
-                batchDao.deleteAll()
+                // One transaction, so the ids read are exactly the rows the deletes remove.
+                val cleared = appDatabase.withTransaction {
+                    // Read what is about to go, for LOCAL_DATA_CLEARED.
+                    val unsyncedDispenseIds = dispenseTxnDao.getAllSyncStates().unsyncedIds()
+                    val unsyncedBatchIds = stockBatchDao.getAllSyncStates().unsyncedIds()
+                    // Each delete returns its row count; the deletes run in this order.
+                    val rowsDeleted = mapOf(
+                        "dispense_txn" to dispenseTxnDao.deleteAllTransactions(),
+                        "stock_bottle_info" to stockBottleInfoDao.deleteAll(),
+                        "stock_txn" to stockTxnDao.deleteAll(),
+                        "stock_batch" to stockBatchDao.deleteAll()
+                    )
+                    LocalDataCleared(rowsDeleted, unsyncedDispenseIds, unsyncedBatchIds)
+                }
+                auditLogger.log(cleared)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -696,22 +752,28 @@ class MainActivityViewModel @Inject constructor(
 
     /** Replaces the controlled-drug schedules that require a double count. */
     fun updateSchedules(codes: Set<ScheduleCode>) {
+        logSettingChange(
+            SecuritySetting.DOUBLE_COUNT_SCHEDULES,
+            _selectedSchedules.value.scheduleNames(),
+            codes.scheduleNames()
+        )
         _selectedSchedules.value = codes
-        preferenceHelper.setControlDrugTypes(codes.map { it.name }.toSet())
+        preferenceHelper.setControlDrugTypes(regionProvider.current, codes.map { it.name }.toSet())
     }
 
     private fun loadSchedulesFromPrefs(): Set<ScheduleCode> {
-        if (!preferenceHelper.isControlDrugTypesInitialized()) {
+        val loggedInRegion = regionProvider.current
+        val regionSchedules = ScheduleCode.forRegion(loggedInRegion)
+        if (!preferenceHelper.isControlDrugTypesInitialized(loggedInRegion)) {
             // Never explicitly set — first launch, seed with all schedules selected
-            val defaults = ScheduleCode.entries.toSet()
-            preferenceHelper.setControlDrugTypes(defaults.map { it.name }.toSet())
-            return defaults
+            preferenceHelper.setControlDrugTypes(loggedInRegion, regionSchedules.map { it.name }.toSet())
+            return regionSchedules.toSet()
         }
 
         // User has explicitly saved a selection at least once; empty set is a valid choice
-        return preferenceHelper.getControlDrugTypes().mapNotNull {
-            runCatching { ScheduleCode.valueOf(it) }.getOrNull()
-        }.toSet()
+        return preferenceHelper.getControlDrugTypes(loggedInRegion)
+            .mapNotNull { savedName -> regionSchedules.firstOrNull { it.name == savedName } }
+            .toSet()
     }
 
 
@@ -721,20 +783,32 @@ class MainActivityViewModel @Inject constructor(
     }
 
     fun toggleHazardousDrug(newValue: Boolean) {
+        logSettingChange(SecuritySetting.HAZARDOUS_DETECTION, _isHazardousDrug.value, newValue)
         preferenceHelper.setHazardousDrugEnabled(newValue)
         _isHazardousDrug.value = newValue
     }
 
     fun clearTrayColorLists() {
+        // Logged as "set → cleared"; nothing to log when no colour was stored.
+        val hadTrayColor = preferenceHelper.getHazardousTrayColor() != null
         preferenceHelper.clearAllTrayColorLists()
+        if (hadTrayColor) logSettingChange(SecuritySetting.TRAY_COLORS, "set", "cleared")
         logger.i("Tray color classification lists cleared from Settings")
     }
 
     /** Updates the idle-lock timeout shown/used everywhere ([faceLockTimeoutMinutes]). */
     fun updateFaceLockTimeoutMinutes(minutes: Int) {
+        logSettingChange(SecuritySetting.FACE_LOCK_TIMEOUT_MINUTES, _faceLockTimeoutMinutes.value, minutes)
         preferenceHelper.saveFaceLockTimeoutMinutes(minutes)
         _faceLockTimeoutMinutes.value = minutes
     }
+
+    // One SETTING_CHANGED per real change; re-selecting the same value logs nothing.
+    private fun logSettingChange(setting: SecuritySetting, old: Any?, new: Any?) {
+        SettingChanged.ifChanged(setting, old, new)?.let(auditLogger::log)
+    }
+
+    private fun Set<ScheduleCode>.scheduleNames(): String = map { it.name }.sorted().joinToString(",")
 
 }
 

@@ -54,8 +54,8 @@ class PillAnalyzerTest {
             performanceLogger = performanceLogger,
             shouldRunGloveDetection = { true },
             shouldDetectTrayColor = { false },
-            onResult = { pillCount, pills, trayRects, gloveDetections, debugBitmap, transformMatrix, w, h ->
-                onResultCalls.add(listOf(pillCount, pills, trayRects, gloveDetections, debugBitmap, transformMatrix, w, h))
+            onResult = { pillCount, pills, trayRects, gloveDetections, debugBitmap, w, h ->
+                onResultCalls.add(listOf(pillCount, pills, trayRects, gloveDetections, debugBitmap, w, h))
             }
         )
     }

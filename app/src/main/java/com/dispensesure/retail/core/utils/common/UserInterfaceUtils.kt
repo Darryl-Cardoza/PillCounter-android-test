@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -91,6 +92,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.toColorInt
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.compose.withReplacedText
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -197,11 +199,11 @@ object UserInterfaceUtils {
 
     // ───────────────────────────── Date/Time Formatting ─────────────────────────────
 
-    /** Formats a nullable epoch millis timestamp into `MM/dd/yy hh:mm a` format. */
-    fun Long?.toFormattedDate(): String {
+    /** Formats a nullable epoch millis timestamp in [region]'s date-time format (US `MM/dd/yy hh:mm a`). */
+    fun Long?.toFormattedDate(region: Region): String {
         return if (this != null && this > 0) {
             try {
-                val formatter = DateTimeFormatter.ofPattern(DateFormats.MM_DD_YY_HH_MM_A)
+                val formatter = DateTimeFormatter.ofPattern(region.numericDateTimePattern)
                     .withLocale(Locale.getDefault())
                     .withZone(ZoneId.systemDefault())
                 formatter.format(Instant.ofEpochMilli(this))
@@ -436,7 +438,6 @@ object UserInterfaceUtils {
         distanceBetweenOptions: Dp = 8.dp,
         confirmText: String = stringResource(R.string.ok),
     ) {
-        val dimens = AppTheme.dimens
         var currentSelection by remember { mutableStateOf(selectedIndex) }
 
         AlertDialog(
@@ -446,64 +447,114 @@ object UserInterfaceUtils {
             shape = RoundedCornerShape(12.dp),
             containerColor = AppTheme.extendedColors.primaryBackground,
             text = {
-                Column {
-                    Text(
-                        text = title,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = AppTheme.extendedColors.textColor,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    options.forEachIndexed { index, option ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { currentSelection = index }
-                                .padding(vertical = distanceBetweenOptions)
-                        ) {
-                            RadioButton(
-                                selected = currentSelection == index,
-                                onClick = { currentSelection = index },
-                                colors = RadioButtonDefaults.colors(
-                                    selectedColor = MaterialTheme.colorScheme.primary
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(dimens.small))
-                            Text(
-                                text = option,
-                                fontSize = 16.sp,
-                                color = AppTheme.extendedColors.textColor
-                            )
-                        }
-                    }
-                }
+                SingleSelectOptions(title, options, currentSelection, distanceBetweenOptions) { currentSelection = it }
             },
             confirmButton = {
+                SingleSelectButtons(confirmText, currentSelection, onCancel, onOk)
+            }
+        )
+    }
+
+    /** [CommonSingleSelectDialog]'s card, hosted directly in the tour's dialog window. */
+    @Composable
+    fun SingleSelectDialogContent(
+        title: String,
+        options: List<String>,
+        selectedIndex: Int? = null,
+        onCancel: () -> Unit,
+        onOk: (Int) -> Unit,
+        distanceBetweenOptions: Dp = 8.dp,
+        confirmText: String = stringResource(R.string.ok),
+        modifier: Modifier = Modifier,
+    ) {
+        var currentSelection by remember { mutableStateOf(selectedIndex) }
+
+        Surface(
+            modifier = modifier.widthIn(max = 400.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = AppTheme.extendedColors.primaryBackground,
+            tonalElevation = 6.dp,
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                SingleSelectOptions(title, options, currentSelection, distanceBetweenOptions) { currentSelection = it }
+                Spacer(modifier = Modifier.height(24.dp))
+                SingleSelectButtons(confirmText, currentSelection, onCancel, onOk)
+            }
+        }
+    }
+
+    @Composable
+    private fun SingleSelectOptions(
+        title: String,
+        options: List<String>,
+        selected: Int?,
+        distanceBetweenOptions: Dp,
+        onSelect: (Int) -> Unit,
+    ) {
+        Column {
+            Text(
+                text = title,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppTheme.extendedColors.textColor,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            options.forEachIndexed { index, option ->
                 Row(
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth()
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(index) }
+                        .padding(vertical = distanceBetweenOptions)
                 ) {
-                    HollowButton(
-                        text = stringResource(R.string.cancel).uppercase(),
-                        onClick = onCancel,
-                        color = MaterialTheme.colorScheme.primary,
-                        fixedWidth = false,
-                        modifier = Modifier.width(dimens.dialogButtonWidth)
+                    RadioButton(
+                        selected = selected == index,
+                        onClick = { onSelect(index) },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = MaterialTheme.colorScheme.primary
+                        )
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    ActionButtonPrimary(
-                        text = confirmText.uppercase(),
-                        onClick = { currentSelection?.let { onOk(it) } },
-                        // Disabled until the user makes a deliberate selection.
-                        // Callers that want a preselected option pass selectedIndex.
-                        enabled = currentSelection != null,
-                        fixedWidth = false,
-                        modifier = Modifier.width(dimens.dialogButtonWidth)
+                    Spacer(modifier = Modifier.width(AppTheme.dimens.small))
+                    Text(
+                        text = option,
+                        fontSize = 16.sp,
+                        color = AppTheme.extendedColors.textColor
                     )
                 }
             }
-        )
+        }
+    }
+
+    @Composable
+    private fun SingleSelectButtons(
+        confirmText: String,
+        selected: Int?,
+        onCancel: () -> Unit,
+        onOk: (Int) -> Unit,
+    ) {
+        val dimens = AppTheme.dimens
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            HollowButton(
+                text = stringResource(R.string.cancel).uppercase(),
+                onClick = onCancel,
+                color = MaterialTheme.colorScheme.primary,
+                fixedWidth = false,
+                modifier = Modifier.width(dimens.dialogButtonWidth)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            ActionButtonPrimary(
+                text = confirmText.uppercase(),
+                onClick = { selected?.let { onOk(it) } },
+                // Disabled until the user makes a deliberate selection.
+                // Callers that want a preselected option pass selectedIndex.
+                enabled = selected != null,
+                fixedWidth = false,
+                modifier = Modifier.width(dimens.dialogButtonWidth)
+            )
+        }
     }
 
     /** Displays a multi-selection dialog with checkboxes and confirm/cancel actions. */

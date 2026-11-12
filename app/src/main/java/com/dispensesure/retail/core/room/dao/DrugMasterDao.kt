@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 
 /**
@@ -13,8 +14,8 @@ import com.dispensesure.retail.core.room.models.DrugMasterEntity
  *
  * ### Design Principles
  * - **Stable Primary Key**: `drugId` (PK) is the only FK exposed to other tables
- *   (e.g., [com.dispensesure.retail.core.room.models.PillCountTxnEntity]).
- * - **Preserve IDs**: All upserts ensure the same `drugId` is reused if an NDC already exists.
+ *   (e.g., [com.dispensesure.retail.core.room.models.DispenseTxnEntity]).
+ * - **Preserve IDs**: All upserts ensure the same `drugId` is reused if an NDC already exists in that region.
  * - **Safe Defaults**:
  *   - Avoid `OnConflictStrategy.REPLACE` (can reset PKs and break FKs).
  *   - Prefer `IGNORE + update in place`.
@@ -58,7 +59,7 @@ interface DrugMasterDao {
     /**
      * Safely upserts a single [DrugMasterEntity].
      *
-     * - If a row with the same NDC exists:
+     * - If a row with the same NDC and region exists:
      *   - Reuses its stable [drugId].
      *   - Updates the row in place with new values.
      * - If no match is found:
@@ -76,7 +77,7 @@ interface DrugMasterDao {
         // and update path is covered.
         val normalizedDrug =
             if (drug.drugType.isNullOrEmpty()) drug.copy(drugType = null) else drug
-        val existingDrug = getDrugByNdc(normalizedDrug.ndc)
+        val existingDrug = getDrugByNdc(normalizedDrug.ndc, normalizedDrug.region)
         return if (existingDrug != null) {
             val finalImagePath = normalizedDrug.drugImagePath ?: existingDrug.drugImagePath
             update(
@@ -90,7 +91,7 @@ interface DrugMasterDao {
             val newId = insertIgnore(normalizedDrug)
             if (newId == -1L) {
                 // Possible race condition: fetch again
-                getDrugIdByNdc(drug.ndc)
+                getDrugIdByNdc(drug.ndc, drug.region)
                     ?: throw IllegalStateException("Drug insert failed unexpectedly")
             } else {
                 newId
@@ -100,32 +101,39 @@ interface DrugMasterDao {
 
     /* ───────────────────────────── Queries ────────────────────────────── */
 
-    /**
-     * Retrieves a drug by its National Drug Code (NDC).
-     *
-     * @param ndc National Drug Code string.
-     * @return The matching [DrugMasterEntity], or `null` if not found.
-     */
-    @Query("SELECT * FROM drug_master WHERE ndc = :ndc LIMIT 1")
-    suspend fun getDrugByNdc(ndc: String): DrugMasterEntity?
+    /** Deletes the drug with this NDC (used to remove the tutorial demo drug). */
+    @Query("DELETE FROM drug_master WHERE ndc = :ndc")
+    suspend fun deleteByNdc(ndc: String)
 
     /**
-     * Retrieves a drug by its GTIN.
+     * Retrieves a drug by its National Drug Code (NDC) or DIN, within one region.
+     *
+     * @param ndc National Drug Code string.
+     * @param region Region of the logged-in user.
+     * @return The matching [DrugMasterEntity], or `null` if not found.
+     */
+    @Query("SELECT * FROM drug_master WHERE ndc = :ndc AND region = :region LIMIT 1")
+    suspend fun getDrugByNdc(ndc: String, region: Region): DrugMasterEntity?
+
+    /**
+     * Retrieves a drug by its GTIN, within one region.
      *
      * @param gtin Global Trade Item Number.
+     * @param region Region of the logged-in user.
      * @return The matching [DrugMasterEntity], or `null` if not found.
      */
-    @Query("SELECT * FROM drug_master WHERE TRIM(gtin) = TRIM(:gtin) LIMIT 1")
-    suspend fun getDrugByGtin(gtin: String): DrugMasterEntity?
+    @Query("SELECT * FROM drug_master WHERE TRIM(gtin) = TRIM(:gtin) AND region = :region LIMIT 1")
+    suspend fun getDrugByGtin(gtin: String, region: Region): DrugMasterEntity?
 
     /**
-     * Retrieves only the primary key ([drugId]) for a given NDC.
+     * Retrieves only the primary key ([drugId]) for a given NDC, within one region.
      *
      * @param ndc National Drug Code string.
+     * @param region Region of the logged-in user.
      * @return [drugId] if found, or `null` if not present.
      */
-    @Query("SELECT drugId FROM drug_master WHERE ndc = :ndc LIMIT 1")
-    suspend fun getDrugIdByNdc(ndc: String): Long?
+    @Query("SELECT drugId FROM drug_master WHERE ndc = :ndc AND region = :region LIMIT 1")
+    suspend fun getDrugIdByNdc(ndc: String, region: Region): Long?
 
 
     @Query("SELECT * FROM drug_master WHERE drugId = :drugId LIMIT 1")

@@ -2,8 +2,8 @@ package com.dispensesure.retail.feature.history.presentation.compose
 
 import android.content.Context
 import android.graphics.Canvas
-import com.dispensesure.retail.core.utils.logger.AppLogger
-import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.wording
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -11,14 +11,17 @@ import android.graphics.pdf.PdfDocument
 import android.text.TextUtils
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.DateFormats
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.core.utils.common.drugDisplayName
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class HistoryPdfExporter(private val context: Context) {
+class HistoryPdfExporter(private val context: Context, private val region: Region) {
 
     private val logger = AppLogger("HistoryPdfExporter")
 
@@ -80,7 +83,7 @@ class HistoryPdfExporter(private val context: Context) {
         textAlign = Paint.Align.CENTER
     }
 
-    fun generateHistoryPdf(counts: List<TxnWithDrugDto>, selectedDate: String): File? {
+    fun generateHistoryPdf(counts: List<DispenseTxnSummary>, selectedDate: String): File? {
         // 1. Setup Path
         val folderName = "PillReports/DailyHistoryReports"
         val directory = File(context.getExternalFilesDir(null), folderName)
@@ -115,7 +118,7 @@ class HistoryPdfExporter(private val context: Context) {
             val colWidths = floatArrayOf(col1, col2, col3, col4)
             val headers = arrayOf(
                 context.getString(R.string.drugname_two_lines),
-                context.getString(R.string.ndc_gtin14),
+                context.getString(region.wording(R.string.ndc_gtin14)),
                 context.getString(R.string.pills_count),
                 context.getString(R.string.status)
             )
@@ -166,7 +169,7 @@ class HistoryPdfExporter(private val context: Context) {
                     }
 
                     val rowData = arrayOf(
-                        item.drugName ?: "",
+                        context.resources.drugDisplayName(item.drugName),
                         item.ndc ?: "N/A",
                         item.pillCount?.toString() ?: "0",
                         item.status.toString()

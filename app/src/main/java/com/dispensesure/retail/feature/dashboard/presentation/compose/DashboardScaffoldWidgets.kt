@@ -14,16 +14,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -47,7 +47,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
+import com.dispensesure.retail.core.tourguide.TourGuideState
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.MenuButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
@@ -97,6 +101,7 @@ internal fun ScaffoldTopBar(
     isPmsConnected: Boolean,
     navController: NavController,
     compact: Boolean = false,
+    tourState: TourGuideState? = null,
 ) {
     val horizontalPadding = if (compact) 12.dp else 16.dp
     // Phone portrait is too narrow for both lines side by side, so stack them.
@@ -129,7 +134,10 @@ internal fun ScaffoldTopBar(
             }
         }
         if (showPmsDot) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.tourTarget(tourState, "pms"),
+            ) {
                 Box(
                     modifier = Modifier
                         .size(8.dp)
@@ -271,8 +279,9 @@ internal fun ScaffoldTabStrip(
     inventoryCount: Int,
     onSelect: (DashboardTab) -> Unit,
     modifier: Modifier = Modifier,
+    tourState: TourGuideState? = null,
 ) {
-    Row(modifier = modifier.fillMaxWidth()) {
+    Row(modifier = modifier.fillMaxWidth().tourTarget(tourState, "tabs")) {
         ScaffoldTab(
             label = stringResource(R.string.tab_label_with_count, stringResource(R.string.dispense_queue), dispenseCount),
             isActive = activeTab == DashboardTab.DISPENSE_QUEUE,
@@ -399,13 +408,13 @@ internal fun ScaffoldQueueList(
         }) { item ->
             when (item) {
                 is QueueItem.Dispense -> DrugCountRow(
-                    data = item.toDrugCountRowData(),
+                    data = item.toDrugCountRowData(LocalRegion.current),
                     onClick = { onDispenseClick?.invoke(item.txn.txnId) },
                 )
 
                 is QueueItem.Inventory -> BatchHistoryRow(
                     title = item.batch.batchId.toString(),
-                    dateTime = item.batch.createdAt.toFormattedDate(),
+                    dateTime = item.batch.createdAt.toFormattedDate(LocalRegion.current),
                     bucketId = item.batch.bucketId,
                     count = item.batch.uniqueNdcCount.toString(),
                     isPrescription = item.batch.requestIdFromPMS != null,
@@ -417,16 +426,14 @@ internal fun ScaffoldQueueList(
 }
 
 // One mapping from a queued dispense to the row data, shared by the list row and the UP NEXT card.
-internal fun QueueItem.Dispense.toDrugCountRowData() = DrugCountRowData(
-    barcodeImage = BottleInfoJson.decode(txn.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
+internal fun QueueItem.Dispense.toDrugCountRowData(region: Region) = DrugCountRowData(
+    barcodeImage = DispenseBottleJson.decode(txn.bottlesJson).firstOrNull()?.barcodeImagePath,
     ndc = txn.ndc,
     drugType = txn.drugType,
-    drugName = txn.drugName ?: "—",
-    date = txn.createdAt.toFormattedDate(),
+    drugName = txn.drugName.orEmpty(),
+    date = txn.createdAt.toFormattedDate(region),
     bucketId = txn.bucketId,
-    pillCount = txn.totalPillCount,
     targetCount = txn.targetCount ?: 0,
-    isDispense = txn.isDispense,
     strength = txn.strength,
     dosageForm = txn.dosageForm,
     drugImagePath = txn.drugImagePath,

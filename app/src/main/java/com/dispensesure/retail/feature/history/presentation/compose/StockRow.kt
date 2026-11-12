@@ -25,9 +25,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.core.utils.common.drugDisplayName
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import com.dispensesure.retail.ui.theme.AppTheme
 
 /**
@@ -39,11 +41,11 @@ import com.dispensesure.retail.ui.theme.AppTheme
  */
 @Composable
 fun StockRow(
-    rowData: TxnWithDrugDto,
+    rowData: DispenseTxnSummary,
     onTxnClick: () -> Unit
 ) {
     val dimens = AppTheme.dimens
-    val date =rowData.createdAt.toFormattedDate()
+    val date = rowData.createdAt.toFormattedDate(LocalRegion.current)
     Card(
         shape = RoundedCornerShape(dimens.small),
         colors = CardDefaults.cardColors(
@@ -85,7 +87,7 @@ fun StockRow(
                 // Medicine name + timestamp
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = rowData.drugName.toString(),
+                        text = drugDisplayName(rowData.drugName),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
                         color = AppTheme.extendedColors.textColor

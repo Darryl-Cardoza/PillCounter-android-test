@@ -43,7 +43,7 @@ fun StepTitleWithSpeech(
     // The header title is only shown for these entry/capture steps. All other
     // steps (e.g. CONTAINER_INITIATE, TARGET_VERIFICATION) suppress it — they
     // carry their own on-screen affordances. An explicit title override (e.g. the
-    // REGULAR "Scan open pills" prompt during COUNTING) is always shown.
+    // open count's "Scan open pills" prompt during COUNTING) is always shown.
     val showHeaderTitle = titleResOverride != null ||
         stepType == StepState.RX_LABEL ||
         stepType == StepState.SCAN ||

@@ -3,14 +3,11 @@ package com.dispensesure.retail.feature.menu.presentation.viewmodel
 import android.util.Log
 import app.cash.turbine.test
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.models.BatchEntity
-import com.dispensesure.retail.core.room.models.dtos.StatusTypeCount
-import com.dispensesure.retail.core.room.models.enums.BatchStatus
-import com.dispensesure.retail.core.room.models.enums.CountStatus
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -29,7 +26,6 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -37,10 +33,12 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class MenuViewModelTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     private val testDispatcher = StandardTestDispatcher()
 
-    private lateinit var pillCountTxnDao: PillCountTxnDao
-    private lateinit var batchDao: BatchDao
+    private lateinit var dispenseTxnDao: DispenseTxnDao
+    private lateinit var stockBatchDao: StockBatchDao
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var sessionLockController: SessionLockController
 
@@ -55,18 +53,14 @@ class MenuViewModelTest {
         every { Log.w(any(), any<String>(), any()) } returns 0
         every { Log.e(any(), any(), any()) } returns 0
 
-        pillCountTxnDao = mockk(relaxed = true)
-        batchDao = mockk(relaxed = true)
+        dispenseTxnDao = mockk(relaxed = true)
+        stockBatchDao = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
         sessionLockController = mockk(relaxed = true)
 
-        // Sensible defaults so the init observers do not blow up.
-        every { preferenceHelper.getLocalId() } returns 1L
-        every { pillCountTxnDao.observeDashboardCountsGrouped(any()) } returns flowOf(emptyList())
-        every { pillCountTxnDao.getTotalCompletedTransactionCount(any(), any()) } returns flowOf(0)
-        every { batchDao.observeActiveInProgressCount() } returns flowOf(0)
-        every { batchDao.observeCompletedBatchCount() } returns flowOf(0)
-        every { batchDao.getUnsyncedCompletedBatchCount(any()) } returns flowOf(0)
+        // Sensible defaults so the init observer does not blow up.
+        every { dispenseTxnDao.getTotalCompletedTransactionCount(any(), any(), any()) } returns flowOf(0)
+        every { stockBatchDao.getUnsyncedCompletedBatchCount(any(), any()) } returns flowOf(0)
     }
 
     @After
@@ -76,95 +70,32 @@ class MenuViewModelTest {
     }
 
     private fun createViewModel(): MenuViewModel =
-        MenuViewModel(pillCountTxnDao, batchDao, preferenceHelper, sessionLockController)
+        MenuViewModel(dispenseTxnDao, stockBatchDao, preferenceHelper, sessionLockController, regionProvider)
 
     @Test
-    fun `initial uiState has all counts at zero`() {
-        val state = createViewModel().uiState.value
-
-        assertEquals(0, state.fixedCompleted)
-        assertEquals(0, state.fixedPartial)
-        assertEquals(0, state.regularPartial)
-        assertEquals(0, state.regularCompleted)
-        assertEquals(0, state.unsyncedTransactionCount)
+    fun `initial uiState has the unsynced count at zero`() {
+        assertEquals(0, createViewModel().uiState.value.unsyncedTransactionCount)
     }
 
-    // ────────────────────────────── init observers (happy path) ──────────────────────────────
+    // ────────────────────────────── unsynced count ──────────────────────────────
 
     @Test
-    fun `init maps dashboard counts and batch counts into ui state`() = runTest(testDispatcher) {
-        every { preferenceHelper.getLocalId() } returns 5L
-        every { pillCountTxnDao.observeDashboardCountsGrouped(5L) } returns flowOf(
-            listOf(
-                StatusTypeCount(CountStatus.COMPLETED, true, 11),
-                StatusTypeCount(CountStatus.PARTIAL, true, 7)
-            )
-        )
-        every { batchDao.observeActiveInProgressCount() } returns flowOf(3)
-        every { batchDao.observeCompletedBatchCount() } returns flowOf(4)
-        every { pillCountTxnDao.getTotalCompletedTransactionCount(any(), any()) } returns flowOf(6)
-        every { batchDao.getUnsyncedCompletedBatchCount(any()) } returns flowOf(9)
+    fun `init adds unsynced dispenses and batches`() = runTest(testDispatcher) {
+        every { dispenseTxnDao.getTotalCompletedTransactionCount(any(), any(), any()) } returns flowOf(6)
+        every { stockBatchDao.getUnsyncedCompletedBatchCount(any(), any()) } returns flowOf(9)
 
         val vm = createViewModel()
         advanceUntilIdle()
 
         vm.uiState.test {
-            val state = awaitItem()
-            assertEquals(11, state.fixedCompleted)
-            assertEquals(7, state.fixedPartial)
-            assertEquals(3, state.regularPartial)
-            assertEquals(4, state.regularCompleted)
             // combine: 6 dispense + 9 batch = 15
-            assertEquals(15, state.unsyncedTransactionCount)
-        }
-    }
-
-    // ────────────────────────────── init observers (catch branches) ──────────────────────────────
-
-    @Test
-    fun `observeDashboardCounts catch keeps default state`() = runTest(testDispatcher) {
-        every { pillCountTxnDao.observeDashboardCountsGrouped(any()) } returns
-            flow { throw RuntimeException("dashboard error") }
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.uiState.test {
-            val state = awaitItem()
-            assertEquals(0, state.fixedCompleted)
-            assertEquals(0, state.fixedPartial)
-        }
-    }
-
-    @Test
-    fun `observeBatchCount catch keeps default regularPartial`() = runTest(testDispatcher) {
-        every { batchDao.observeActiveInProgressCount() } returns
-            flow { throw RuntimeException("batch error") }
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.uiState.test {
-            assertEquals(0, awaitItem().regularPartial)
-        }
-    }
-
-    @Test
-    fun `observeCompletedBatchCount catch keeps default regularCompleted`() = runTest(testDispatcher) {
-        every { batchDao.observeCompletedBatchCount() } returns
-            flow { throw RuntimeException("completed error") }
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.uiState.test {
-            assertEquals(0, awaitItem().regularCompleted)
+            assertEquals(15, awaitItem().unsyncedTransactionCount)
         }
     }
 
     @Test
     fun `observeUnsyncedTransactionCount catch keeps default count`() = runTest(testDispatcher) {
-        every { pillCountTxnDao.getTotalCompletedTransactionCount(any(), any()) } returns
+        every { dispenseTxnDao.getTotalCompletedTransactionCount(any(), any(), any()) } returns
             flow { throw RuntimeException("unsynced error") }
 
         val vm = createViewModel()
@@ -197,52 +128,6 @@ class MenuViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf("b1", "b2"), vm.getBucketList())
-    }
-
-    // ────────────────────────────── getLastInProgressBatch ──────────────────────────────
-
-    @Test
-    fun `getLastInProgressBatch returns latest batch`() = runTest(testDispatcher) {
-        val entity = BatchEntity(batchId = 42L, status = BatchStatus.INPROGRESS)
-        coEvery { batchDao.getLatest() } returns entity
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        assertEquals(entity, vm.getLastInProgressBatch())
-    }
-
-    @Test
-    fun `getLastInProgressBatch returns null when no batch`() = runTest(testDispatcher) {
-        coEvery { batchDao.getLatest() } returns null
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        assertNull(vm.getLastInProgressBatch())
-    }
-
-    // ────────────────────────────── createBatch ──────────────────────────────
-
-    @Test
-    fun `createBatch inserts batch and returns id`() = runTest(testDispatcher) {
-        coEvery { batchDao.insert(any()) } returns 123L
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        val id = vm.createBatch("bucket-1")
-        assertEquals(123L, id)
-    }
-
-    @Test
-    fun `createBatch returns null when insert throws`() = runTest(testDispatcher) {
-        coEvery { batchDao.insert(any()) } throws RuntimeException("insert error")
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        assertNull(vm.createBatch("bucket-1"))
     }
 
     // ────────────────────────────── lock screen ──────────────────────────────

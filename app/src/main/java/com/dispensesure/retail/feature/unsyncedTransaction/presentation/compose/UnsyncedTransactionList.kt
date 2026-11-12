@@ -30,11 +30,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.compose.DrugCountRow
 import com.dispensesure.retail.core.utils.compose.DrugCountRowData
-import com.dispensesure.retail.feature.countResume.domain.model.CountItem
+import com.dispensesure.retail.feature.unsyncedTransaction.domain.model.CountItem
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.history.presentation.compose.BatchHistoryRow
 import com.dispensesure.retail.ui.theme.AppTheme
@@ -83,15 +84,13 @@ fun UnsyncedTransactionList(
                     items(dispenseList, key = { "dispense_${it.id}" }) { item ->
                         DrugCountRow(
                             data = DrugCountRowData(
-                                barcodeImage = BottleInfoJson.decode(item.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
+                                barcodeImage = DispenseBottleJson.decode(item.bottlesJson).firstOrNull()?.barcodeImagePath,
                                 ndc = item.ndc,
                                 drugType = item.drugType,
                                 drugName = item.name,
                                 date = item.date,
                                 bucketId = item.bucketId,
-                                pillCount = item.pillCount,
                                 targetCount = item.target,
-                                isDispense = item.isDispense,
                                 strength = item.strength,
                                 dosageForm = item.dosageForm,
                                 drugImagePath = item.drugImagePath,
@@ -114,7 +113,7 @@ fun UnsyncedTransactionList(
                     items(batchList, key = { "batch_${it.batchId}" }) { batch ->
                         BatchHistoryRow(
                             title = batch.batchId.toString(),
-                            dateTime = batch.createdAt.toFormattedDate(),
+                            dateTime = batch.createdAt.toFormattedDate(LocalRegion.current),
                             bucketId = batch.bucketId,
                             count = batch.uniqueNdcCount.toString(),
                             isPrescription = batch.requestIdFromPMS != null,

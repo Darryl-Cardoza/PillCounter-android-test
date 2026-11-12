@@ -95,13 +95,21 @@ class ApiFailureLogInterceptorTest {
 
     @Test
     fun `4xx responses and offline failures are warnings, not errors`() {
-        interceptor.intercept(chain("/mobile/users", code = 404))
+        interceptor.intercept(chain("/mobile/users", code = 400))
         assertThrows(UnknownHostException::class.java) {
             interceptor.intercept(chain("/mobile/users", failure = UnknownHostException("offline")))
         }
 
         assertTrue(errors.isEmpty())
         assertEquals(2, warnings.size)
+    }
+
+    @Test
+    fun `wrong-endpoint 4xx responses are errors`() {
+        listOf(403, 404, 405, 410).forEach { interceptor.intercept(chain("/mobile/users", code = it)) }
+
+        assertEquals(4, errors.size)
+        assertTrue(warnings.isEmpty())
     }
 
     @Test

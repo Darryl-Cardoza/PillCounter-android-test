@@ -1,14 +1,14 @@
 package com.dispensesure.retail.feature.dashboard.domain.model
 
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
-import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 
 /**
  * A single row in the dashboard's "Today's Queue" list.
  *
  * The queue is a merge of two underlying sources:
- *  - Dispense (FIXED) partial transactions   → [Dispense]
- *  - Inventory (REGULAR) in-progress batches → [Inventory]
+ *  - Dispense partial transactions   → [Dispense]
+ *  - Inventory in-progress batches → [Inventory]
  *
  * The variants intentionally keep the original DTOs as fields so the UI layer
  * has full access to drug metadata / batch metadata without re-querying.
@@ -23,7 +23,7 @@ sealed class QueueItem {
     val is340B: Boolean get() = !bucketId.isNullOrBlank()
 
     data class Dispense(
-        val txn: PillCountWithDrugAndTotal,
+        val txn: DispenseTxnWithDrug,
         val isHazardous: Boolean,
         val isHighPriority: Boolean,
         val isControlled: Boolean,

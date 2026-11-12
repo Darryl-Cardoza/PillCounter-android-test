@@ -98,4 +98,14 @@ internal object KeystoreAesGcm {
         check(keystoreKeyExists(alias)) { "Keystore key '$alias' not found; cannot unwrap" }
         return decrypt(getOrCreateKeystoreKey(alias), wrapped)
     }
+
+    /** Wraps [plainBytes] as PCWRP (guide §1.4) with the Keystore key at [alias], generating that key if absent. */
+    fun wrapPcwrp(alias: String, plainBytes: ByteArray): ByteArray =
+        Pcwrp.seal(getOrCreateKeystoreKey(alias), plainBytes)
+
+    /** Opens bytes produced by [wrapPcwrp]. Like [unwrap], never generates a missing key. */
+    fun unwrapPcwrp(alias: String, wrapped: ByteArray): ByteArray {
+        check(keystoreKeyExists(alias)) { "Keystore key '$alias' not found; cannot unwrap" }
+        return Pcwrp.open(getOrCreateKeystoreKey(alias), wrapped)
+    }
 }

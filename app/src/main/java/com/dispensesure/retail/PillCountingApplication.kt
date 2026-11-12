@@ -3,6 +3,7 @@ package com.dispensesure.retail
 import android.app.Application
 import androidx.camera.lifecycle.ProcessCameraProvider
 import coil.Coil
+import com.dispensesure.retail.core.analytics.AnalyticsService
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.refreshToken.data.TokenAuthenticator
 import com.dispensesure.retail.core.security.RuntimeUnit
@@ -39,6 +40,9 @@ class PillCountingApplication : Application() {
     @Inject
     lateinit var operatorNameProvider: OperatorNameProvider
 
+    @Inject
+    lateinit var analyticsService: AnalyticsService
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val logger = AppLogger("PillCountingApplication")
 
@@ -56,6 +60,8 @@ class PillCountingApplication : Application() {
             previousHandler?.uncaughtException(thread, e)
         }
 //        FirebaseApp.initializeApp(this)
+
+        analyticsService.start()
 
         // Keeps LoggerConfig.operatorName current so every subsequent log entry can be
         // attributed to whoever is actually operating the device (verified face user, else the
@@ -101,7 +107,7 @@ class PillCountingApplication : Application() {
 
         // Pre-warm CameraX. ProcessCameraProvider.getInstance(...) does the heavy
         // one-time init (libraries, camera2 interop, vendor extensions) and caches
-        // a singleton. Triggering it at app start means CameraPreviewSection's
+        // a singleton. Triggering it at app start means CameraFeed's
         // first bindToLifecycle() finds the provider already resolved instead of
         // paying that cost on the first tap of Dispense — the gap between tapping
         // Dispense and seeing live pixels shrinks by ~150–300ms on most devices.

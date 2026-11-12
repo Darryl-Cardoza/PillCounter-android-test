@@ -3,16 +3,27 @@ package com.dispensesure.retail.feature.dashboard.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.key.DekVersionRecorder
+import com.dispensesure.retail.core.audit.model.CertPinChoice
+import com.dispensesure.retail.core.audit.model.DataPurged
+import com.dispensesure.retail.core.audit.model.PmsCertPinMismatch
+import com.dispensesure.retail.core.audit.model.PurgeReason
+import com.dispensesure.retail.core.audit.model.ServerConfigChanged
+import com.dispensesure.retail.core.audit.model.ServerSetting
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.di.DefaultDispatcher
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.UserEntity
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
+import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.security.DatabaseKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -60,7 +71,7 @@ import javax.inject.Inject
  * ViewModel for the Dashboard screen.
  *
  * ### Responsibilities
- * - Observe pill count transaction statistics from [PillCountTxnDao].
+ * - Observe pill count transaction statistics from [DispenseTxnDao].
  * - Map database counts into dashboard-friendly values (Fixed/Regular, Completed/Partial).
  * - Fetch user profile details from [IUserDetailRepository] using an access token.
  * - Persist user details into Room via [UserDao].
@@ -80,13 +91,18 @@ class DashboardViewModel @Inject constructor(
     private val preferenceHelper: PreferenceHelper,
     private val userDao: UserDao,
     private val operatorNameProvider: OperatorNameProvider,
-    private val batchDao: BatchDao,
-    private val pillCountTxnDao: PillCountTxnDao,
+    private val stockBatchDao: StockBatchDao,
+    private val dispenseTxnDao: DispenseTxnDao,
     private val hl7EventHandler: Hl7EventHandler,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val deviceKeyProvider: DeviceKeyProvider,
     private val sessionHealthController: SessionHealthController,
+    sessionLockController: SessionLockController,
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
+    private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
+    private val auditLogUploader: AuditLogUploader,
+    private val dekVersionRecorder: DekVersionRecorder,
 ) : ViewModel() {
 
     /** Logger instance for this ViewModel. */
@@ -107,8 +123,16 @@ class DashboardViewModel @Inject constructor(
     val isConnected: StateFlow<Boolean> = hl7EventHandler.connectionState
     val pmsCertMismatch: StateFlow<Boolean> = hl7EventHandler.pmsCertMismatch
 
-    /** @return false when the pin could not be cleared; the mismatch dialog stays up. */
-    fun clearPmsCertPin(): Boolean = hl7ServiceManager.clearPmsCertPin(hl7EventHandler)
+    /**
+     * @param choice Which dialog button cleared it, recorded on PMS_CERT_PIN_MISMATCH.
+     * @return false when the pin could not be cleared; the mismatch dialog stays up.
+     */
+    fun clearPmsCertPin(choice: CertPinChoice): Boolean {
+        val oldFingerprint = hl7ServiceManager.pinnedPmsFingerprint()
+        val cleared = hl7ServiceManager.clearPmsCertPin(hl7EventHandler)
+        if (cleared) auditLogger.log(PmsCertPinMismatch(oldFingerprint = oldFingerprint, choice = choice))
+        return cleared
+    }
 
     /** Closes the mismatch dialog even when the pin clear failed (Cancel must always close it). */
     fun dismissPmsCertMismatch() = hl7EventHandler.clearCertMismatch()
@@ -217,6 +241,10 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    /** The tour offer waits until the session is unlocked; its dialog would sit above the lock overlay. */
+    val isSessionLocked: StateFlow<Boolean> = sessionLockController.isLocked
+    val isLockPending: StateFlow<Boolean> = sessionLockController.lockPending
+
     fun isHl7Enabled(): Boolean {
         return preferenceHelper.isHl7Enabled()
     }
@@ -234,7 +262,7 @@ class DashboardViewModel @Inject constructor(
         ensureTabObserved(DashboardTab.DISPENSE_QUEUE, localId)
         if (inventoryKpiCountsJob?.isActive != true) {
             inventoryKpiCountsJob = collectSource(
-                source = batchDao.observeInProgressBatchKpiCounts().flowOn(Dispatchers.IO).distinctUntilChanged(),
+                source = stockBatchDao.observeInProgressBatchKpiCounts(regionProvider.current).flowOn(Dispatchers.IO).distinctUntilChanged(),
             ) { copy(inventoryKpiCounts = it) }
         }
     }
@@ -257,8 +285,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun pendingDispenseFlow(localId: Long) =
-        pillCountTxnDao.observePartialByIsDispense(
-            isDispense = true,
+        dispenseTxnDao.observePartialDispenses(
             partialStatus = CountStatus.PARTIAL,
             userLocalId = localId,
             // totalPillCount sums detail rows of THIS step only. FIXED dispense
@@ -268,28 +295,29 @@ class DashboardViewModel @Inject constructor(
             // queue row show "0/target". TARGET_VERIFICATION is also the step
             // the Partial Counts resume screen (CountsViewModel) reads, so the
             // queue count now matches the resume screen.
-            type = StepState.TARGET_VERIFICATION,
-        ).flowOn(Dispatchers.IO).distinctUntilChanged().map { it.toPendingDispenseItems() }
+            step = StepState.TARGET_VERIFICATION,
+        ).flowOn(Dispatchers.IO).distinctUntilChanged().map { pendingDispenses -> pendingDispenses.toPendingDispenseItems(regionProvider.current) }
 
     // Use the summaries query so uniqueNdcCount is populated from the
-    // join. getAllInProgress() returns bare BatchEntity rows with no
+    // join. getAllInProgress() returns bare StockBatchEntity rows with no
     // txn join, which left the card stuck at "0 NDCs" even after scans.
     private fun pendingInventoryFlow() =
-        batchDao.observeInProgressBatchSummaries()
+        stockBatchDao.observeInProgressBatchSummaries(regionProvider.current)
             .flowOn(Dispatchers.IO).distinctUntilChanged().map { it.toPendingInventoryItems() }
 
     private fun recentActivityFlow(localId: Long): Flow<List<QueueItem>> {
-        val completedDispenses = pillCountTxnDao.getTransactionsForDateRange(
+        val completedDispenses = dispenseTxnDao.getTransactionsForDateRange(
             startDate = 0L,
             endDate = Long.MAX_VALUE,
             stepType = StepState.TARGET_VERIFICATION,
-            isDispense = true,
             status = CountStatus.COMPLETED,
             userLocalId = localId,
         ).flowOn(Dispatchers.IO).distinctUntilChanged()
-        val completedBatches = batchDao.getBatchSummaries(startDate = 0L, endDate = Long.MAX_VALUE)
+        val completedBatches = stockBatchDao.getBatchSummaries(startDate = 0L, endDate = Long.MAX_VALUE, region = regionProvider.current)
             .flowOn(Dispatchers.IO).distinctUntilChanged()
-        return completedDispenses.combine(completedBatches, ::recentActivityItems)
+        return completedDispenses.combine(completedBatches) { dispenses, batches ->
+            recentActivityItems(dispenses, batches, regionProvider.current)
+        }
     }
 
     /** Collects one source on Default into [queueSources]. A failed [tab] source still ends its loading state. */
@@ -410,6 +438,7 @@ class DashboardViewModel @Inject constructor(
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.settings?.bucket ?: emptyList())
                             preferenceHelper.saveIsColorImageEnabled(payload.data?.settings?.isColorImageEnabled ?: true)
+                            logServerConfigChange(ServerSetting.HL7_ENABLED, preferenceHelper.isHl7Enabled(), entity.isHl7Enable)
                             preferenceHelper.setHl7Enabled(entity.isHl7Enable)
                             // Persist is_standalone so the RX-scan flow knows whether it may
                             // create dispense transactions locally (without waiting on PMS/HL7)
@@ -429,10 +458,15 @@ class DashboardViewModel @Inject constructor(
                                 ?.let { preferenceHelper.saveBarcodeRegex(it) }
                             // Persist allow_local_storage so the HL7 sync flow knows whether to
                             // delete a dispense txn once it is completed and synced with the PMS.
-                            preferenceHelper.setAllowLocalStorage(detail.settings?.allowLocalStorage ?: true)
+                            val allowLocalStorage = detail.settings?.allowLocalStorage ?: true
+                            logServerConfigChange(ServerSetting.ALLOW_LOCAL_STORAGE, preferenceHelper.isAllowLocalStorage(), allowLocalStorage)
+                            preferenceHelper.setAllowLocalStorage(allowLocalStorage)
                             // Persist bypass_ssl so HL7 MLLP connections know whether to skip
                             // TLS certificate verification for this pharmacy's PMS.
-                            detail.settings?.bypassSSL?.let { preferenceHelper.setBypassTlsEnabled(it) }
+                            detail.settings?.bypassSSL?.let {
+                                logServerConfigChange(ServerSetting.BYPASS_TLS, preferenceHelper.isBypassTlsEnabled(), it)
+                                preferenceHelper.setBypassTlsEnabled(it)
+                            }
                             // Persist hl7_message_spec so outbound HL7 messages are composed
                             // using the sending-application format the server has configured.
                             detail.settings?.hl7MessageSpec
@@ -440,11 +474,21 @@ class DashboardViewModel @Inject constructor(
                                 ?.let { preferenceHelper.saveHl7Format(Hl7Format.fromSendingApplication(it)) }
                             // Persist PMS connection info so the dispenser can reach the PMS
                             // over a static IP/port when the server has configured one.
-                            preferenceHelper.setUseStaticPmsConnection(detail.settings?.useStaticPmsConnection ?: false)
+                            val useStaticPmsConnection = detail.settings?.useStaticPmsConnection ?: false
+                            logServerConfigChange(
+                                ServerSetting.STATIC_PMS_CONNECTION,
+                                preferenceHelper.isUseStaticPmsConnection(),
+                                useStaticPmsConnection
+                            )
+                            preferenceHelper.setUseStaticPmsConnection(useStaticPmsConnection)
+                            logServerConfigChange(ServerSetting.PMS_IP, preferenceHelper.getPmsIP(), detail.settings?.pmsIP)
                             detail.settings?.pmsIP
                                 ?.let { preferenceHelper.savePmsIP(it) }
                                 ?: preferenceHelper.clearPmsIP()
-                            detail.settings?.pmsPort?.toIntOrNull()
+                            val serverPmsPort = detail.settings?.pmsPort?.toIntOrNull()
+                            // A missing port clears to 0, so 0 is the "none" value on both sides.
+                            logServerConfigChange(ServerSetting.PMS_PORT, preferenceHelper.getPmsPort(), serverPmsPort ?: 0)
+                            serverPmsPort
                                 ?.let { preferenceHelper.savePmsPort(it) }
                                 ?: preferenceHelper.clearPmsPort()
                             // When the server has now disallowed local storage, clean up dispense
@@ -482,6 +526,7 @@ class DashboardViewModel @Inject constructor(
 
                                 if (claimedTerminal != null) {
                                     claimedTerminal.terminalId?.let { id ->
+                                        logServerConfigChange(ServerSetting.TERMINAL, preferenceHelper.getSelectedTerminalId(), id)
                                         preferenceHelper.saveSelectedTerminalId(id)
                                     }
                                     claimedTerminal.terminalName?.let { name ->
@@ -525,8 +570,15 @@ class DashboardViewModel @Inject constructor(
                             // version than what's currently stored (no-op otherwise, since
                             // auth/me is polled repeatedly with an unchanged KEK).
                             detail.kek?.let { kekInfo ->
-                                DatabaseKeyProvider.rotateKekIfNewer(preferenceHelper.getContext(), kekInfo)
+                                val context = preferenceHelper.getContext()
+                                // Records the current (e.g. bootstrap) wrap before the server KEK replaces it.
+                                if (kekInfo.version > (DatabaseKeyProvider.currentWrap(context)?.kekVersion ?: -1)) {
+                                    recordWrapBeforeKekRotation()
+                                }
+                                DatabaseKeyProvider.rotateKekIfNewer(context, kekInfo)
                             }
+                            // The token is known good here: send closed audit files.
+                            auditLogUploader.requestUpload()
                         }
 
                         // Check if profile is incomplete
@@ -581,6 +633,17 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    // Own try: a failure here must not stop the KEK rotation or the audit upload.
+    private suspend fun recordWrapBeforeKekRotation() {
+        try {
+            deviceKeyProvider.getDeviceKey()?.let { deviceKey -> dekVersionRecorder.recordCurrentWrap(deviceKey) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("Recording the DEK wrap failed", e, event = LogEvent.DEK_VERSION_RECORD_FAILED)
+        }
+    }
+
     /**
      * Removes dispense transactions already synced with the PMS when the server's
      * `allow_local_storage` flag is false (local persistence not permitted).
@@ -596,17 +659,19 @@ class DashboardViewModel @Inject constructor(
             logger.d("allowLocalStorage=true — retaining synced transactions locally")
             return
         }
+        // Only rows actually deleted go on DATA_PURGED, even if a later one fails.
+        val purgedTxnIds = mutableListOf<Long>()
         try {
-            val syncedTransactions = pillCountTxnDao.getSyncedTransactions()
+            val syncedTransactions = dispenseTxnDao.getSyncedDispenses()
             logger.d("allowLocalStorage=false — cleaning up ${syncedTransactions.size} synced transactions")
 
             syncedTransactions.forEach { txn ->
                 val filesToDelete = mutableListOf<String>()
-                BottleInfoJson.decode(txn.bottleInfoListJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
-                filesToDelete.addAll(pillCountTxnDao.getTransactionDetailsImages(txn.txnId))
+                DispenseBottleJson.decode(txn.bottlesJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
+                filesToDelete.addAll(dispenseTxnDao.getTransactionDetailsImages(txn.txnId))
 
                 // Delete transaction (cascade deletes details)
-                pillCountTxnDao.deleteTransaction(txn.txnId)
+                if (dispenseTxnDao.deleteTransaction(txn.txnId) > 0) purgedTxnIds.add(txn.txnId)
 
                 filesToDelete.forEach { path ->
                     val file = File(path)
@@ -619,7 +684,23 @@ class DashboardViewModel @Inject constructor(
             throw e
         } catch (e: Exception) {
             logger.e("Error cleaning up synced transactions", e, event = LogEvent.TRANSACTION_PURGE_FAILED)
+        } finally {
+            if (purgedTxnIds.isNotEmpty()) {
+                auditLogger.log(
+                    DataPurged(
+                        reason = PurgeReason.SYNCED_DATA_CLEANUP,
+                        count = purgedTxnIds.size,
+                        txnIds = purgedTxnIds.toList(),
+                        unsyncedIds = emptyList()
+                    )
+                )
+            }
         }
+    }
+
+    // One SERVER_CONFIG_CHANGED per value the server actually changed; most responses change nothing.
+    private fun logServerConfigChange(setting: ServerSetting, old: Any?, new: Any?) {
+        ServerConfigChanged.ifChanged(setting, old, new)?.let(auditLogger::log)
     }
 
     /** Resets the navigateToProfile flag after navigation. */
@@ -627,29 +708,14 @@ class DashboardViewModel @Inject constructor(
         _uiState.update { it.copy(navigateToProfile = false) }
     }
 
-    fun saveTxnId() {
-        preferenceHelper.saveTxnId(0)
-    }
-
-    /** Persists the tapped txnId so HistoryDetail can pick it up (mirrors HistoryViewModel.selectCurrentTransaction). */
-    fun selectCurrentTransaction(txnId: Long) {
-        preferenceHelper.saveTxnId(txnId)
-    }
-
     /**
-     * Stages a stock-count session for the chosen bucket. The BatchEntity is NOT
+     * Stages a stock-count session for the chosen bucket. The StockBatchEntity is NOT
      * inserted here — it's created lazily on the first NDC scan inside
-     * InventoryScanViewModel, so a user who enters the inventory screen and leaves
+     * StockCountViewModel, so a user who enters the inventory screen and leaves
      * without scanning never produces an empty batch row.
      */
     fun createBatch(bucketId: String) {
         _uiState.update { it.copy(pendingStockCountBucketId = bucketId) }
-    }
-
-    fun clearCreatedBatchId() {
-        _uiState.update {
-            it.copy(createdBatchId = null)
-        }
     }
 
     fun clearPendingStockCountBucketId() {

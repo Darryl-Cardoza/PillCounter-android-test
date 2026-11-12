@@ -28,8 +28,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.core.utils.compose.DrugThumbnail
 import com.dispensesure.retail.core.utils.compose.identifierLine
 import com.dispensesure.retail.core.utils.compose.sideBorder
@@ -47,7 +49,7 @@ internal fun DispenseUpNextCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val rowData = item.toDrugCountRowData()
+    val rowData = item.toDrugCountRowData(LocalRegion.current)
     val detailSize = responsiveSp(DashboardBaseSizes.UpNextDetailText)
     Card(
         modifier = modifier
@@ -81,7 +83,7 @@ internal fun DispenseUpNextCard(
                 Spacer(modifier = Modifier.height(responsiveDp(DashboardBaseSizes.UpNextTextLineGap)))
                 val drugNameSize = responsiveSp(DashboardBaseSizes.UpNextDrugNameText, boostOnPhone = false)
                 Text(
-                    text = rowData.drugName,
+                    text = drugDisplayName(rowData.drugName),
                     fontFamily = PlayfairDisplay,
                     fontSize = drugNameSize,
                     lineHeight = drugNameSize * UpNextDrugNameLineHeightRatio,

@@ -2,8 +2,8 @@ package com.dispensesure.retail.feature.history.presentation.compose
 
 import androidx.test.core.app.ApplicationProvider
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.models.dtos.TxnDetailInfo
-import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
+import com.dispensesure.retail.core.room.models.dtos.DispenseCountInfo
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -55,8 +55,8 @@ class DrugHistoryDetailPdfExporterTest {
         }
     }
 
-    private fun detail(pillCount: Int?, type: StepState?) =
-        TxnDetailInfo(txnId = 1L, pillCount = pillCount, imagePath = null, type = type)
+    private fun detail(pillCount: Int?, step: StepState?) =
+        DispenseCountInfo(txnId = 1L, pillCount = pillCount, imagePath = null, step = step)
 
     private fun baseTxn(
         drugName: String? = "Aspirin",
@@ -64,11 +64,11 @@ class DrugHistoryDetailPdfExporterTest {
         targetCount: Int? = 30,
         note: String? = "Patient tolerated dose well.",
         drugType: String? = null,
-        txnDetails: List<TxnDetailInfo> = emptyList(),
+        counts: List<DispenseCountInfo> = emptyList(),
         isSubstitute: Boolean = false,
         requestedDrugName: String? = null,
         requestedNdc: String? = null,
-    ) = TxnWithDetails(
+    ) = DispenseTxnDetail(
         txnId = 1L,
         drugName = drugName,
         drugId = 1L,
@@ -76,11 +76,10 @@ class DrugHistoryDetailPdfExporterTest {
         targetCount = targetCount,
         note = note,
         createdAt = System.currentTimeMillis(),
-        bottleInfoListJson = null,
+        bottlesJson = null,
         totalPillCount = 30,
-        isDispense = true,
         drugType = drugType,
-        txnDetails = txnDetails,
+        counts = counts,
         isComingFromHL7 = false,
         isSubstitute = isSubstitute,
         requestedDrugName = requestedDrugName,
@@ -90,7 +89,7 @@ class DrugHistoryDetailPdfExporterTest {
     @Test
     fun `generates a pdf on happy path for non-batch flow with verification step`() {
         val txn = baseTxn(
-            txnDetails = listOf(
+            counts = listOf(
                 detail(10, StepState.TARGET_VERIFICATION),
                 detail(20, StepState.TARGET_VERIFICATION),
             )
@@ -108,7 +107,7 @@ class DrugHistoryDetailPdfExporterTest {
     fun `generates a pdf for batch flow with all step types`() {
         val txn = baseTxn(
             drugType = "TABLET",
-            txnDetails = listOf(
+            counts = listOf(
                 detail(5, StepState.CONTAINER_INITIATE),
                 detail(15, StepState.TARGET_VERIFICATION),
                 detail(14, StepState.TARGET_REVERIFICATION),
@@ -128,7 +127,7 @@ class DrugHistoryDetailPdfExporterTest {
     fun `treats string literal null drugType as non-batch flow`() {
         val txn = baseTxn(
             drugType = "null",
-            txnDetails = listOf(detail(10, StepState.TARGET_VERIFICATION))
+            counts = listOf(detail(10, StepState.TARGET_VERIFICATION))
         )
 
         val result = exporter.generate(txn, "Tester")
@@ -143,7 +142,7 @@ class DrugHistoryDetailPdfExporterTest {
             isSubstitute = true,
             requestedDrugName = "Original Drug",
             requestedNdc = "99999999999",
-            txnDetails = listOf(detail(10, StepState.TARGET_VERIFICATION))
+            counts = listOf(detail(10, StepState.TARGET_VERIFICATION))
         )
 
         val result = exporter.generate(txn, "Tester")
@@ -227,7 +226,7 @@ class DrugHistoryDetailPdfExporterTest {
 
     @Test
     fun `handles empty txn details list without throwing`() {
-        val txn = baseTxn(txnDetails = emptyList())
+        val txn = baseTxn(counts = emptyList())
 
         val result = exporter.generate(txn, "Tester")
 
@@ -294,7 +293,7 @@ class DrugHistoryDetailPdfExporterTest {
     fun `computes verification sum only from TARGET_VERIFICATION step details`() {
         // Mixed steps: only TARGET_VERIFICATION entries should count toward the hero count.
         val txn = baseTxn(
-            txnDetails = listOf(
+            counts = listOf(
                 detail(10, StepState.TARGET_VERIFICATION),
                 detail(20, StepState.TARGET_VERIFICATION),
                 detail(999, StepState.VIAL), // must be excluded from verification sum

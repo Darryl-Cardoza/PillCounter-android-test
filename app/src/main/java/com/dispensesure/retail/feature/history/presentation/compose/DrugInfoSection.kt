@@ -61,21 +61,23 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.models.dtos.TxnDetailInfo
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
-import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.formatExpiry
+import com.dispensesure.retail.core.region.regionStringResource
+import com.dispensesure.retail.core.room.models.dtos.DispenseCountInfo
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.ui.theme.AppTheme
 import java.io.File
 
-private fun List<TxnDetailInfo>.forStep(step: StepState): List<TxnDetailInfo> =
-    filter { it.type == step }
+private fun List<DispenseCountInfo>.forStep(step: StepState): List<DispenseCountInfo> =
+    filter { it.step == step }
 
-private fun List<TxnDetailInfo>.sumForStep(step: StepState): Int =
+private fun List<DispenseCountInfo>.sumForStep(step: StepState): Int =
     forStep(step).sumOf { it.pillCount ?: 0 }
 
-private fun List<TxnDetailInfo>.hasStep(step: StepState): Boolean =
-    any { it.type == step }
+private fun List<DispenseCountInfo>.hasStep(step: StepState): Boolean =
+    any { it.step == step }
 
 @Composable
 fun DrugInfoSection(
@@ -89,12 +91,12 @@ fun DrugInfoSection(
     note: String,
     barcodeImage: String?,
     targetCount: Int?,
-    transactionDetails: List<TxnDetailInfo>,
+    transactionDetails: List<DispenseCountInfo>,
     drugType: String?,
     isSubstitute: Boolean = false,
     requestedDrugName: String = "",
     requestedNdc: String = "",
-    bottleList: List<BottleInfo> = emptyList(),
+    bottleList: List<DispenseBottle> = emptyList(),
     onImagePreview: (String) -> Unit = {},
 ) {
     val configuration = LocalConfiguration.current
@@ -152,12 +154,12 @@ private fun DrugDetailLayout(
     note: String,
     barcodeImage: String?,
     targetCount: Int?,
-    transactionDetails: List<TxnDetailInfo>,
+    transactionDetails: List<DispenseCountInfo>,
     drugType: String?,
     isSubstitute: Boolean,
     requestedDrugName: String,
     requestedNdc: String,
-    bottleList: List<BottleInfo>,
+    bottleList: List<DispenseBottle>,
     onImagePreview: (String) -> Unit,
 ) {
     val dispensedPages = remember(bottleList, drugName, ndc, expiry, lotNo, serialNo, date, time) {
@@ -268,7 +270,7 @@ private fun TabletDrugInfoLeftContent(
         KeyValueList(
             rows = listOf(
                 stringResource(R.string.drug_name) to requestedDrugName.ifBlank { drugName },
-                stringResource(R.string.ndc).uppercase() to requestedNdc.ifBlank { ndc },
+                regionStringResource(R.string.ndc).uppercase() to requestedNdc.ifBlank { ndc },
             )
         )
     }
@@ -295,7 +297,7 @@ private fun TabletDrugInfoRightContent(
     barcodeImages: List<String?>,
     vialImage: String?,
     drugType: String?,
-    transactionDetails: List<TxnDetailInfo>,
+    transactionDetails: List<DispenseCountInfo>,
     targetCount: Int?,
     onImagePreview: (String) -> Unit,
     collapsible: Boolean = false,
@@ -404,7 +406,7 @@ private fun LandscapeCountSection(
     title: String,
     count: Int,
     targetCount: Int?,
-    batches: List<TxnDetailInfo>,
+    batches: List<DispenseCountInfo>,
     onBatchImageClick: (String) -> Unit,
     collapsible: Boolean = false,
 ) {
@@ -544,10 +546,10 @@ private fun DispensedDrugDetailsPager(
             KeyValueList(
                 rows = listOf(
                     stringResource(R.string.dispensed_drug) to record.drugName,
-                    stringResource(R.string.ndc).uppercase() to record.ndc,
+                    regionStringResource(R.string.ndc).uppercase() to record.ndc,
                     stringResource(R.string.date_and_time) to
                         "${record.date} ${record.time}".trim(),
-                    stringResource(R.string.expiry) to formatDateToUSFormat(record.expiry),
+                    stringResource(R.string.expiry) to LocalRegion.current.formatExpiry(record.expiry),
                     stringResource(R.string.lotNo) to record.lotNo,
                     stringResource(R.string.serial_no) to record.serialNo,
                 )

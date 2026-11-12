@@ -6,7 +6,7 @@ import javax.inject.Singleton
 /**
  * Thin facade over [Hl7ServiceManager] for sending outbound HL7 messages.
  *
- * [send] accepts a pre-built raw HL7 string (from [HL7MessageBuilder]) and
+ * [send] accepts a pre-built raw HL7 string (from [DispenseMessageBuilder] or [InventoryMessageBuilder]) and
  * delegates to [Hl7ServiceManager.sendRawMessage], keeping the repository layer
  * decoupled from the service layer's typed [org.rite.hl7.model.HL7Message] model.
  */

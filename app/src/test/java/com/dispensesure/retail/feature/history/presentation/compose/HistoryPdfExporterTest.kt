@@ -1,8 +1,9 @@
 package com.dispensesure.retail.feature.history.presentation.compose
 
 import androidx.test.core.app.ApplicationProvider
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,20 +36,18 @@ class HistoryPdfExporterTest {
 
     private fun txn(
         txnId: Long = 1L,
-        isDispense: Boolean = false,
         status: CountStatus = CountStatus.COMPLETED,
         pillCount: Int? = 10,
         drugName: String? = "Aspirin",
         ndc: String? = "00071015523",
         createdAt: Long = System.currentTimeMillis()
-    ) = TxnWithDrugDto(
+    ) = DispenseTxnSummary(
         txnId = txnId,
-        isDispense = isDispense,
         status = status,
         pillCount = pillCount,
         drugName = drugName,
         ndc = ndc,
-        bottleInfoListJson = null,
+        bottlesJson = null,
         createdAt = createdAt,
         targetCount = null,
         note = null,
@@ -59,7 +58,7 @@ class HistoryPdfExporterTest {
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        exporter = HistoryPdfExporter(context)
+        exporter = HistoryPdfExporter(context, Region.US)
         reportsDir = File(
             context.getExternalFilesDir(null),
             "PillReports/DailyHistoryReports"
@@ -97,17 +96,6 @@ class HistoryPdfExporterTest {
     fun `handles null drugName ndc and pillCount using fallback values`() {
         val row = txn(drugName = null, ndc = null, pillCount = null)
         val result = exporter.generateHistoryPdf(listOf(row), "2026-07-15")
-
-        assertNotNull(result)
-        assertTrue(result!!.exists())
-    }
-
-    @Test
-    fun `distinguishes isDispense true as FIXED and false as REGULAR without throwing`() {
-        val fixedRow = txn(isDispense = true)
-        val regularRow = txn(isDispense = false)
-
-        val result = exporter.generateHistoryPdf(listOf(fixedRow, regularRow), "2026-07-16")
 
         assertNotNull(result)
         assertTrue(result!!.exists())

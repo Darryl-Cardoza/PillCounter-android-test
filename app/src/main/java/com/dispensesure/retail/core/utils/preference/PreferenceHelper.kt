@@ -2,14 +2,15 @@ package com.dispensesure.retail.core.utils.preference
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.google.gson.Gson
-import com.dispensesure.retail.feature.settings.domain.model.ColorSettings
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
 import com.dispensesure.retail.feature.hl7.util.Hl7Format
-import com.dispensesure.retail.feature.profile.domain.model.PharmacyTypeOption
 import com.dispensesure.retail.feature.profile.domain.model.Country
+import com.dispensesure.retail.feature.profile.domain.model.PharmacyTypeOption
+import com.dispensesure.retail.feature.settings.domain.model.ColorSettings
+import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,9 +28,8 @@ private const val KEY_LOGGED_IN_EMAIL = "logged_in_email"
 private const val KEY_LOCAL_ID = "local_id"
 private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
 private const val KEY_REMEMBER_ME = "remember_me"
-
-// Transactions
-private const val KEY_TXN_ID = "txn_id"
+private const val KEY_REGION = "key_region"
+private const val KEY_LAST_REGION = "key_last_region"
 
 // UI Theme
 private const val KEY_THEME_COLORS = "theme_colors"
@@ -48,6 +48,8 @@ private const val KEY_REQUIRE_BACK_COUNT = "key_require_back_count"
 private const val KEY_REQUIRE_DOUBLE_COUNT = "key_require_double_count"
 private const val KEY_CONTROL_DRUG_TYPES="key_control_drug_types"
 private const val KEY_CONTROL_DRUG_TYPES_INITIALIZED = "key_control_drug_types_initialized"
+private const val KEY_CONTROL_DRUG_TYPES_CA = "key_control_drug_types_ca"
+private const val KEY_CONTROL_DRUG_TYPES_INITIALIZED_CA = "key_control_drug_types_initialized_ca"
 private const val KEY_SOUND_OVERRIDE="key_sound_override"
 private const val KEY_FACE_LOCK_TIMEOUT_MINUTES = "key_face_lock_timeout_minutes"
 private const val KEY_HAS_ENABLED_FACE_PROFILE = "key_has_enabled_face_profile"
@@ -79,6 +81,7 @@ private const val KEY_COUNTRIES = "key_countries"
 private const val KEY_LAST_HEALTH_CHECKED_AT = "last_health_checked_at"
 private const val KEY_OFFLINE_SESSION_THRESHOLD_SECONDS = "offline_session_threshold_seconds"
 private const val KEY_LOGGED_IN_AT = "logged_in_at_ms"
+private const val KEY_OFFLINE_STARTED_AT = "offline_started_at_ms"
 
 /** Default offline-session threshold (seconds) applied when the server has not yet supplied one. */
 private const val DEFAULT_OFFLINE_SESSION_THRESHOLD_SECONDS = 86_400L
@@ -125,6 +128,8 @@ class PreferenceHelper @Inject constructor(
         // it here, a user switch or re-login before that fetch lands would leave the
         // next user running under the previous user's standalone flag.
         setStandaloneMode(false)
+        // Region is per-user too; the next login stores the new user's.
+        prefs.remove(KEY_REGION)
         logger.w("Cleared authentication tokens from secure storage.")
     }
 
@@ -182,11 +187,7 @@ class PreferenceHelper @Inject constructor(
         logger.i("Saved localId")
     }
 
-    fun getLocalId(): Long {
-        val id = prefs.getLong(KEY_LOCAL_ID, 0)
-        logger.d("Retrieved localId")
-        return id
-    }
+    fun getLocalId(): Long = prefs.getLong(KEY_LOCAL_ID, 0)
 
     /**
      * Stores the `allow_local_storage` flag from the auth/me profile. When true, completed +
@@ -206,19 +207,6 @@ class PreferenceHelper @Inject constructor(
         val allow = prefs.getBoolean(KEY_ALLOW_LOCAL_STORAGE, true)
         logger.d("Retrieved allowLocalStorage: $allow")
         return allow
-    }
-
-    // ─────────────────────────── TRANSACTIONS ───────────────────────────
-
-    fun saveTxnId(txnId: Long) {
-        prefs.putLong(KEY_TXN_ID, txnId)
-        logger.i("Saved transaction ID")
-    }
-
-    fun getTxnId(): Long {
-        val id = prefs.getLong(KEY_TXN_ID, 0)
-        logger.d("Retrieved transaction ID")
-        return id
     }
 
     // ─────────────────────────── THEME CACHING ───────────────────────────
@@ -268,6 +256,9 @@ class PreferenceHelper @Inject constructor(
 
     fun saveIsColorImageEnabled(colorImageEnabled: Boolean) =
         prefs.putBoolean(KEY_IS_COLOR_IMAGE_ENABLED, colorImageEnabled)
+
+    /** True when the colour-image setting is off, so saved photos and frames go grayscale. */
+    fun isGrayscaleImage(): Boolean = !getIsColorImageEnabled()
 
     fun getContext(): Context = context
 
@@ -361,6 +352,19 @@ class PreferenceHelper @Inject constructor(
         return enabled
     }
 
+    fun setRegion(region: Region) {
+        prefs.putString(KEY_REGION, region.name)
+        // Kept through logout: PMS requests that arrive while nobody is logged in use it.
+        prefs.putString(KEY_LAST_REGION, region.name)
+        logger.i("Region set to: ${region.name}")
+    }
+
+    fun getRegion(): Region? =
+        prefs.getString(KEY_REGION)?.let { storedRegionName -> Region.fromCountryCode(storedRegionName) }
+
+    fun getLastRegion(): Region? =
+        prefs.getString(KEY_LAST_REGION)?.let { storedRegionName -> Region.fromCountryCode(storedRegionName) }
+
     fun setSoundEnabled(enabled: Boolean) {
         prefs.putBoolean(KEY_SOUND, enabled)
         logger.i("setSoundEnabled: $enabled")
@@ -406,14 +410,14 @@ class PreferenceHelper @Inject constructor(
     }
 
     // Stored as JSON string — SecurePreferences does not support StringSet
-    fun setControlDrugTypes(controlDrugTypes: Set<String>) {
-        prefs.putString(KEY_CONTROL_DRUG_TYPES, gson.toJson(controlDrugTypes))
-        prefs.putBoolean(KEY_CONTROL_DRUG_TYPES_INITIALIZED, true)
-        logger.i("setControlDrugTypes : ${controlDrugTypes.joinToString(",")}")
+    fun setControlDrugTypes(region: Region, controlDrugTypes: Set<String>) {
+        prefs.putString(controlDrugTypesKey(region), gson.toJson(controlDrugTypes))
+        prefs.putBoolean(controlDrugTypesInitializedKey(region), true)
+        logger.i("setControlDrugTypes ${region.name}: ${controlDrugTypes.joinToString(",")}")
     }
 
-    fun getControlDrugTypes(): Set<String> {
-        val json = prefs.getString(KEY_CONTROL_DRUG_TYPES) ?: return emptySet()
+    fun getControlDrugTypes(region: Region): Set<String> {
+        val json = prefs.getString(controlDrugTypesKey(region)) ?: return emptySet()
         return try {
             gson.fromJson(json, Array<String>::class.java).toSet()
         } catch (e: Exception) {
@@ -422,9 +426,20 @@ class PreferenceHelper @Inject constructor(
         }
     }
 
-    /** Returns true only after [setControlDrugTypes] has been called at least once. */
-    fun isControlDrugTypesInitialized(): Boolean {
-        return prefs.getBoolean(KEY_CONTROL_DRUG_TYPES_INITIALIZED, false)
+    /** Returns true only after [setControlDrugTypes] has been called at least once for [region]. */
+    fun isControlDrugTypesInitialized(region: Region): Boolean {
+        return prefs.getBoolean(controlDrugTypesInitializedKey(region), false)
+    }
+
+    // US keeps the original keys so selections saved before region support survive.
+    private fun controlDrugTypesKey(region: Region): String = when (region) {
+        Region.US -> KEY_CONTROL_DRUG_TYPES
+        Region.CA -> KEY_CONTROL_DRUG_TYPES_CA
+    }
+
+    private fun controlDrugTypesInitializedKey(region: Region): String = when (region) {
+        Region.US -> KEY_CONTROL_DRUG_TYPES_INITIALIZED
+        Region.CA -> KEY_CONTROL_DRUG_TYPES_INITIALIZED_CA
     }
 
     fun setSoundOverride(enabled: Boolean) {
@@ -644,7 +659,7 @@ class PreferenceHelper @Inject constructor(
     }
 
     /**
-     * Returns the persisted HL7 version, defaulting to "2.5" if not yet configured.
+     * Returns the persisted HL7 version, defaulting to "2.3.1" if not yet configured.
      */
     fun getHl7Version(): String {
         val version = prefs.getString(KEY_HL7_VERSION) ?: DEFAULT_HL7_VERSION
@@ -674,16 +689,19 @@ class PreferenceHelper @Inject constructor(
 
     /**
      * Saves the HL7 sending-application format used when composing outbound
-     * messages. One of [Hl7Format.DISPENSESURE], [Hl7Format.EYECON], [Hl7Format.VIVID].
+     * messages. One of [Hl7Format.DISPENSESURE_STANDARD], [Hl7Format.DISPENSESURE_NATIVE],
+     * [Hl7Format.EYECON], [Hl7Format.VIVID].
      */
     fun saveHl7Format(format: Hl7Format) {
         prefs.putString(KEY_HL7_FORMAT, format.name)
         logger.i("Saved HL7 format: ${format.name}")
     }
 
-    /** Returns the persisted HL7 format, defaulting to [Hl7Format.DEFAULT] if not yet configured. */
+    /** Returns the persisted HL7 format, defaulting to [Hl7Format.DEFAULT] if not yet configured.
+     *  Legacy persisted value "DISPENSESURE" migrates to [Hl7Format.DISPENSESURE_STANDARD]. */
     fun getHl7Format(): Hl7Format {
         val name = prefs.getString(KEY_HL7_FORMAT)
+            ?.let { if (it == "DISPENSESURE") "DISPENSESURE_STANDARD" else it }
         val format = name?.let { runCatching { Hl7Format.valueOf(it) }.getOrNull() } ?: Hl7Format.DEFAULT
         logger.d("Retrieved HL7 format: $format")
         return format
@@ -819,6 +837,18 @@ class PreferenceHelper @Inject constructor(
         logger.i("Cleared loggedInAt")
     }
 
+    /** When the open offline period began; kept so a relaunch can close it for the audit log. */
+    fun setOfflineStartedAt(timestampMs: Long) {
+        prefs.putLong(KEY_OFFLINE_STARTED_AT, timestampMs)
+    }
+
+    /** @return Epoch ms the open offline period began, or `0L` when none is open. */
+    fun getOfflineStartedAt(): Long = prefs.getLong(KEY_OFFLINE_STARTED_AT, 0L)
+
+    fun clearOfflineStartedAt() {
+        prefs.remove(KEY_OFFLINE_STARTED_AT)
+    }
+
 
     // ─────────────────────────── PMS CONNECTION ───────────────────────────
 
@@ -868,6 +898,8 @@ class PreferenceHelper @Inject constructor(
     /** Key used for [KEY_USER_LOGGED_IN] change notifications via [registerOnChangeListener]. */
     val userLoggedInKey: String get() = KEY_USER_LOGGED_IN
 
+    val regionKey: String get() = KEY_REGION
+
     fun registerOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnChangeListener(listener)
     }
@@ -880,6 +912,6 @@ class PreferenceHelper @Inject constructor(
 
     companion object {
         /** Default HL7 spec version used by parser and builder when not explicitly configured. */
-        const val DEFAULT_HL7_VERSION = "2.5.1"
+        const val DEFAULT_HL7_VERSION = "2.3.1"
     }
 }

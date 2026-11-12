@@ -2,6 +2,10 @@ package com.dispensesure.retail.feature.faceAuth.presentation.viewmodel
 
 import android.content.Context
 import android.graphics.Bitmap
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.FaceProfileEnrolled
+import com.dispensesure.retail.core.audit.model.FaceVerified
+import com.dispensesure.retail.core.audit.model.FaceVerifyFailed
 import com.dispensesure.retail.core.faceAuth.data.FaceProfileRepository
 import com.dispensesure.retail.core.faceAuth.logic.AutoCaptureController
 import com.dispensesure.retail.core.faceAuth.logic.FaceEngine
@@ -64,8 +68,9 @@ class FaceAuthViewModelTest {
         autoCaptureController: AutoCaptureController = mockk(relaxed = true),
         sessionLockController: SessionLockController = mockk(relaxed = true),
         preferenceHelper: PreferenceHelper = mockk(relaxed = true),
-        trackGate: FaceTrackContinuityGate = mockk(relaxed = true) { every { isBroken } returns false }
-    ) = FaceAuthViewModel(context, engine, repo, sessionEmailProvider, faceQualityGate, autoCaptureController, sessionLockController, preferenceHelper, trackGate)
+        trackGate: FaceTrackContinuityGate = mockk(relaxed = true) { every { isBroken } returns false },
+        auditLogger: AuditLogger = mockk(relaxed = true)
+    ) = FaceAuthViewModel(context, engine, repo, sessionEmailProvider, faceQualityGate, autoCaptureController, sessionLockController, preferenceHelper, trackGate, auditLogger)
 
     @Test
     fun `capturing all three angles enrolls the profile without a further call`() = runTest {
@@ -153,6 +158,54 @@ class FaceAuthViewModelTest {
         vm.startAutoVerify(flowOf(fakeBitmap))
 
         assertTrue(vm.verifyState.value is VerifyState.NotRecognized)
+    }
+
+    @Test
+    fun `a failed verify is logged with its best score`() = runTest {
+        val engine = mockk<FaceEngine>()
+        val repo = mockk<FaceProfileRepository>()
+        val faceQualityGate = mockk<FaceQualityGate>()
+        val auditLogger = mockk<AuditLogger>(relaxed = true)
+        coEvery { engine.detectPrimary(fakeBitmap) } returns fakeFace
+        coEvery { engine.embed(fakeBitmap, fakeFace) } returns FloatArray(128) { 1f }
+        every { faceQualityGate.evaluate(fakeBitmap, fakeFace) } returns null
+        coEvery { repo.loadGallery() } returns emptyList()
+        coEvery { repo.observeProfiles() } returns flowOf(emptyList())
+
+        val vm = viewModel(engine = engine, repo = repo, faceQualityGate = faceQualityGate, auditLogger = auditLogger)
+        vm.startVerify()
+        vm.startAutoVerify(flowOf(fakeBitmap))
+
+        // An empty gallery scores 0.
+        verify { auditLogger.log(FaceVerifyFailed(bestScore = 0.0)) }
+    }
+
+    @Test
+    fun `a match is logged with the operator from before the lock`() = runTest {
+        val engine = mockk<FaceEngine>()
+        val repo = mockk<FaceProfileRepository>()
+        val faceQualityGate = mockk<FaceQualityGate>()
+        val auditLogger = mockk<AuditLogger>(relaxed = true)
+        val sessionLockController = mockk<SessionLockController>(relaxed = true) {
+            every { previousOperatorProfileId } returns 3L
+        }
+        coEvery { engine.detectPrimary(fakeBitmap) } returns fakeFace
+        coEvery { engine.embed(fakeBitmap, fakeFace) } returns FloatArray(128) { 1f }
+        every { faceQualityGate.evaluate(fakeBitmap, fakeFace) } returns null
+        coEvery { repo.loadGallery() } returns listOf(GalleryEntry(faceProfileId = 1L, vec = FloatArray(128) { 1f }))
+        coEvery { repo.observeProfiles() } returns flowOf(emptyList())
+        coEvery { repo.getProfile(1L) } returns
+            FaceProfileEntity(id = 1L, firstName = "Bruce", lastName = "Wayne", email = null, createdAt = 0L)
+        coEvery { repo.markUsed(any(), any()) } returns Unit
+
+        val vm = viewModel(
+            engine = engine, repo = repo, faceQualityGate = faceQualityGate,
+            sessionLockController = sessionLockController, auditLogger = auditLogger
+        )
+        vm.startVerify()
+        vm.startAutoVerify(flowOf(fakeBitmap))
+
+        verify { auditLogger.log(match { it is FaceVerified && it.faceProfileId == 1L && it.previousOperatorProfileId == 3L }) }
     }
 
     @Test
@@ -251,6 +304,31 @@ class FaceAuthViewModelTest {
         // The warning pauses the scan; resuming it must still reach the same persist trigger.
         assertTrue(vm.registrationState.value is RegistrationState.Enrolled)
         coVerify(exactly = 1) { repo.registerProfile(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `enrolling past the warning is logged as overridden`() = runTest {
+        val repo = mockk<FaceProfileRepository>(relaxed = true)
+        val autoCaptureController = mockk<AutoCaptureController>(relaxed = true)
+        val auditLogger = mockk<AuditLogger>(relaxed = true)
+        coEvery { repo.findExistingMatch(any()) } returns
+            FaceProfileEntity(id = 7L, firstName = "Bruce", lastName = "Wayne", email = null, createdAt = 0L)
+        coEvery { repo.registerProfile(any(), any(), any(), any(), any(), any()) } returns 9L
+        every { autoCaptureController.run(FaceCaptureAngle.FRONT, any(), true, any(), any()) } returns
+            flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 1f }, fakeBitmap))
+        every { autoCaptureController.run(FaceCaptureAngle.TILT_LEFT, any(), true, any(), any()) } returns
+            flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 2f }, fakeBitmap))
+        every { autoCaptureController.run(FaceCaptureAngle.TILT_RIGHT, any(), true, any(), any()) } returns
+            flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 3f }, fakeBitmap))
+
+        val vm = viewModel(repo = repo, autoCaptureController = autoCaptureController, auditLogger = auditLogger)
+        vm.startRegistration("Clark", "Kent")
+        vm.startAutoCapture(flowOf(fakeBitmap), isFrontCamera = true)
+        vm.continueAfterDuplicateWarning()
+
+        verify {
+            auditLogger.log(match { it is FaceProfileEnrolled && it.faceProfileId == 9L && it.duplicateWarningOverridden })
+        }
     }
 
     @Test

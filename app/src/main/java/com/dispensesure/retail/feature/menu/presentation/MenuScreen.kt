@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.feature.menu.presentation
+package com.dispensesure.retail.feature.menu.presentation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -28,12 +28,17 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.utils.common.HistoryRetention
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.navigateSafely
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourSection
+import com.dispensesure.retail.core.tourguide.label
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.login.domain.model.LogoutUiState
 import com.dispensesure.retail.feature.login.presentation.viewmodel.LoginViewModel
@@ -68,6 +73,7 @@ fun MenuScreen(
     val hasEnabledFaceProfile by viewModel.hasEnabledFaceProfile.collectAsState()
     var showLogoutLoading by remember { mutableStateOf(false) }
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
+    var showTourPicker by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -170,6 +176,42 @@ fun MenuScreen(
                     }
                 )
                 HorizontalDivider(color = extendedColors.primaryBackground)
+
+                // Start Tutorial: pick which section to replay; replays never touch the
+                // "seen" flag. Lands on Dashboard, where every section starts.
+                SimpleMenuRow(
+                    navController = navController,
+                    icon = R.drawable.tutorial,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.menu_start_tutorial),
+                    onClick = { showTourPicker = true }
+                )
+                if (showTourPicker) {
+                    val labels = TourSection.entries.map { it.label() }
+                    val loggedInRegion = LocalRegion.current
+                    CommonSingleSelectDialog(
+                        title = stringResource(R.string.tour_picker_title),
+                        options = listOf(stringResource(R.string.tour_picker_full)) + labels,
+                        selectedIndex = 0,
+                        confirmText = stringResource(R.string.tour_picker_start),
+                        onCancel = { showTourPicker = false },
+                        onOk = { index ->
+                            showTourPicker = false
+                            val sections = if (index == 0) TourSection.entries else listOf(TourSection.entries[index - 1])
+                            FtueController.start(
+                                sections,
+                                hl7Enabled = loginViewModel.preferenceHelper.isHl7Enabled(),
+                                notesEnabled = loginViewModel.preferenceHelper.getShowNotesDialogSetting(),
+                                bucketsEnabled = loggedInRegion.showsBucket,
+                            )
+                            navController.navigate(Screen.Dashboard.route) {
+                                popUpTo(0)
+                                launchSingleTop = true
+                            }
+                        },
+                    )
+                }
+                HorizontalDivider(color = extendedColors.primaryBackground)
                 // Logout
                 SimpleMenuRow(
                     navController = navController,
@@ -194,6 +236,7 @@ fun MenuScreen(
                                 loginViewModel.logout(refreshToken)
                             } else {
                                 // Fallback: clear session locally if token missing
+                                loginViewModel.logLocalLogoutAndStartNewSession()
                                 loginViewModel.preferenceHelper.clearTokens()
                                 loginViewModel.preferenceHelper.setUserLoggedIn(false)
                                 showLogoutLoading = false

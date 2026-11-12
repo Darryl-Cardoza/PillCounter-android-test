@@ -1,13 +1,22 @@
 package com.dispensesure.retail.core.health.logic
 
 import androidx.annotation.VisibleForTesting
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.OfflineEndedBy
+import com.dispensesure.retail.core.audit.model.OfflineModeEntered
+import com.dispensesure.retail.core.audit.model.OfflineModeExited
+import com.dispensesure.retail.core.audit.model.OfflineTrigger
+import com.dispensesure.retail.core.audit.model.ServerConfigChanged
+import com.dispensesure.retail.core.audit.model.ServerSetting
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.health.domain.data.IHealthRepository
 import com.dispensesure.retail.core.health.domain.model.HealthState
 import com.dispensesure.retail.core.utils.common.DateUtils
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import dagger.Lazy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -28,6 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.IOException
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -59,10 +69,14 @@ class SessionHealthController @Inject constructor(
     private val healthRepository: IHealthRepository,
     private val preferenceHelper: PreferenceHelper,
     // Wrapped in `Lazy` to break the Hilt cycle:
-    // Hl7Repository -> DrugImageDownloader -> OkHttpClient -> HealthGateInterceptor
-    // -> SessionHealthController. The repository is only resolved the first time the
+    // DispenseHl7Repository / StockHl7Repository -> DrugResolver -> DrugImageDownloader -> OkHttpClient -> HealthGateInterceptor
+    // -> SessionHealthController. The repositories are only resolved the first time the
     // OFFLINE -> HEALTHY sync trigger fires, by which point every graph node exists.
-    private val hl7Repository: Lazy<Hl7Repository>
+    private val dispenseHl7Repository: Lazy<DispenseHl7Repository>,
+    private val stockHl7Repository: Lazy<StockHl7Repository>,
+    private val auditLogger: AuditLogger,
+    // Lazy for the same cycle as the HL7 repositories above.
+    private val auditLogUploader: Lazy<AuditLogUploader>
 ) {
 
     private val logger = AppLogger.create<SessionHealthController>()
@@ -146,16 +160,17 @@ class SessionHealthController @Inject constructor(
     val syncTrigger: SharedFlow<Unit> = _syncTrigger.asSharedFlow()
 
     init {
-        // Drain HL7 backlog whenever the state transitions OFFLINE -> HEALTHY. Owning this
+        // Drain HL7 backlog and audit uploads whenever the state transitions OFFLINE -> HEALTHY. Owning this
         // observer inside the controller keeps `MainActivity` free of the layering jump
         // (Activity -> Repository) and centralises the recovery-time workflow next to the
         // state machine that fires it.
         scope.launch {
             syncTrigger.collect {
+                // Returns at once, so an HL7 failure below can't skip it.
+                auditLogUploader.get().requestUpload()
                 try {
-                    val repo = hl7Repository.get()
-                    repo.resendPendingHl7Transactions()
-                    repo.resendPendingHl7BatchTransactions()
+                    dispenseHl7Repository.get().resendPendingDispenses()
+                    stockHl7Repository.get().sendPendingBatches()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -163,6 +178,8 @@ class SessionHealthController @Inject constructor(
                 }
             }
         }
+        // A period still open from the last process ended when the app was killed.
+        scope.launch { closeOfflinePeriod(OfflineEndedBy.APP_RESTARTED) }
     }
 
     /**
@@ -177,9 +194,10 @@ class SessionHealthController @Inject constructor(
      * - Concurrent callers are serialised via a mutex so an incidental double-tap or a
      *   preflight + lifecycle-resume racing pair do not fire two /health requests.
      *
+     * @param trigger What asked for this check; recorded if it finds the app offline.
      * @return true if `/health` succeeded; false otherwise.
      */
-    suspend fun checkHealth(force: Boolean = false): Boolean {
+    suspend fun checkHealth(force: Boolean = false, trigger: OfflineTrigger = OfflineTrigger.PREFLIGHT): Boolean {
         // Fast-path: reuse a fresh recent result / join an in-flight call. Guarded by
         // the mutex only for reading + installing the shared Deferred; the network call
         // itself runs outside the mutex so callers do not serialize on a slow /health.
@@ -196,7 +214,8 @@ class SessionHealthController @Inject constructor(
                 cached.complete(lastCheckResult)
                 return@withLock cached
             }
-            val deferred = scope.async { runNetworkCheck() }
+            // Only the caller that starts the check owns its trigger; joiners above don't.
+            val deferred = scope.async { runNetworkCheck(trigger) }
             inFlight = deferred
             deferred
         }
@@ -225,7 +244,7 @@ class SessionHealthController @Inject constructor(
      *   the outer trigger fires (foreground resume / connectivity restored / banner
      *   retry) drive subsequent probes.
      */
-    private suspend fun runNetworkCheck(): Boolean {
+    private suspend fun runNetworkCheck(trigger: OfflineTrigger): Boolean {
         var lastFailure: Throwable? = null
         repeat(MAX_ATTEMPTS) { attempt ->
             val outcome = healthRepository.checkHealth()
@@ -239,6 +258,7 @@ class SessionHealthController @Inject constructor(
                     _state.value = HealthState.HEALTHY
                     if (previous == HealthState.OFFLINE) {
                         logger.i("Transitioning OFFLINE -> HEALTHY, firing syncTrigger")
+                        closeOfflinePeriod(OfflineEndedBy.BACK_ONLINE)
                         _syncTrigger.tryEmit(Unit)
                     }
                     return true
@@ -254,10 +274,40 @@ class SessionHealthController @Inject constructor(
         }
         // Offline is an expected state, not an app error.
         logger.w("checkHealth exhausted $MAX_ATTEMPTS attempts, flipping OFFLINE", lastFailure, event = LogEvent.HEALTH_CHECK_FAILED)
-        if (_state.value != HealthState.EXPIRED) {
+        val previous = _state.value
+        if (previous != HealthState.EXPIRED) {
             _state.value = HealthState.OFFLINE
+            if (previous != HealthState.OFFLINE) openOfflinePeriod(trigger)
         }
         return false
+    }
+
+    // Saves the start so the period can be closed even after a kill, then logs the entry.
+    private fun openOfflinePeriod(trigger: OfflineTrigger) {
+        val startedAt = System.currentTimeMillis()
+        preferenceHelper.setOfflineStartedAt(startedAt)
+        val lastGoodHealthAt = _lastHealthAt.value.takeIf { it > 0L }?.let { Instant.ofEpochMilli(it).toString() }
+        auditLogger.log(
+            OfflineModeEntered(
+                trigger = trigger,
+                lastGoodHealthAt = lastGoodHealthAt,
+                offlineLimitSeconds = _thresholdMs.value / 1_000L
+            )
+        )
+    }
+
+    // No-op when no period is open, so each period is closed exactly once.
+    private fun closeOfflinePeriod(endedBy: OfflineEndedBy) {
+        val startedAt = preferenceHelper.getOfflineStartedAt()
+        if (startedAt <= 0L) return
+        preferenceHelper.clearOfflineStartedAt()
+        auditLogger.log(
+            OfflineModeExited(
+                endedBy = endedBy,
+                offlineStartedAt = Instant.ofEpochMilli(startedAt).toString(),
+                durationSeconds = ((System.currentTimeMillis() - startedAt) / 1_000L).coerceAtLeast(0L)
+            )
+        )
     }
 
     /**
@@ -278,7 +328,7 @@ class SessionHealthController @Inject constructor(
         val is5xx = httpCode != null && httpCode in 500..599
         val isNetworkException = throwable is IOException
         if (!isNetworkException && !is5xx) return
-        scope.launch { checkHealth() }
+        scope.launch { checkHealth(trigger = OfflineTrigger.REQUEST_FAILED) }
     }
 
     /**
@@ -299,6 +349,7 @@ class SessionHealthController @Inject constructor(
         if (elapsed <= _thresholdMs.value) return false
         logger.w("Offline threshold exceeded (elapsed=$elapsed ms, threshold=${_thresholdMs.value} ms, anchor=$anchor) — EXPIRED")
         _state.value = HealthState.EXPIRED
+        closeOfflinePeriod(OfflineEndedBy.OFFLINE_LIMIT_REACHED)
         return true
     }
 
@@ -309,6 +360,9 @@ class SessionHealthController @Inject constructor(
      */
     fun updateThreshold(seconds: Long) {
         if (seconds <= 0L) return
+        val previousSeconds = _thresholdMs.value / 1_000L
+        ServerConfigChanged.ifChanged(ServerSetting.OFFLINE_LIMIT_SECONDS, previousSeconds, seconds)
+            ?.let(auditLogger::log)
         preferenceHelper.setOfflineSessionThresholdSeconds(seconds)
         _thresholdMs.value = seconds * 1_000L
         logger.i("Threshold updated to $seconds s (${_thresholdMs.value} ms)")
@@ -319,7 +373,7 @@ class SessionHealthController @Inject constructor(
      *
      * @return the `Job` running the check, so callers can cancel it in tests if needed.
      */
-    fun onForegroundResume(): Job = scope.launch { checkHealth() }
+    fun onForegroundResume(): Job = scope.launch { checkHealth(trigger = OfflineTrigger.APP_RESUMED) }
 
     /**
      * Fires a background `/health` when Android reports network connectivity restored.
@@ -333,7 +387,8 @@ class SessionHealthController @Inject constructor(
      * @param force When true (default), bypasses the negative-result cache in [checkHealth].
      * @return the `Job` running the check.
      */
-    fun onConnectivityRestored(force: Boolean = true): Job = scope.launch { checkHealth(force = force) }
+    fun onConnectivityRestored(force: Boolean = true): Job =
+        scope.launch { checkHealth(force = force, trigger = OfflineTrigger.NETWORK_RETURNED) }
 
     /**
      * Resets `state` to `UNKNOWN` after an expired-session teardown so the next login
@@ -359,10 +414,13 @@ class SessionHealthController @Inject constructor(
     /**
      * Clears the login-success anchor. Called on logout or expiry teardown so the next
      * offline period only counts against the fresh anchor of the next session.
+     * Also resets the state, so the next user's first offline drop is logged.
      */
     fun markLoggedOut() {
+        _state.value = HealthState.UNKNOWN
         _loggedInAt.value = 0L
         preferenceHelper.clearLoggedInAt()
+        closeOfflinePeriod(OfflineEndedBy.LOGGED_OUT)
         logger.i("markLoggedOut()")
     }
 

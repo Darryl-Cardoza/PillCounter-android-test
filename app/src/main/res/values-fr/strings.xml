@@ -59,6 +59,22 @@
     <string name="no_pending_tasks">Aucune tâche en attente pour le moment</string>
     <string name="kpi_disp_short">Dispenser</string>
     <string name="kpi_inv_short">Inventaire</string>
+
+    <!-- Home screen tour guide -->
+    <string name="tour_title_pms">État de connexion au PMS</string>
+    <string name="tour_desc_pms">Confirme que l\'intégration avec le système de gestion de pharmacie (PMS) est active et synchronisée.</string>
+    <string name="tour_title_dispense">Dispenser</string>
+    <string name="tour_desc_dispense">Appuyez pour scanner les étiquettes Rx et démarrer le flux de dispensation.</string>
+    <string name="tour_title_stock_count">Comptage de Stock</string>
+    <string name="tour_desc_stock_count">Démarre une nouvelle session de comptage d\'inventaire pour rapprocher le stock.</string>
+    <string name="tour_title_tabs">File / Activité</string>
+    <string name="tour_desc_tabs">Bascule la liste ci-dessous entre la file de dispensation, la file d\'inventaire et l\'activité récente.</string>
+    <string name="tour_skip">Passer</string>
+    <string name="tour_back">Retour</string>
+    <string name="tour_next">Suivant</string>
+    <string name="tour_done">Terminé</string>
+    <string name="tour_step_of">Étape %1$d sur %2$d</string>
+
     <string name="kpi_high_priority">Priorité élevée</string>
     <string name="kpi_cont_drugs">Contrôlés</string>
     <string name="kpi_hazardous">Dangereux</string>
@@ -110,6 +126,7 @@
     <string name="error_email_invalid">Veuillez entrer une adresse e-mail valide.</string>
     <string name="error_unknown">Une erreur est survenue.</string>
     <string name="error_invalid_otp">PIN invalide.</string>
+    <string name="error_unsupported_region">Le pays de votre compte n\'est pas pris en charge par cette application. Veuillez contacter le support.</string>
     <string name="error_phone_invalid">Numéro de téléphone invalide</string>
     <string name="error_name_invalid">Le nom ne peut pas contenir de chiffres</string>
     <string name="error_name_required">Ce champ est obligatoire</string>
@@ -167,8 +184,6 @@
     <string name="total_count">Nombre total</string>
     <string name="max_count_reached">Le comptage total de la transaction dépasse l\'objectif.</string>
     <string name="no_transaction_found">Aucune transaction trouvée, veuillez commencer le comptage des pilules</string>
-    <string name="rx_already_exists_title">La RX existe déjà</string>
-    <string name="rx_already_exists_message">Cette RX est déjà présente dans vos transactions. Voulez-vous continuer avec elle ?</string>
     <string name="rx_on_hold_title">Transaction en attente</string>
     <string name="rx_on_hold_message">Cette transaction est actuellement en attente. Vous ne pouvez pas continuer avec elle.</string>
     <!-- ================== PROFILE ================== -->
@@ -344,10 +359,8 @@
     <string name="enable_hl7_from_portal_toast">Activer HL7 depuis le Portail</string>
     <string name="scan_correct_label">Scannez la bonne étiquette</string>
 <!--    StockCount-->
-    <string name="scan_stock_bottle">Scanner le flacon de stock</string>
     <string name="scan_open_pills">Scanner les pilules en vrac</string>
     <string name="camera_permission_required">L\'autorisation de la caméra est requise pour scanner. Veuillez autoriser l\'accès à la caméra.</string>
-    <string name="scan_ndc_to_count">Scannez le NDC pour compter les pilules</string>
 
 
 <!--    partial count screen -->
@@ -405,10 +418,7 @@
     <string name="code_name_format">%1$s - %2$s</string>
 
     <string name="verify_rx_details">Vérifier les détails Rx</string>
-    <string name="verify_stock_bottle_details">Vérifier les détails du flacon de stock</string>
-    <string name="hazardous_drug_warning">Médicament dangereux</string>
     <string name="form">Forme</string>
-    <string name="strength">Force</string>
     <!-- ================== HL7 NOTIFICATIONS ================== -->
     <string name="hl7_notification_device_connected_title">Appareil connecté</string>
     <string name="hl7_notification_device_connected_message">Connecté à %1$s avec succès</string>
@@ -488,6 +498,8 @@
     <string name="batch_stock_count_open_pills">Comprimés ouverts</string>
     <string name="batch_stock_count_edit">Modifier</string>
     <string name="batch_stock_count_delete_row">Supprimer</string>
+    <string name="batch_stock_count_increase">Augmenter</string>
+    <string name="batch_stock_count_decrease">Diminuer</string>
 
     <string name="violation_screen_overlay">Superposition d\'écran détectée — une autre application pourrait intercepter les entrées tactiles</string>
     <string name="permission_location_rationale">L\'accès à la localisation est utilisé uniquement pour identifier votre réseau Wi-Fi afin de découvrir les appareils médicaux HL7. Votre localisation n\'est jamais stockée, transmise ni associée aux données des patients.</string>
@@ -594,7 +606,94 @@
     <string name="hl7_notification_refill_exhausted">Renouvellements épuisés pour la Rx %1$s — aucun renouvellement restant (RXE-16=%2$d)</string>
     <string name="hl7_notification_refill_ndc_or_qty_missing">Renouvellement de la Rx %1$s ignoré — NDC ou quantité manquants ou non valides</string>
     <string name="hl7_notification_no_processable_orders">Message HL7 %1$s reçu, mais il ne contenait aucune commande traitable</string>
-    <string name="hl7_notification_structural_validation_failed">Message HL7 %1$s rejeté — échec de la validation structurelle : %2$s</string>
-    <string name="hl7_notification_business_validation_failed">Message HL7 %1$s rejeté — %2$s</string>
+    <string name="hl7_notification_message_rejected">Message HL7 %1$s rejeté</string>
 
+    <string name="tour_title_kpi_dispense">Cartes de dispensation</string>
+    <string name="tour_desc_kpi_dispense">Compteurs Priorité haute, Contrôlés et Dangereux de vos dispensations. Touchez une carte pour filtrer la file.</string>
+    <string name="tour_title_kpi_inventory">Cartes d\'inventaire</string>
+    <string name="tour_desc_kpi_inventory">Comptage cyclique et Lot en attente montrent votre travail d\'inventaire. Touchez une carte pour filtrer la file.</string>
+    <string name="tour_step_failed">Impossible de continuer la visite — touchez Suivant pour réessayer ou Passer</string>
+    <string name="tour_section_done_prompt">Visite %1$s terminée. Continuer avec la visite %2$s ?</string>
+    <string name="tour_continue">Continuer</string>
+    <string name="tour_end">Terminer la visite</string>
+    <string name="tour_section_dashboard">Tableau de bord</string>
+    <string name="tour_section_dispense">Dispensation</string>
+    <string name="tour_section_stock_count">Comptage de stock</string>
+    <string name="tour_offer_message">Faire une visite rapide de l\'application ? Vous pouvez la rejouer à tout moment depuis le menu.</string>
+    <string name="tour_offer_start">Démarrer la visite</string>
+    <string name="tour_offer_not_now">Pas maintenant</string>
+    <string name="tour_picker_title">Quelle visite ?</string>
+    <string name="tour_picker_full">Visite complète</string>
+    <string name="tour_picker_start">Démarrer</string>
+    <string name="tour_demo_drug_name">Médicament de démonstration du tutoriel</string>
+    <string name="menu_start_tutorial">Démarrer le tutoriel</string>
+    <string name="tour_desc_add_note_actions">Passez s\'il n\'y a rien à noter, ou enregistrez une note dans le dossier. Dans cette visite, elle est passée pour vous.</string>
+    <string name="tour_desc_count_add_circle">Touchez pour ajouter les comprimés détectés au comptage. Appuyez longuement pour le déplacer.</string>
+    <string name="tour_desc_dispense_tap">Touchez Dispenser pour commencer à scanner une ordonnance.</string>
+    <string name="tour_desc_inv_camera_preview">Pointez la caméra vers le code-barres NDC d\'un flacon pour commencer à le compter.</string>
+    <string name="tour_desc_inv_counter">Touchez + pour compter un autre flacon, ou - pour corriger une erreur.</string>
+    <string name="tour_desc_inv_edit_actions">Annulez pour abandonner les modifications, ou enregistrez pour mettre à jour les comptages de ce NDC.</string>
+    <string name="tour_desc_inv_edit_button">Si vous devez corriger le comptage de flacons scellés ou de comprimés en vrac par lot et péremption, touchez ici ; sinon, continuez.</string>
+    <string name="tour_desc_inv_end_count">Touchez Terminer le comptage une fois chaque NDC de ce lot compté. Suivant ouvre l\'écran de note.</string>
+    <string name="tour_desc_inv_scan_pills">Facultatif : scannez d\'autres flacons et touchez AJOUTER pour les compter, touchez ici pour les comprimés en vrac d\'un flacon déjà ouvert, ou touchez simplement Terminer le comptage.</string>
+    <string name="tour_desc_scan_container">Pointez la caméra vers le code QR ou le code-barres NDC du récipient.</string>
+    <string name="tour_desc_scan_rx_camera">Pointez la caméra vers le code-barres de l\'étiquette de l\'ordonnance pour commencer la dispensation.</string>
+    <string name="tour_desc_select_bucket">Choisissez le casier de stockage que vous comptez. Pour cette visite, le comptage de démonstration est préparé pour vous.</string>
+    <string name="tour_desc_stock_count_tap">Touchez Comptage de stock pour commencer à compter l\'inventaire.</string>
+    <string name="tour_desc_verify_rx_proceed">Touchez Continuer pour commencer à compter cette ordonnance.</string>
+    <string name="tour_title_add_note_actions">Passer ou enregistrer</string>
+    <string name="tour_title_count_add_circle">Ajouter un comptage</string>
+    <string name="tour_title_dispense_tap">Démarrer une dispensation</string>
+    <string name="tour_title_inv_camera_preview">Scanner un médicament</string>
+    <string name="tour_title_inv_counter">Ajuster le comptage</string>
+    <string name="tour_title_inv_edit_actions">Annuler ou enregistrer</string>
+    <string name="tour_title_inv_edit_button">Modifier les détails (facultatif)</string>
+    <string name="tour_title_inv_end_count">Terminer le comptage</string>
+    <string name="tour_title_inv_scan_pills">Compter les comprimés en vrac (facultatif)</string>
+    <string name="tour_title_scan_container">Scanner le récipient</string>
+    <string name="tour_title_scan_rx_camera">Scanner l\'étiquette de l\'ordonnance</string>
+    <string name="tour_title_select_bucket">Sélectionner un casier</string>
+    <string name="tour_title_stock_count_tap">Démarrer un comptage de stock</string>
+    <string name="tour_title_verify_rx_proceed">Confirmer et compter</string>
+    <string name="tour_ended_locked">La visite s\'est terminée car la session a été verrouillée.</string>
+
+    <!-- Canada wording (Region.wording) -->
+    <string name="queue_tab_controlled_ca">CONTRÔLÉ / SUBSTANCE CIBLÉE</string>
+    <string name="queue_tab_hazardous_ca">CYTOTOXIQUE</string>
+    <string name="kpi_cont_drugs_ca">Contrôlés / Substances ciblées</string>
+    <string name="kpi_hazardous_ca">Cytotoxiques</string>
+    <string name="tour_desc_kpi_dispense_ca">Compteurs Priorité haute, Contrôlés / Substances ciblées et Cytotoxiques de vos dispensations. Touchez une carte pour filtrer la file.</string>
+    <string name="tour_desc_scan_container_ca">Pointez la caméra vers le code QR ou le code-barres DIN du récipient.</string>
+    <string name="tour_desc_inv_camera_preview_ca">Pointez la caméra vers le code-barres DIN d\'un flacon pour commencer à le compter.</string>
+    <string name="tour_desc_inv_edit_actions_ca">Annulez pour abandonner les modifications, ou enregistrez pour mettre à jour les comptages de ce DIN.</string>
+    <string name="tour_desc_inv_end_count_ca">Touchez Terminer le comptage une fois chaque DIN de ce lot compté. Suivant ouvre l\'écran de note.</string>
+    <string name="ndc_value_ca">DIN %1$s</string>
+    <string name="ndc_ca">DIN</string>
+    <string name="ndc_gtin14_ca">DIN/GTIN14</string>
+    <string name="ndc_number_ca">Numéro DIN</string>
+    <string name="the_scanned_ndc_does_not_match_ca">Le DIN scanné ne correspond pas</string>
+    <string name="scan_ndc_toast_ca">Scanner le DIN</string>
+    <string name="rescan_ndc_does_not_match_toast_ca">Re-scanner — le DIN ne correspond pas</string>
+    <string name="ndcs_label_ca">DIN</string>
+    <string name="total_ndc_count_ca">NOMBRE TOTAL DE DIN</string>
+    <string name="pdf_ndc_label_ca">DIN</string>
+    <string name="batch_stock_count_scanned_drug_details_ca">DÉTAILS DU DIN SCANNÉ</string>
+    <string name="batch_stock_count_label_ndc_ca">Numéro DIN</string>
+    <string name="batch_stock_count_total_ndcs_ca">Total DIN</string>
+    <string name="batch_stock_count_drug_not_found_ca">DIN invalide %1$s</string>
+    <string name="batch_stock_count_ndc_not_in_request_ca">Le DIN %1$s ne fait pas partie de cette demande d\'inventaire</string>
+    <string name="photo_label_requested_ndc_ca">DIN demandé</string>
+    <string name="photo_label_dispensed_ndc_ca">DIN délivré</string>
+    <string name="hl7_notification_drug_not_found_api_failed_ca">Le DIN %1$s n\'a pas pu être résolu. La requête API a échoué.</string>
+    <string name="hl7_notification_drug_not_found_no_drug_ca">Aucun médicament trouvé pour le DIN %1$s.</string>
+    <string name="hl7_notification_edit_rx_drug_not_found_ca">Échec de la mise à jour de la Rx %1$s : DIN %2$s du médicament introuvable.</string>
+    <string name="hl7_notification_new_rx_ndc_missing_ca">Nouvelle commande pour la Rx %1$s ignorée — DIN manquant dans RXE-2</string>
+    <string name="hl7_notification_refill_ndc_or_qty_missing_ca">Renouvellement de la Rx %1$s ignoré — DIN ou quantité manquants ou non valides</string>
+    <string name="setting_group_controlled_drug_ca">DISTRIBUTION DE SUBSTANCES CONTRÔLÉES / CIBLÉES</string>
+    <string name="setting_group_hazardous_ca">COMPTAGE DE PILULES CYTOTOXIQUES</string>
+    <string name="setting_hazardous_drug_ca">Médicament cytotoxique</string>
+    <string name="tray_classification_message_ca">Le plateau de couleur %s n\'est pas classifié. Le marquer comme plateau cytotoxique ?</string>
+    <string name="hazardous_tray_warning_ca">Avertissement : Vous utilisez un plateau cytotoxique. Veuillez utiliser un plateau non cytotoxique.</string>
+    <string name="non_hazardous_tray_warning_ca">Ce plateau n’est pas le plateau cytotoxique. Veuillez utiliser le plateau cytotoxique.</string>
+    <string name="clear_tray_color_lists_confirm_ca">Êtes-vous sûr de vouloir effacer la classification de couleur de plateau cytotoxique ?</string>
 </resources>

@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -33,8 +34,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -52,7 +51,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
@@ -69,6 +67,12 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.rememberAsyncImagePainter
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.regionStringResource
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourGuideOverlay
+import com.dispensesure.retail.core.tourguide.TourGuideState
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.ui.theme.AppTheme
@@ -684,6 +688,9 @@ private fun TabletHorizontalBody(
     onProceed: () -> Unit,
     drugImage: String,
 ) {
+    val tourState = FtueController.state
+
+    Box {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -729,7 +736,7 @@ private fun TabletHorizontalBody(
                 modifier = Modifier.weight(1f)
             )
             DetailItem(
-                label = stringResource(R.string.ndc_number),
+                label = regionStringResource(R.string.ndc_number),
                 value = ndcNumber,
                 modifier = Modifier.weight(1f)
             )
@@ -760,10 +767,25 @@ private fun TabletHorizontalBody(
 
         // Use the local tablet button row so HollowButton & ActionButtonPrimary
         // share identical outer widths in portrait *and* landscape on tablet.
-        TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 14.dp)
+        TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 14.dp, tourState = tourState)
 
         Spacer(modifier = Modifier.height(8.dp))
     }
+    VerifyRxTourOverlay(tourState, onProceed)
+    }
+}
+
+/** The d_verify_rx spotlight, drawn inside each sheet body's own content Box. */
+@Composable
+private fun BoxScope.VerifyRxTourOverlay(tourState: TourGuideState, onProceed: () -> Unit) {
+    // Sheet-local spotlight: sized to the sheet content (not fullscreen), draws only d_verify_rx.
+    TourGuideOverlay(
+        state = tourState,
+        modifier = Modifier.matchParentSize(),
+        isScreenRoot = false,
+        ownedStepIds = setOf("d_verify_rx"),
+        onNext = { if (tourState.currentStep?.id == "d_verify_rx") onProceed() },
+    )
 }
 
 /**
@@ -777,6 +799,7 @@ private fun TabletButtonRow(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     spacing: Dp,
+    tourState: TourGuideState? = null,
 ) {
     // Use the universal HollowButton (outlined) + ActionButtonPrimary (filled).
     // Give the Row a fixed total width and let each child claim weight(1f) of it
@@ -799,7 +822,9 @@ private fun TabletButtonRow(
             onClick = onProceed,
             color = MaterialTheme.colorScheme.primary,
             fixedWidth = false,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .tourTarget(tourState, "verify_rx_proceed"),
         )
     }
 }
@@ -827,6 +852,10 @@ private fun TabletVerticalBody(
     // Spacing between the two cards in a row and between the two rows — the Figma
     // gives the 2x2 grid generous, equal gutters.
     val gridSpacing = 16.dp
+
+    val tourState = FtueController.state
+
+    Box {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -872,7 +901,7 @@ private fun TabletVerticalBody(
                     modifier = Modifier.weight(1f)
                 )
                 DetailItem(
-                    label = stringResource(R.string.ndc_number),
+                    label = regionStringResource(R.string.ndc_number),
                     value = ndcNumber,
                     modifier = Modifier.weight(1f)
                 )
@@ -895,7 +924,12 @@ private fun TabletVerticalBody(
                 horizontalArrangement = Arrangement.spacedBy(gridSpacing)
             ) {
                 StrengthTile(strength = strength, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
-                BucketTile(bucket = bucket, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+                // Canada has no buckets; the empty cell keeps the grid's shape.
+                if (LocalRegion.current.showsBucket) {
+                    BucketTile(bucket = bucket, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
             }
 
             // Balancing gap below the grid so it reads as centered in the space.
@@ -909,39 +943,12 @@ private fun TabletVerticalBody(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
         ) {
-            TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 12.dp)
+            TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 12.dp, tourState = tourState)
         }
 
         Spacer(modifier = Modifier.height(8.dp))
     }
-}
-
-/** Centered label-on-top, value-below detail item used in tablet layouts. */
-@Composable
-private fun CenteredDetail(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(
-            text = label,
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Normal,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = value,
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center
-        )
+    VerifyRxTourOverlay(tourState, onProceed)
     }
 }
 
@@ -963,6 +970,10 @@ private fun SheetBody(
     // 3-section layout: fixed title, scrollable middle (gets remaining height),
     // pinned button row. Outer column fills the parent's bounded height so weight() works.
     val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
+
+    val tourState = FtueController.state
+
+    Box {
     // Inline landscape usage gives this Column a bounded height, so fillMaxHeight
     // pushes the buttons to the bottom via weight(1f) on the scroll section.
     // Slightly bigger outer padding in landscape so the panel doesn't feel
@@ -1058,10 +1069,14 @@ private fun SheetBody(
                     onClick = onProceed,
                     color = MaterialTheme.colorScheme.primary,
                     fixedWidth = false,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .tourTarget(tourState, "verify_rx_proceed")
                 )
             }
         }
+    }
+    VerifyRxTourOverlay(tourState, onProceed)
     }
 }
 
@@ -1113,7 +1128,7 @@ private fun DetailsGrid(
             contentAlignment = Alignment.Center,
         ) {
             DetailItem(
-                label = stringResource(R.string.ndc_number),
+                label = regionStringResource(R.string.ndc_number),
                 value = ndcNumber,
                 compact = compact,
                 modifier = Modifier.fillMaxWidth(),
@@ -1163,7 +1178,9 @@ private fun DetailTilesRow(
         QuantityTile(quantity = quantity, compact = compact, modifier = tileModifier)
         DrugImageTile(drugImagePath = drugImage, compact = compact, modifier = tileModifier)
         StrengthTile(strength = strength, compact = compact, modifier = tileModifier)
-        BucketTile(bucket = bucket, compact = compact, modifier = tileModifier)
+        if (LocalRegion.current.showsBucket) {
+            BucketTile(bucket = bucket, compact = compact, modifier = tileModifier)
+        }
     }
 }
 
@@ -1323,622 +1340,5 @@ private fun DetailItem(
             maxLines = if (compact) 1 else valueMaxLines,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-
-@Composable
-private fun HazardousWarningBanner(modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFFFF8F00).copy(alpha = 0.15f))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Icon(
-            imageVector = Icons.Default.Warning,
-            contentDescription = null,
-            tint = Color(0xFFFF8F00),
-            modifier = Modifier.size(18.dp)
-        )
-        Text(
-            text = stringResource(R.string.hazardous_drug_warning),
-            color = Color(0xFFFF8F00),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// NDC / Stock-bottle verification sheet
-//
-// Mirrors the RX sheet pattern (portrait ModalBottomSheet, landscape side
-// drawer, tablet variants) but renders NDC-specific content:
-//   - Form tile + NDC number
-//   - Bucket tile + Drug name
-//
-// Reuses the same SwipeableSideDrawer / HideSystemNavBar /
-// FormTile / BucketTile / SquareTile / DetailItem / TabletButtonRow
-// helpers above so the look-and-feel matches exactly.
-// ──────────────────────────────────────────────────────────────────────────────
-
-/**
- * Inline (non-overlay) version of the NDC verification panel for landscape
- * usage where the camera shrinks to give the panel room rather than being
- * covered by an overlay. Parity with [VerifyRxDetailsInlinePanel].
- */
-@Composable
-fun VerifyNdcDetailsInlinePanel(
-    drugName: String,
-    bucket: String,
-    ndcNumber: String,
-    onCancel: () -> Unit,
-    onProceed: () -> Unit,
-    modifier: Modifier = Modifier,
-    cornerRadius: Dp = 20.dp,
-    isHazardous: Boolean = false,
-    strength: String = "",
-    dosageForm: String = "",
-    drugImage: String =  ""
-) {
-    val configuration = LocalConfiguration.current
-    val isTablet = configuration.smallestScreenWidthDp >= 600
-
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(cornerRadius))
-            .background(AppTheme.extendedColors.secondaryBackground)
-    ) {
-        if (isTablet) {
-            NdcTabletVerticalBody(
-                drugName = drugName,
-                bucket = bucket,
-                ndcNumber = ndcNumber,
-                isHazardous = isHazardous,
-                strength = strength,
-                drugImage = drugImage,
-                dosageForm = dosageForm,
-                onCancel = onCancel,
-                onProceed = onProceed,
-            )
-        } else {
-            NdcSheetBody(
-                drugName = drugName,
-                ndcNumber = ndcNumber,
-                isLandscape = true,
-                isHazardous = isHazardous,
-                strength = strength,
-                onCancel = onCancel,
-                onProceed = onProceed,
-            )
-        }
-    }
-}
-
-/**
- * Orientation-aware NDC verification prompt. Same surface treatment as
- * [VerifyRxDetailsSheet]: portrait → ModalBottomSheet, landscape → right-side
- * drawer; tablet variants for both.
- *
- * Default is non-dismissible: the user must commit via the Cancel or Proceed
- * button, and the NDC call site keeps that default. The Rx sheet opts out by
- * passing `dismissible = true`.
- */
-@Composable
-fun VerifyNdcDetailsSheet(
-    drugName: String,
-    bucket: String,
-    ndcNumber: String,
-    onCancel: () -> Unit,
-    onProceed: () -> Unit,
-    dismissible: Boolean = false,
-    isHazardous: Boolean = false,
-    strength: String = "",
-    dosageForm: String = "",
-    drugImage: String = ""
-) {
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val isTablet = configuration.smallestScreenWidthDp >= 600
-
-    when {
-        isTablet && isLandscape -> VerifyNdcDetailsTabletSideDrawer(
-            drugName = drugName,
-            bucket = bucket,
-            ndcNumber = ndcNumber,
-            isHazardous = isHazardous,
-            strength = strength,
-            dosageForm = dosageForm,
-            onCancel = onCancel,
-            onProceed = onProceed,
-            dismissible = dismissible,
-        )
-        isTablet -> VerifyNdcDetailsTabletBottomSheet(
-            drugName = drugName,
-            bucket = bucket,
-            ndcNumber = ndcNumber,
-            isHazardous = isHazardous,
-            strength = strength,
-            dosageForm = dosageForm,
-            onCancel = onCancel,
-            onProceed = onProceed,
-            dismissible = dismissible,
-            drugImage = drugImage
-        )
-        isLandscape -> VerifyNdcDetailsSideDrawer(
-            drugName = drugName,
-            ndcNumber = ndcNumber,
-            isHazardous = isHazardous,
-            strength = strength,
-            onCancel = onCancel,
-            onProceed = onProceed,
-            dismissible = dismissible,
-        )
-        else -> VerifyNdcDetailsBottomSheet(
-            drugName = drugName,
-            ndcNumber = ndcNumber,
-            isHazardous = isHazardous,
-            strength = strength,
-            onCancel = onCancel,
-            onProceed = onProceed,
-            dismissible = dismissible,
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun VerifyNdcDetailsBottomSheet(
-    drugName: String,
-    ndcNumber: String,
-    onCancel: () -> Unit,
-    onProceed: () -> Unit,
-    dismissible: Boolean = true,
-    isHazardous: Boolean = false,
-    strength: String = "",
-) {
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        confirmValueChange = { if (dismissible) true else it != androidx.compose.material3.SheetValue.Hidden }
-    )
-
-    ModalBottomSheet(
-        onDismissRequest = { if (dismissible) onCancel() },
-        sheetState = sheetState,
-        containerColor = AppTheme.extendedColors.secondaryBackground,
-        dragHandle = null,
-        // Dispense flow: all four corners rounded.
-        shape = RoundedCornerShape(20.dp),
-        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
-    ) {
-        HideSystemBarsInCurrentWindow()
-        NdcSheetBody(
-            drugName = drugName,
-            ndcNumber = ndcNumber,
-            isLandscape = false,
-            isHazardous = isHazardous,
-            strength = strength,
-            onCancel = onCancel,
-            onProceed = onProceed,
-        )
-    }
-}
-
-@Composable
-private fun VerifyNdcDetailsSideDrawer(
-    drugName: String,
-    ndcNumber: String,
-    onCancel: () -> Unit,
-    onProceed: () -> Unit,
-    dismissible: Boolean = true,
-    isHazardous: Boolean = false,
-    strength: String = "",
-) {
-    val config = LocalConfiguration.current
-    val drawerWidth = (config.screenWidthDp.dp * 0.42f).coerceIn(260.dp, 380.dp)
-    SwipeableSideDrawer(
-        drawerWidth = drawerWidth,
-        onCancel = onCancel,
-        cornerRadius = 20.dp,
-        dismissible = dismissible,
-        allCornersRounded = true,
-    ) { animatedCancel ->
-        NdcSheetBody(
-            drugName = drugName,
-            ndcNumber = ndcNumber,
-            isLandscape = true,
-            isHazardous = isHazardous,
-            strength = strength,
-            onCancel = animatedCancel,
-            onProceed = onProceed,
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun VerifyNdcDetailsTabletBottomSheet(
-    drugName: String,
-    bucket: String,
-    ndcNumber: String,
-    onCancel: () -> Unit,
-    onProceed: () -> Unit,
-    dismissible: Boolean = true,
-    isHazardous: Boolean = false,
-    strength: String = "",
-    dosageForm: String = "",
-    drugImage: String = ""
-) {
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        confirmValueChange = { if (dismissible) true else it != androidx.compose.material3.SheetValue.Hidden }
-    )
-    ModalBottomSheet(
-        onDismissRequest = { if (dismissible) onCancel() },
-        sheetState = sheetState,
-        containerColor = AppTheme.extendedColors.secondaryBackground,
-        dragHandle = null,
-        // Dispense flow: all four corners rounded.
-        shape = RoundedCornerShape(24.dp),
-        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
-        // See note in VerifyRxDetailsTabletBottomSheet — override M3's 640dp default cap.
-        sheetMaxWidth = Dp.Unspecified,
-    ) {
-        HideSystemBarsInCurrentWindow()
-        NdcTabletHorizontalBody(
-            drugName = drugName,
-            bucket = bucket,
-            ndcNumber = ndcNumber,
-            isHazardous = isHazardous,
-            strength = strength,
-            dosageForm = dosageForm,
-            onCancel = onCancel,
-            onProceed = onProceed,
-            drugImage = drugImage
-        )
-    }
-}
-
-@Composable
-private fun VerifyNdcDetailsTabletSideDrawer(
-    drugName: String,
-    bucket: String,
-    ndcNumber: String,
-    onCancel: () -> Unit,
-    onProceed: () -> Unit,
-    dismissible: Boolean = true,
-    isHazardous: Boolean = false,
-    strength: String = "",
-    dosageForm: String = "",
-) {
-    val config = LocalConfiguration.current
-    val drawerWidth = (config.screenWidthDp.dp * 0.4f).coerceIn(360.dp, 520.dp)
-    SwipeableSideDrawer(
-        drawerWidth = drawerWidth,
-        onCancel = onCancel,
-        cornerRadius = 24.dp,
-        dismissible = dismissible,
-        allCornersRounded = true,
-    ) { animatedCancel ->
-        NdcTabletVerticalBody(
-                drugName = drugName,
-                bucket = bucket,
-                ndcNumber = ndcNumber,
-                isHazardous = isHazardous,
-                strength = strength,
-                dosageForm = dosageForm,
-                onCancel = animatedCancel,
-                onProceed = onProceed,
-            )
-    }
-}
-
-/**
- * Phone-body for portrait sheet and landscape inline panel. Two rows:
- *   - [Form tile | NDC number]
- *   - [Bucket tile | Drug name]
- */
-@Composable
-private fun NdcSheetBody(
-    drugName: String,
-    ndcNumber: String,
-    isLandscape: Boolean,
-    onCancel: () -> Unit,
-    onProceed: () -> Unit,
-    isHazardous: Boolean = false,
-    strength: String = "",
-) {
-    val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
-    // Landscape gets slightly bigger outer padding so the panel doesn't feel
-    // wall-to-wall content; portrait keeps its current compact spacing.
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .let { if (isLandscape) it.fillMaxHeight() else it }
-            .padding(
-                start = if (isLandscape) 18.dp else 14.dp,
-                end = if (isLandscape) 18.dp else 14.dp,
-                top = if (isLandscape) 16.dp else 12.dp,
-                bottom = if (isLandscape) 20.dp else 16.dp + extraBottom,
-            )
-    ) {
-        Text(
-            text = stringResource(R.string.verify_stock_bottle_details),
-            color = AppTheme.extendedColors.textColor,
-            fontSize = if (isLandscape) 15.sp else 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = if (isLandscape) 14.dp else 12.dp)
-        )
-
-        Column(
-            modifier = Modifier
-                .weight(1f, fill = isLandscape)
-                .fillMaxWidth()
-                .then(
-                    if (isLandscape) Modifier else Modifier.verticalScroll(rememberScrollState())
-                )
-        ) {
-            if (isHazardous) {
-                HazardousWarningBanner()
-                Spacer(modifier = Modifier.height(if (isLandscape) 12.dp else 10.dp))
-            }
-            NdcDetailsGrid(
-                drugName = drugName,
-                ndcNumber = ndcNumber,
-                compact = isLandscape,
-                strength = strength,
-            )
-        }
-
-        Spacer(modifier = Modifier.height(if (isLandscape) 16.dp else 14.dp))
-
-        // In landscape the drawer is narrow and BUTTON_WIDTH * 2 + spacing
-        // leaves no room for the inner text — "PROCEED" wraps to two lines.
-        // So in landscape we let each button claim weight(1f) of the row.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
-        ) {
-            Box(
-                modifier = if (isLandscape) Modifier.weight(1f)
-                else Modifier.width(BUTTON_WIDTH)
-            ) {
-                HollowButton(
-                    text = stringResource(R.string.cancel).uppercase(),
-                    onClick = onCancel,
-                    color = MaterialTheme.colorScheme.primary,
-                    fixedWidth = false,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            Box(
-                modifier = if (isLandscape) Modifier.weight(1f)
-                else Modifier.width(BUTTON_WIDTH)
-            ) {
-                ActionButtonPrimary(
-                    text = stringResource(R.string.proceed).uppercase(),
-                    onClick = onProceed,
-                    color = MaterialTheme.colorScheme.primary,
-                    fixedWidth = false,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-}
-
-/** Two-row NDC grid: [Form | NDC number], [Bucket | Drug name].
- *  A hairline separator divides the two rows, mirroring the reference style.
- *  Landscape gives each row equal weight so the panel doesn't feel cramped.
- */
-@Composable
-private fun NdcDetailsGrid(
-    drugName: String,
-    ndcNumber: String,
-    compact: Boolean,
-    strength: String = "",
-) {
-    val dividerColor = AppTheme.extendedColors.textColor.copy(alpha = 0.5f)
-    val dividerPadding = if (compact) 14.dp else 10.dp
-    Column(
-        modifier = if (compact) Modifier.fillMaxHeight() else Modifier,
-    ) {
-        Box(
-            modifier = if (compact) Modifier.weight(1f) else Modifier,
-            contentAlignment = Alignment.Center,
-        ) {
-            DetailItem(
-                label = stringResource(R.string.ndc_number),
-                value = ndcNumber,
-                compact = compact,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        HorizontalDivider(
-            thickness = 1.dp,
-            color = dividerColor,
-            modifier = Modifier.padding(vertical = dividerPadding),
-        )
-        Box(
-            modifier = if (compact) Modifier.weight(1f) else Modifier,
-            contentAlignment = Alignment.Center,
-        ) {
-            DetailItem(
-                label = stringResource(R.string.drugname),
-                value = drugName,
-                compact = compact,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        if (strength.isNotBlank()) {
-            HorizontalDivider(
-                thickness = 1.dp,
-                color = dividerColor,
-                modifier = Modifier.padding(vertical = dividerPadding),
-            )
-            Box(
-                modifier = if (compact) Modifier.weight(1f) else Modifier,
-                contentAlignment = Alignment.Center,
-            ) {
-                DetailItem(
-                    label = stringResource(R.string.strength),
-                    value = strength,
-                    compact = compact,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-}
-
-/** Tablet portrait: title, horizontal row of two tiles, centered detail row. */
-@Composable
-private fun NdcTabletHorizontalBody(
-    drugName: String,
-    bucket: String,
-    ndcNumber: String,
-    onCancel: () -> Unit,
-    onProceed: () -> Unit,
-    isHazardous: Boolean = false,
-    strength: String = "",
-    dosageForm: String = "",
-    drugImage: String = ""
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = stringResource(R.string.verify_stock_bottle_details),
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(bottom = 20.dp)
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            DrugImageTile(drugImagePath = drugImage)
-            BucketTile(bucket = bucket)
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        if (isHazardous) {
-            HazardousWarningBanner()
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.Top
-        ) {
-            CenteredDetail(
-                label = stringResource(R.string.ndc_number),
-                value = ndcNumber,
-                modifier = Modifier.weight(1f)
-            )
-            CenteredDetail(
-                label = stringResource(R.string.drugname),
-                value = drugName,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        if (strength.isNotBlank()) {
-            Spacer(modifier = Modifier.height(16.dp))
-            CenteredDetail(
-                label = stringResource(R.string.strength),
-                value = strength,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 14.dp)
-
-        Spacer(modifier = Modifier.height(8.dp))
-    }
-}
-
-/** Tablet landscape side drawer: tiles + details stacked vertically. */
-@Composable
-private fun NdcTabletVerticalBody(
-    drugName: String,
-    bucket: String,
-    ndcNumber: String,
-    onCancel: () -> Unit,
-    onProceed: () -> Unit,
-    isHazardous: Boolean = false,
-    strength: String = "",
-    dosageForm: String = "",
-    drugImage: String = ""
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = stringResource(R.string.verify_stock_bottle_details),
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        Column(
-            modifier = Modifier
-                .weight(1f, fill = true)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            DrugImageTile(drugImagePath = drugImage)
-            BucketTile(bucket = bucket)
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (isHazardous) {
-                HazardousWarningBanner()
-            }
-
-            CenteredDetail(
-                label = stringResource(R.string.ndc_number),
-                value = ndcNumber
-            )
-            CenteredDetail(
-                label = stringResource(R.string.drugname),
-                value = drugName
-            )
-            if (strength.isNotBlank()) {
-                CenteredDetail(
-                    label = stringResource(R.string.strength),
-                    value = strength
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 12.dp)
-
-        Spacer(modifier = Modifier.height(8.dp))
     }
 }

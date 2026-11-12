@@ -18,9 +18,10 @@ import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.LocalRegion
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.compose.SplitResponsive
-import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
+import com.dispensesure.retail.core.utils.compose.HeadlineBar
 import com.dispensesure.retail.feature.history.domain.model.HistoryDeleteFilter
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.history.domain.model.ToggleOption
@@ -51,7 +52,8 @@ fun HistoryScreen(
     var showDeleteConfirmationDialog by remember { mutableStateOf(false) }
     var pendingDeleteFilter by remember { mutableStateOf(HistoryDeleteFilter.ALL) }
 
-    val pdfExporter = remember { HistoryPdfExporter(context) }
+    val loggedInRegion = LocalRegion.current
+    val pdfExporter = remember(loggedInRegion) { HistoryPdfExporter(context, loggedInRegion) }
     val today = LocalDate.now()
     val currentMonth = YearMonth.from(today)
     var showSearch by remember { mutableStateOf(false) }
@@ -73,10 +75,6 @@ fun HistoryScreen(
         )
     }
     val defaultToComplete = historyMode == HistoryMode.REGULAR || historyMode == HistoryMode.DISPENSE
-
-    LaunchedEffect(historyMode) {
-        viewModel.setHistoryMode(historyMode)
-    }
 
     Box(
         modifier = Modifier
@@ -128,8 +126,7 @@ fun HistoryScreen(
                     selectedOption = selectedOption,
                     onOptionSelected = { selectedOption = it },
                     onTxnClick = { txnId ->
-                        viewModel.selectCurrentTransaction(txnId)
-                        navController.navigate(Screen.HistoryDetail.route)
+                        navController.navigate(Screen.HistoryDetail.createRoute(txnId))
                     },
                     onBatchClick = { batchId ->
                         navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
@@ -167,8 +164,7 @@ fun HistoryScreen(
                                 showDeleteConfirmationDialog = true
                             },
                             onTxnClick = { txnId ->
-                                viewModel.selectCurrentTransaction(txnId)
-                                navController.navigate(Screen.HistoryDetail.route)
+                                navController.navigate(Screen.HistoryDetail.createRoute(txnId))
                             },
                             onBatchClick = { batchId ->
                                 navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))

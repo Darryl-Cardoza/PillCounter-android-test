@@ -3,7 +3,6 @@ package com.dispensesure.retail.navigation
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
-import com.dispensesure.retail.core.room.models.enums.ScanType
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 
 /**
@@ -31,8 +30,8 @@ sealed interface Screen {
         override val route: String = "settings"
     }
 
-    data object InventoryScan : Screen {
-        private const val ROUTE_PREFIX = "inventory_scan"
+    data object StockCount : Screen {
+        private const val ROUTE_PREFIX = "stock_count"
         const val ARG_BATCH_ID = "batch_id"
         const val ARG_BUCKET_ID = "bucket_id"
 
@@ -55,14 +54,60 @@ sealed interface Screen {
          * Entry-point route. Supply either:
          *  - [batchId] to resume an existing batch, OR
          *  - [bucketId] from the Inventory quick-action; the batch is created
-         *    lazily on the first NDC scan inside `InventoryScanViewModel`.
+         *    lazily on the first NDC scan inside `StockCountViewModel`.
          */
         fun createRoute(batchId: Long = 0L, bucketId: String? = null): String =
             "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}"
     }
 
+    // Loose-pill count for a stock batch, opened from SCAN PILLS on the sealed-bottle screen.
+    data object LooseCount : Screen {
+        private const val ROUTE_PREFIX = "loose_count"
+        const val ARG_BATCH_ID = "batch_id"
+        const val ARG_BUCKET_ID = "bucket_id"
+        const val ARG_ALLOWED_NDCS = "allowed_ndcs"
+
+        // Set on the previous back-stack entry when a count is saved: the batch it went into.
+        const val RESULT_BATCH_ID = "loose_count_batch_id"
+
+        override val route: String =
+            "$ROUTE_PREFIX?$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}&$ARG_ALLOWED_NDCS={$ARG_ALLOWED_NDCS}"
+
+        val navArguments: List<NamedNavArgument> = listOf(
+            navArgument(ARG_BATCH_ID) {
+                type = NavType.LongType
+                defaultValue = 0L
+            },
+            navArgument(ARG_BUCKET_ID) {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+            navArgument(ARG_ALLOWED_NDCS) {
+                type = NavType.StringType
+                defaultValue = ""
+            },
+        )
+
+        /**
+         * [batchId] 0 = no batch yet; saving creates one in [bucketId]. A PMS batch passes
+         * its requested NDCs in [allowedNdcs]; empty = any NDC.
+         */
+        fun createRoute(batchId: Long, bucketId: String?, allowedNdcs: Set<String>): String =
+            "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}&$ARG_ALLOWED_NDCS=${allowedNdcs.joinToString(",")}"
+    }
+
     data object HistoryDetail : Screen {
-        override val route: String = "history_detail"
+        private const val ROUTE_PREFIX = "history_detail"
+        const val ARG_TXN_ID = "txn_id"
+
+        override val route: String = "$ROUTE_PREFIX/{$ARG_TXN_ID}"
+
+        val navArguments: List<NamedNavArgument> = listOf(
+            navArgument(ARG_TXN_ID) { type = NavType.LongType }
+        )
+
+        fun createRoute(txnId: Long): String = "$ROUTE_PREFIX/$txnId"
     }
 
     data object BatchHistoryDetail : Screen {
@@ -128,51 +173,6 @@ sealed interface Screen {
     }
 
 
-    data object ScanBarcode : Screen {
-        private const val ROUTE_PREFIX = "scan_barcode"
-
-        const val ARG_TYPE = "type"
-        const val ARG_BATCH_ID = "batch_id"
-        const val TXN_SCAN_TYPE = "txn_scan_type"
-
-        override val route: String =
-            "$ROUTE_PREFIX/{$ARG_TYPE}/{$ARG_BATCH_ID}?$TXN_SCAN_TYPE={$TXN_SCAN_TYPE}"
-
-        val navArguments: List<NamedNavArgument> = listOf(
-            navArgument(ARG_TYPE) {
-                type = NavType.StringType
-            },
-            navArgument(ARG_BATCH_ID) {
-                type = NavType.LongType
-            },
-            navArgument(TXN_SCAN_TYPE) {
-                type = NavType.StringType
-                defaultValue = ScanType.BARCODE.name
-            }
-        )
-
-        fun createRoute(
-            scanType: String,
-            txnScanType: ScanType,
-            batchId: Long
-        ): String {
-            return "$ROUTE_PREFIX/$scanType/$batchId?$TXN_SCAN_TYPE=${txnScanType.name}"
-        }
-    }
-
-    data object PillCount : Screen {
-        private const val ROUTE_PREFIX = "pill_count"
-        const val ARG_TYPE = "type"
-
-        override val route: String = "$ROUTE_PREFIX/{$ARG_TYPE}"
-
-        val navArguments: List<NamedNavArgument> = listOf(
-            navArgument(ARG_TYPE) { type = NavType.StringType }
-        )
-
-        fun createRoute(scanType: String) = "$ROUTE_PREFIX/$scanType"
-    }
-
     // Merged single-screen flow for the dispense use case.
     // Combines RX scan, NDC scan, and pill counting on one screen.
     //
@@ -180,68 +180,36 @@ sealed interface Screen {
     // and hydrate from the existing PMS-created transaction (drugName,
     // hl7-expected NDC, targetCount, rxNo are all pre-populated, RX scan is
     // skipped entirely).
-    //
-    // The optional `batch_id` is used in the stock count (REGULAR) flow to
-    // associate the new transaction with the active batch.
+    // `txn_id` names that transaction. Without `from_hl7`, a non-zero id resumes it.
     data object DispenseFlow : Screen {
         private const val ROUTE_PREFIX = "dispense_flow"
-        const val ARG_TYPE = "type"
+        const val ARG_TXN_ID = "txn_id"
         const val ARG_FROM_HL7 = "from_hl7"
-        const val ARG_FROM_RESUME = "from_resume"
-        const val ARG_BATCH_ID = "batch_id"
-        const val ARG_BUCKET_ID = "bucket_id"
         const val ARG_FROM_QUEUE = "from_queue"
-        const val ARG_ALLOWED_NDCS = "allowed_ndcs"
-
-        /**
-         * SavedStateHandle key used by DispenseFlow to publish a lazily-created
-         * stock-count batchId to the previous back-stack entry (InventoryScanHost).
-         * The host consumes it on resume so its list re-subscribes to the real
-         * batch instead of the initial 0L nav argument.
-         */
-        const val NAV_KEY_STOCK_COUNT_BATCH_ID = "stock_count_batch_id"
 
         override val route: String =
-            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}&$ARG_FROM_QUEUE={$ARG_FROM_QUEUE}&$ARG_ALLOWED_NDCS={$ARG_ALLOWED_NDCS}"
+            "$ROUTE_PREFIX?$ARG_TXN_ID={$ARG_TXN_ID}&$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_QUEUE={$ARG_FROM_QUEUE}"
 
         val navArguments: List<NamedNavArgument> = listOf(
-            navArgument(ARG_TYPE) { type = NavType.StringType },
-            navArgument(ARG_FROM_HL7) {
-                type = NavType.BoolType
-                defaultValue = false
-            },
-            navArgument(ARG_FROM_RESUME) {
-                type = NavType.BoolType
-                defaultValue = false
-            },
-            navArgument(ARG_BATCH_ID) {
+            navArgument(ARG_TXN_ID) {
                 type = NavType.LongType
                 defaultValue = 0L
             },
-            navArgument(ARG_BUCKET_ID) {
-                type = NavType.StringType
-                nullable = true
-                defaultValue = null
+            navArgument(ARG_FROM_HL7) {
+                type = NavType.BoolType
+                defaultValue = false
             },
             navArgument(ARG_FROM_QUEUE) {
                 type = NavType.BoolType
                 defaultValue = false
             },
-            navArgument(ARG_ALLOWED_NDCS) {
-                type = NavType.StringType
-                defaultValue = ""
-            },
         )
 
         fun createRoute(
-            scanType: String,
+            txnId: Long = 0L,
             fromHl7: Boolean = false,
-            fromResume: Boolean = false,
-            batchId: Long = 0L,
-            bucketId: String? = null,
             fromQueue: Boolean = false,
-            allowedNdcs: Set<String> = emptySet(),
-        ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}&$ARG_FROM_QUEUE=$fromQueue&$ARG_ALLOWED_NDCS=${allowedNdcs.joinToString(",")}"
+        ) = "$ROUTE_PREFIX?$ARG_TXN_ID=$txnId&$ARG_FROM_HL7=$fromHl7&$ARG_FROM_QUEUE=$fromQueue"
     }
 
     data object FaceIntro : Screen {
@@ -254,6 +222,11 @@ sealed interface Screen {
 
     data object FaceRecognitionUsers : Screen {
         override val route: String = "face_recognition_users"
+    }
+
+    // Debug builds only: audit log viewer.
+    data object AuditLog : Screen {
+        override val route: String = "audit_log"
     }
 
 }

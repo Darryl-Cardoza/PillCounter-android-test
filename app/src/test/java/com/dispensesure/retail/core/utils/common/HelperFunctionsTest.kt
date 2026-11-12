@@ -1,7 +1,7 @@
 package com.dispensesure.retail.core.utils.common
 
-import com.dispensesure.retail.core.room.models.dtos.StatusTypeCount
-import com.dispensesure.retail.core.room.models.enums.CountStatus
+import com.dispensesure.retail.core.audit.model.SessionEndReason
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.navigation.Screen
@@ -15,7 +15,6 @@ import org.junit.Test
  *  - maskEmail (all branches: null/blank, no/edge @, normal masking)
  *  - resolveStartDestinationAndClearIfExpired (logged-in vs not, threshold branches)
  *  - clearSessionIfNotRemembered (remember on/off, logged out)
- *  - mapCounts (all CountType x CountStatus combinations incl. else branch)
  *
  * Android-dependent members (exitApp, enableImmersiveFullscreen, openPlayStore,
  * saveBitmapToFile, toGrayscaleBitmap) are NOT tested here — see the report's skip list.
@@ -93,9 +92,22 @@ class HelperFunctionsTest {
     }
 
     @Test
+    fun resolve_loggedIn_noRegionStored_clearsSessionAndReturnsAuth() {
+        val pref = mockk<PreferenceHelper>(relaxed = true)
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns null
+        val result = HelperFunctions.resolveStartDestinationAndClearIfExpired(pref)
+        assertEquals(AUTH_GRAPH_ROUTE, result)
+        io.mockk.verify { pref.clearTokens() }
+        io.mockk.verify { pref.setUserLoggedIn(false) }
+        io.mockk.verify { pref.saveLocalId(0) }
+    }
+
+    @Test
     fun resolve_loggedIn_noHealthOrLoginAnchor_returnsDashboard() {
         val pref = mockk<PreferenceHelper>()
         every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
         every { pref.getLastHealthCheckedAt() } returns 0L
         every { pref.getLoggedInAt() } returns 0L
         assertEquals(Screen.Dashboard.route, HelperFunctions.resolveStartDestinationAndClearIfExpired(pref))
@@ -105,6 +117,7 @@ class HelperFunctionsTest {
     fun resolve_loggedIn_healthAnchorWithinThreshold_returnsDashboard() {
         val pref = mockk<PreferenceHelper>()
         every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
         every { pref.getLastHealthCheckedAt() } returns System.currentTimeMillis() - 5_000L
         every { pref.getOfflineSessionThresholdSeconds() } returns 60L
         assertEquals(Screen.Dashboard.route, HelperFunctions.resolveStartDestinationAndClearIfExpired(pref))
@@ -114,6 +127,7 @@ class HelperFunctionsTest {
     fun resolve_loggedIn_healthAnchorBeyondThreshold_clearsTokensAndReturnsAuth() {
         val pref = mockk<PreferenceHelper>(relaxed = true)
         every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
         every { pref.getLastHealthCheckedAt() } returns System.currentTimeMillis() - 120_000L
         every { pref.getOfflineSessionThresholdSeconds() } returns 60L
         val result = HelperFunctions.resolveStartDestinationAndClearIfExpired(pref)
@@ -129,6 +143,7 @@ class HelperFunctionsTest {
     fun resolve_loggedIn_noHealthButLoginAnchorWithinThreshold_returnsDashboard() {
         val pref = mockk<PreferenceHelper>()
         every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
         every { pref.getLastHealthCheckedAt() } returns 0L
         every { pref.getLoggedInAt() } returns System.currentTimeMillis() - 10_000L
         every { pref.getOfflineSessionThresholdSeconds() } returns 60L
@@ -139,6 +154,7 @@ class HelperFunctionsTest {
     fun resolve_loggedIn_noHealthAndLoginAnchorBeyondThreshold_clearsTokensAndReturnsAuth() {
         val pref = mockk<PreferenceHelper>(relaxed = true)
         every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
         every { pref.getLastHealthCheckedAt() } returns 0L
         every { pref.getLoggedInAt() } returns System.currentTimeMillis() - 120_000L
         every { pref.getOfflineSessionThresholdSeconds() } returns 60L
@@ -188,44 +204,51 @@ class HelperFunctionsTest {
         io.mockk.verify(exactly = 0) { pref.setUserLoggedIn(any()) }
     }
 
-    // ───────────────────────────── mapCounts ─────────────────────────────
-
     @Test
-    fun mapCounts_emptyRows_returnsZeros() {
-        val result = HelperFunctions.mapCounts(emptyList())
-        assertEquals(0, result.fixedCompleted)
-        assertEquals(0, result.fixedPartial)
-        assertEquals(0, result.regularCompleted)
-        assertEquals(0, result.regularPartial)
+    fun clearIfNotRemembered_reportsTheReasonOnlyWhenItClears() {
+        val reasons = mutableListOf<SessionEndReason>()
+        val pref = mockk<PreferenceHelper>(relaxed = true)
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.isRememberMeEnabled() } returns false
+        HelperFunctions.clearSessionIfNotRemembered(pref) { reasons += it }
+
+        every { pref.isRememberMeEnabled() } returns true
+        HelperFunctions.clearSessionIfNotRemembered(pref) { reasons += it }
+
+        assertEquals(listOf(SessionEndReason.NOT_REMEMBERED_ON_LAUNCH), reasons)
     }
 
     @Test
-    fun mapCounts_allCombinations_areMapped() {
-        val rows = listOf(
-            StatusTypeCount(CountStatus.COMPLETED, true, 1),
-            StatusTypeCount(CountStatus.PARTIAL, true, 2),
-            StatusTypeCount(CountStatus.COMPLETED, false, 3),
-            StatusTypeCount(CountStatus.PARTIAL, false, 4)
+    fun resolve_reportsTheReasonForEachClear() {
+        val reasons = mutableListOf<SessionEndReason>()
+        val noRegion = mockk<PreferenceHelper>(relaxed = true)
+        every { noRegion.isUserLoggedIn() } returns true
+        every { noRegion.getRegion() } returns null
+        HelperFunctions.resolveStartDestinationAndClearIfExpired(noRegion) { reasons += it }
+
+        val expired = mockk<PreferenceHelper>(relaxed = true)
+        every { expired.isUserLoggedIn() } returns true
+        every { expired.getRegion() } returns Region.US
+        every { expired.getLastHealthCheckedAt() } returns System.currentTimeMillis() - 120_000L
+        every { expired.getOfflineSessionThresholdSeconds() } returns 60L
+        HelperFunctions.resolveStartDestinationAndClearIfExpired(expired) { reasons += it }
+
+        assertEquals(
+            listOf(SessionEndReason.REGION_MISSING_ON_LAUNCH, SessionEndReason.EXPIRED_ON_LAUNCH),
+            reasons
         )
-        val result = HelperFunctions.mapCounts(rows)
-        assertEquals(1, result.fixedCompleted)
-        assertEquals(2, result.fixedPartial)
-        assertEquals(3, result.regularCompleted)
-        assertEquals(4, result.regularPartial)
     }
 
     @Test
-    fun mapCounts_otherStatus_hitsElseBranch_andIsIgnored() {
-        // FORCE_COMPLETED falls through the inner else -> {} for both count types
-        val rows = listOf(
-            StatusTypeCount(CountStatus.FORCE_COMPLETED, true, 99),
-            StatusTypeCount(CountStatus.FORCE_COMPLETED, false, 88)
-        )
-        val result = HelperFunctions.mapCounts(rows)
-        assertEquals(0, result.fixedCompleted)
-        assertEquals(0, result.fixedPartial)
-        assertEquals(0, result.regularCompleted)
-        assertEquals(0, result.regularPartial)
+    fun resolve_withinThreshold_reportsNothing() {
+        val pref = mockk<PreferenceHelper>()
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.getRegion() } returns Region.US
+        every { pref.getLastHealthCheckedAt() } returns System.currentTimeMillis() - 5_000L
+        every { pref.getOfflineSessionThresholdSeconds() } returns 60L
+        var reported = false
+        HelperFunctions.resolveStartDestinationAndClearIfExpired(pref) { reported = true }
+        assertEquals(false, reported)
     }
 
 }

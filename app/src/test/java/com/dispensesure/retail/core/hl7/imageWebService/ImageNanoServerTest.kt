@@ -3,13 +3,13 @@ package com.dispensesure.retail.core.hl7.imageWebService
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsImageKeystoreUtil
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import dagger.hilt.EntryPoints
 import fi.iki.elonen.NanoHTTPD
 import io.mockk.coEvery
@@ -47,37 +47,36 @@ import java.util.zip.ZipInputStream
 class ImageNanoServerTest {
 
     private lateinit var context: Context
-    private lateinit var txnDao: PillCountTxnDao
-    private lateinit var txnDetailsDao: PillCountTxnDetailsDao
+    private lateinit var dispenseTxnDao: DispenseTxnDao
+    private lateinit var dispenseCountDao: DispenseCountDao
     private lateinit var server: ImageNanoServer
 
     private fun newTxn(
         txnId: Long = 1L,
         barcodeImage: String? = null,
-    ) = PillCountTxnEntity(
+    ) = DispenseTxnEntity(
         txnId = txnId,
-        isDispense = true,
         status = CountStatus.COMPLETED,
-        bottleInfoListJson = barcodeImage?.let {
-            BottleInfoJson.encode(listOf(BottleInfo(txnId = txnId, barcodeImagePath = it)))
+        bottlesJson = barcodeImage?.let {
+            DispenseBottleJson.encode(listOf(DispenseBottle(txnId = txnId, barcodeImagePath = it)))
         },
     )
 
     private fun newDetail(
-        txnDetailsId: Long = 1L,
+        countId: Long = 1L,
         txnId: Long? = 1L,
         pillCount: Int? = 5,
         imagePath: String? = null,
         rawImagePath: String? = null,
-        type: String? = "VIAL",
+        step: String? = "VIAL",
         createdAt: Long = System.currentTimeMillis(),
-    ) = PillCountTxnDetailsEntity(
-        txnDetailsId = txnDetailsId,
+    ) = DispenseCountEntity(
+        countId = countId,
         txnId = txnId,
         pillCount = pillCount,
         imagePath = imagePath,
         rawImagePath = rawImagePath,
-        type = type,
+        step = step,
         createdAt = createdAt,
     )
 
@@ -85,12 +84,12 @@ class ImageNanoServerTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
 
-        txnDao = mockk(relaxed = true)
-        txnDetailsDao = mockk(relaxed = true)
+        dispenseTxnDao = mockk(relaxed = true)
+        dispenseCountDao = mockk(relaxed = true)
 
         val entryPoint = mockk<ImageNanoServer.ImageServerDaoEntryPoint>(relaxed = true)
-        every { entryPoint.pillCountTxnDao() } returns txnDao
-        every { entryPoint.pillCountTxnDetailsDao() } returns txnDetailsDao
+        every { entryPoint.dispenseTxnDao() } returns dispenseTxnDao
+        every { entryPoint.dispenseCountDao() } returns dispenseCountDao
 
         mockkStatic(EntryPoints::class)
         every {
@@ -145,7 +144,7 @@ class ImageNanoServerTest {
 
     @Test
     fun `getbymessagecontrolid returns 404 when txn missing`() {
-        coEvery { txnDao.getByMessageControlId("MCID-1") } returns null
+        coEvery { dispenseTxnDao.getByMessageControlId("MCID-1") } returns null
 
         val response = serve("/images/getbymessagecontrolid/MCID-1")
 
@@ -155,7 +154,7 @@ class ImageNanoServerTest {
 
     @Test
     fun `getbysequencenumber returns 404 when txn missing`() {
-        coEvery { txnDao.getBySequenceNumber("SEQ-1") } returns null
+        coEvery { dispenseTxnDao.getBySequenceNumber("SEQ-1") } returns null
 
         val response = serve("/images/getbysequencenumber/SEQ-1")
 
@@ -164,7 +163,7 @@ class ImageNanoServerTest {
 
     @Test
     fun `getbytransactionorderid returns 404 when txn missing`() {
-        coEvery { txnDao.getByTransactionOrderId("ORD-1") } returns null
+        coEvery { dispenseTxnDao.getByTransactionOrderId("ORD-1") } returns null
 
         val response = serve("/images/getbytransactionorderid/ORD-1")
 
@@ -173,17 +172,17 @@ class ImageNanoServerTest {
 
     @Test
     fun `getbyrxnumber with rx and fillno routes to getByRxNoAndFillNo`() {
-        coEvery { txnDao.getByRxNoAndFillNo("RX1", "F1") } returns null
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo("RX1", "F1") } returns null
 
         val response = serve("/images/getbyrxnumber/RX1/F1")
 
         assertEquals(NanoHTTPD.Response.Status.NOT_FOUND, response.status)
-        coEvery { txnDao.getByRxNoAndFillNo("RX1", "F1") }
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo("RX1", "F1") }
     }
 
     @Test
     fun `getbyrxnumber without fillno routes to getMostRecentByRxNo`() {
-        coEvery { txnDao.getMostRecentByRxNo("RX1") } returns null
+        coEvery { dispenseTxnDao.getMostRecentByRxNo("RX1") } returns null
 
         val response = serve("/images/getbyrxnumber/RX1")
 
@@ -192,7 +191,7 @@ class ImageNanoServerTest {
 
     @Test
     fun `getbymessagecontrolid url-decodes the path segment`() {
-        coEvery { txnDao.getByMessageControlId("A B") } returns null
+        coEvery { dispenseTxnDao.getByMessageControlId("A B") } returns null
 
         val response = serve("/images/getbymessagecontrolid/A%20B")
 
@@ -206,8 +205,8 @@ class ImageNanoServerTest {
     @Test
     fun `getbymessagecontrolid returns 404 when txn has no images`() {
         val txn = newTxn(barcodeImage = null)
-        coEvery { txnDao.getByMessageControlId("MCID-1") } returns txn
-        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns emptyList()
+        coEvery { dispenseTxnDao.getByMessageControlId("MCID-1") } returns txn
+        coEvery { dispenseCountDao.getAllForTxn(txn.txnId.toString()) } returns emptyList()
 
         val response = serve("/images/getbymessagecontrolid/MCID-1")
 
@@ -217,7 +216,7 @@ class ImageNanoServerTest {
 
     @Test
     fun `getbymessagecontrolid returns 500 when DAO throws`() {
-        coEvery { txnDao.getByMessageControlId("MCID-1") } throws RuntimeException("boom")
+        coEvery { dispenseTxnDao.getByMessageControlId("MCID-1") } throws RuntimeException("boom")
 
         val response = serve("/images/getbymessagecontrolid/MCID-1")
 
@@ -232,8 +231,8 @@ class ImageNanoServerTest {
     fun `zip contains barcode image named with BARCODE label`(): Unit {
         val barcodeFile = writeTempImage("barcode.jpg", byteArrayOf(1, 2, 3))
         val txn = newTxn(barcodeImage = barcodeFile.absolutePath)
-        coEvery { txnDao.getByMessageControlId("MCID-1") } returns txn
-        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns emptyList()
+        coEvery { dispenseTxnDao.getByMessageControlId("MCID-1") } returns txn
+        coEvery { dispenseCountDao.getAllForTxn(txn.txnId.toString()) } returns emptyList()
 
         val response = serve("/images/getbymessagecontrolid/MCID-1")
 
@@ -246,12 +245,12 @@ class ImageNanoServerTest {
 
     @Test
     fun `zip skips blank and null image paths`() {
-        val blank = newDetail(txnDetailsId = 1, imagePath = "  ")
-        val nullPath = newDetail(txnDetailsId = 2, imagePath = null)
-        val valid = newDetail(txnDetailsId = 3, imagePath = writeTempImage("valid.jpg").absolutePath)
+        val blank = newDetail(countId = 1, imagePath = "  ")
+        val nullPath = newDetail(countId = 2, imagePath = null)
+        val valid = newDetail(countId = 3, imagePath = writeTempImage("valid.jpg").absolutePath)
         val txn = newTxn()
-        coEvery { txnDao.getBySequenceNumber("SEQ-1") } returns txn
-        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns listOf(blank, nullPath, valid)
+        coEvery { dispenseTxnDao.getBySequenceNumber("SEQ-1") } returns txn
+        coEvery { dispenseCountDao.getAllForTxn(txn.txnId.toString()) } returns listOf(blank, nullPath, valid)
 
         val response = serve("/images/getbysequencenumber/SEQ-1")
 
@@ -261,11 +260,11 @@ class ImageNanoServerTest {
 
     @Test
     fun `zip skips details whose image file cannot be resolved`() {
-        val unresolvable = newDetail(txnDetailsId = 1, imagePath = "/no/such/file_${System.nanoTime()}.jpg")
-        val valid = newDetail(txnDetailsId = 2, imagePath = writeTempImage("valid2.jpg").absolutePath)
+        val unresolvable = newDetail(countId = 1, imagePath = "/no/such/file_${System.nanoTime()}.jpg")
+        val valid = newDetail(countId = 2, imagePath = writeTempImage("valid2.jpg").absolutePath)
         val txn = newTxn()
-        coEvery { txnDao.getBySequenceNumber("SEQ-1") } returns txn
-        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns listOf(unresolvable, valid)
+        coEvery { dispenseTxnDao.getBySequenceNumber("SEQ-1") } returns txn
+        coEvery { dispenseCountDao.getAllForTxn(txn.txnId.toString()) } returns listOf(unresolvable, valid)
 
         val response = serve("/images/getbysequencenumber/SEQ-1")
 
@@ -275,10 +274,10 @@ class ImageNanoServerTest {
 
     @Test
     fun `zip uses IMAGE fallback label when detail type is null`() {
-        val detail = newDetail(txnDetailsId = 1, imagePath = writeTempImage("null_type.jpg").absolutePath, type = null)
+        val detail = newDetail(countId = 1, imagePath = writeTempImage("null_type.jpg").absolutePath, step = null)
         val txn = newTxn()
-        coEvery { txnDao.getBySequenceNumber("SEQ-1") } returns txn
-        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns listOf(detail)
+        coEvery { dispenseTxnDao.getBySequenceNumber("SEQ-1") } returns txn
+        coEvery { dispenseCountDao.getAllForTxn(txn.txnId.toString()) } returns listOf(detail)
 
         val response = serve("/images/getbysequencenumber/SEQ-1")
 
@@ -290,11 +289,11 @@ class ImageNanoServerTest {
 
     @Test
     fun `zip numbers batches per label and overall sequence across entries`() {
-        val d1 = newDetail(txnDetailsId = 1, imagePath = writeTempImage("d1.jpg").absolutePath, type = "CONTAINER_PENDING", createdAt = 1)
-        val d2 = newDetail(txnDetailsId = 2, imagePath = writeTempImage("d2.jpg").absolutePath, type = "CONTAINER_PENDING", createdAt = 2)
+        val d1 = newDetail(countId = 1, imagePath = writeTempImage("d1.jpg").absolutePath, step = "CONTAINER_PENDING", createdAt = 1)
+        val d2 = newDetail(countId = 2, imagePath = writeTempImage("d2.jpg").absolutePath, step = "CONTAINER_PENDING", createdAt = 2)
         val txn = newTxn()
-        coEvery { txnDao.getBySequenceNumber("SEQ-1") } returns txn
-        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns listOf(d1, d2)
+        coEvery { dispenseTxnDao.getBySequenceNumber("SEQ-1") } returns txn
+        coEvery { dispenseCountDao.getAllForTxn(txn.txnId.toString()) } returns listOf(d1, d2)
 
         val response = serve("/images/getbysequencenumber/SEQ-1")
 
@@ -310,12 +309,12 @@ class ImageNanoServerTest {
         val d = newDetail(
             imagePath = writeTempImage("tv.jpg").absolutePath,
             rawImagePath = writeTempImage("tv_raw.jpg").absolutePath,
-            type = "TARGET_VERIFICATION", pillCount = 30,
+            step = "TARGET_VERIFICATION", pillCount = 30,
         )
-        val v = newDetail(txnDetailsId = 2, imagePath = writeTempImage("v.jpg").absolutePath, type = "VIAL", createdAt = Long.MAX_VALUE)
+        val v = newDetail(countId = 2, imagePath = writeTempImage("v.jpg").absolutePath, step = "VIAL", createdAt = Long.MAX_VALUE)
         val txn = newTxn()
-        coEvery { txnDao.getBySequenceNumber("SEQ-1") } returns txn
-        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns listOf(d, v)
+        coEvery { dispenseTxnDao.getBySequenceNumber("SEQ-1") } returns txn
+        coEvery { dispenseCountDao.getAllForTxn(txn.txnId.toString()) } returns listOf(d, v)
 
         val names = zipEntryNames(serve("/images/getbysequencenumber/SEQ-1"))
 
@@ -330,11 +329,11 @@ class ImageNanoServerTest {
         val d = newDetail(
             imagePath = writeTempImage("tv2.jpg").absolutePath,
             rawImagePath = writeTempImage("tv2_raw.jpg").absolutePath,
-            type = "TARGET_VERIFICATION",
+            step = "TARGET_VERIFICATION",
         )
         val txn = newTxn().copy(rxNo = "RX1", transactionOrderId = "ORD1")
-        coEvery { txnDao.getByTransactionOrderId("ORD1") } returns txn
-        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns listOf(d)
+        coEvery { dispenseTxnDao.getByTransactionOrderId("ORD1") } returns txn
+        coEvery { dispenseCountDao.getAllForTxn(txn.txnId.toString()) } returns listOf(d)
 
         val names = zipEntryNames(serve("/pic=*&format=zip&orderid=ORD1"))
 

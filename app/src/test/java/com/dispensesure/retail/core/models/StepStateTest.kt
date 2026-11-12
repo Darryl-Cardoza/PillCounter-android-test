@@ -10,7 +10,6 @@ class StepStateTest {
     @Test
     fun values_containsAllConstantsInOrder() {
         val expected = arrayOf(
-            StepState.STOCK_COUNT,
             StepState.RX_LABEL,
             StepState.SCAN,
             StepState.CONTAINER_INITIATE,
@@ -20,12 +19,11 @@ class StepStateTest {
             StepState.CONTAINER_PENDING
         )
         assertArrayEquals(expected, StepState.values())
-        assertEquals(8, StepState.values().size)
+        assertEquals(7, StepState.values().size)
     }
 
     @Test
     fun valueOf_eachConstant() {
-        assertEquals(StepState.STOCK_COUNT, StepState.valueOf("STOCK_COUNT"))
         assertEquals(StepState.RX_LABEL, StepState.valueOf("RX_LABEL"))
         assertEquals(StepState.SCAN, StepState.valueOf("SCAN"))
         assertEquals(StepState.CONTAINER_INITIATE, StepState.valueOf("CONTAINER_INITIATE"))
@@ -49,7 +47,6 @@ class StepStateTest {
         assertEquals(R.drawable.vial_capture, StepState.VIAL.icon())
         assertEquals(R.drawable.count_pills_container, StepState.CONTAINER_PENDING.icon())
         assertEquals(-1, StepState.RX_LABEL.icon())
-        assertEquals(-1, StepState.STOCK_COUNT.icon())
     }
 
     @Test
@@ -61,6 +58,5 @@ class StepStateTest {
         assertEquals(R.string.capture_photo_of_counted_pills_vial, StepState.VIAL.titleRes())
         assertEquals(R.string.count_pills_from_the_container, StepState.CONTAINER_PENDING.titleRes())
         assertEquals(R.string.scan_rx_label, StepState.RX_LABEL.titleRes())
-        assertEquals(R.string.scan_stock_bottle, StepState.STOCK_COUNT.titleRes())
     }
 }

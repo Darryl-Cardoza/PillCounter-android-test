@@ -59,6 +59,22 @@
     <string name="no_pending_tasks">No hay tareas pendientes por ahora</string>
     <string name="kpi_disp_short">Dispensar</string>
     <string name="kpi_inv_short">Inventario</string>
+
+    <!-- Home screen tour guide -->
+    <string name="tour_title_pms">Estado de conexión con el PMS</string>
+    <string name="tour_desc_pms">Confirma que la integración con el sistema de gestión de farmacia (PMS) está activa y sincronizando.</string>
+    <string name="tour_title_dispense">Dispensar</string>
+    <string name="tour_desc_dispense">Toca para escanear etiquetas de Rx e iniciar el flujo de dispensación.</string>
+    <string name="tour_title_stock_count">Conteo de Inventario</string>
+    <string name="tour_desc_stock_count">Inicia una nueva sesión de conteo de inventario para conciliar el stock.</string>
+    <string name="tour_title_tabs">Cola / Actividad</string>
+    <string name="tour_desc_tabs">Cambia la lista de abajo entre la cola de dispensación, la cola de inventario y la actividad reciente.</string>
+    <string name="tour_skip">Omitir</string>
+    <string name="tour_back">Atrás</string>
+    <string name="tour_next">Siguiente</string>
+    <string name="tour_done">Listo</string>
+    <string name="tour_step_of">Paso %1$d de %2$d</string>
+
     <string name="kpi_high_priority">Alta prioridad</string>
     <string name="kpi_cont_drugs">Controlados</string>
     <string name="kpi_hazardous">Peligrosos</string>
@@ -110,6 +126,7 @@
     <string name="error_email_invalid">Por favor, introduce una dirección de correo válida.</string>
     <string name="error_unknown">Algo salió mal.</string>
     <string name="error_invalid_otp">PIN inválido.</string>
+    <string name="error_unsupported_region">El país de su cuenta no es compatible con esta aplicación. Comuníquese con soporte.</string>
     <string name="error_phone_invalid">Número de teléfono inválido</string>
     <string name="error_name_invalid">El nombre no puede contener números</string>
     <string name="error_name_required">Este campo es obligatorio</string>
@@ -167,8 +184,6 @@
     <string name="total_count">Conteo Total</string>
     <string name="max_count_reached">El conteo total de la transacción excede el objetivo.</string>
     <string name="no_transaction_found">No se encontró ninguna transacción, por favor comience a contar pastillas</string>
-    <string name="rx_already_exists_title">La RX ya existe</string>
-    <string name="rx_already_exists_message">Esta RX ya está presente en sus transacciones. ¿Desea continuar con ella?</string>
     <string name="rx_on_hold_title">Transacción en espera</string>
     <string name="rx_on_hold_message">Esta transacción está actualmente en espera. No puede continuar con ella.</string>
     <!-- ================== PROFILE ================== -->
@@ -344,10 +359,8 @@
     <string name="enable_hl7_from_portal_toast">Habilitar HL7 desde el Portal</string>
     <string name="scan_correct_label">Escanee la etiqueta correcta</string>
 <!--    StockCount-->
-    <string name="scan_stock_bottle">Escanear frasco de stock</string>
     <string name="scan_open_pills">Escanear pastillas sueltas</string>
     <string name="camera_permission_required">Se requiere permiso de cámara para escanear. Permita el acceso a la cámara.</string>
-    <string name="scan_ndc_to_count">Escanee el NDC para contar pastillas</string>
 
 
 <!--    partial count screen -->
@@ -405,10 +418,7 @@
     <string name="code_name_format">%1$s - %2$s</string>
 
     <string name="verify_rx_details">Verificar detalles de Rx</string>
-    <string name="verify_stock_bottle_details">Verificar detalles del frasco de stock</string>
-    <string name="hazardous_drug_warning">Medicamento peligroso</string>
     <string name="form">Forma</string>
-    <string name="strength">Fuerza</string>
     <!-- ================== HL7 NOTIFICATIONS ================== -->
     <string name="hl7_notification_device_connected_title">Dispositivo conectado</string>
     <string name="hl7_notification_device_connected_message">Conectado a %1$s correctamente</string>
@@ -488,6 +498,8 @@
     <string name="batch_stock_count_open_pills">Pastillas abiertas</string>
     <string name="batch_stock_count_edit">Editar</string>
     <string name="batch_stock_count_delete_row">Eliminar</string>
+    <string name="batch_stock_count_increase">Aumentar</string>
+    <string name="batch_stock_count_decrease">Disminuir</string>
 
     <string name="violation_screen_overlay">Superposición de pantalla detectada — otra aplicación podría estar interceptando la entrada táctil</string>
     <string name="permission_location_rationale">El acceso a la ubicación se utiliza únicamente para identificar su red Wi-Fi para el descubrimiento de dispositivos médicos HL7. Su ubicación nunca se almacena, transmite ni vincula a datos de pacientes.</string>
@@ -594,7 +606,94 @@
     <string name="hl7_notification_refill_exhausted">Resurtidos agotados para Rx %1$s — no quedan resurtidos (RXE-16=%2$d)</string>
     <string name="hl7_notification_refill_ndc_or_qty_missing">Resurtido de Rx %1$s ignorado — NDC o cantidad faltantes o no válidos</string>
     <string name="hl7_notification_no_processable_orders">Mensaje HL7 %1$s recibido, pero no contenía pedidos procesables</string>
-    <string name="hl7_notification_structural_validation_failed">Mensaje HL7 %1$s rechazado — falló la validación estructural: %2$s</string>
-    <string name="hl7_notification_business_validation_failed">Mensaje HL7 %1$s rechazado — %2$s</string>
+    <string name="hl7_notification_message_rejected">Mensaje HL7 %1$s rechazado</string>
 
+    <string name="tour_title_kpi_dispense">Tarjetas de dispensación</string>
+    <string name="tour_desc_kpi_dispense">Conteos de Alta prioridad, Controlados y Peligrosos de sus dispensaciones. Toque una tarjeta para filtrar la cola.</string>
+    <string name="tour_title_kpi_inventory">Tarjetas de inventario</string>
+    <string name="tour_desc_kpi_inventory">Conteo de ciclo y Lote pendiente muestran su trabajo de inventario. Toque una tarjeta para filtrar la cola.</string>
+    <string name="tour_step_failed">No se pudo continuar el recorrido — toque Siguiente para reintentar u Omitir</string>
+    <string name="tour_section_done_prompt">Recorrido de %1$s completado. ¿Continuar con el recorrido de %2$s?</string>
+    <string name="tour_continue">Continuar</string>
+    <string name="tour_end">Terminar recorrido</string>
+    <string name="tour_section_dashboard">Panel</string>
+    <string name="tour_section_dispense">Dispensar</string>
+    <string name="tour_section_stock_count">Conteo de existencias</string>
+    <string name="tour_offer_message">¿Quiere hacer un recorrido rápido por la aplicación? Puede repetirlo cuando quiera desde el menú.</string>
+    <string name="tour_offer_start">Iniciar recorrido</string>
+    <string name="tour_offer_not_now">Ahora no</string>
+    <string name="tour_picker_title">¿Qué recorrido?</string>
+    <string name="tour_picker_full">Recorrido completo</string>
+    <string name="tour_picker_start">Iniciar</string>
+    <string name="tour_demo_drug_name">Medicamento de demostración del tutorial</string>
+    <string name="menu_start_tutorial">Iniciar tutorial</string>
+    <string name="tour_desc_add_note_actions">Omita si no hay nada que anotar, o guarde una nota en el registro. En este recorrido se omite por usted.</string>
+    <string name="tour_desc_count_add_circle">Toque para añadir las pastillas detectadas al conteo. Mantenga pulsado para moverlo.</string>
+    <string name="tour_desc_dispense_tap">Toque Dispensar para empezar a escanear una receta.</string>
+    <string name="tour_desc_inv_camera_preview">Apunte la cámara al código de barras NDC de un frasco para empezar a contarlo.</string>
+    <string name="tour_desc_inv_counter">Toque + para contar otro frasco, o - para corregir un error.</string>
+    <string name="tour_desc_inv_edit_actions">Cancele para descartar los cambios, o guarde para actualizar los conteos de este NDC.</string>
+    <string name="tour_desc_inv_edit_button">Si necesita corregir el conteo de frascos sellados o pastillas sueltas por lote y vencimiento, toque aquí; si no, continúe.</string>
+    <string name="tour_desc_inv_end_count">Toque Finalizar conteo cuando se haya contado cada NDC de este lote. Siguiente abre la pantalla de notas.</string>
+    <string name="tour_desc_inv_scan_pills">Opcional: escanee más frascos y toque AÑADIR para contarlos, toque aquí para las pastillas sueltas de un frasco ya abierto, o simplemente toque Finalizar conteo.</string>
+    <string name="tour_desc_scan_container">Apunte la cámara al código QR o al código de barras NDC del envase.</string>
+    <string name="tour_desc_scan_rx_camera">Apunte la cámara al código de barras de la etiqueta de la receta para empezar a dispensar.</string>
+    <string name="tour_desc_select_bucket">Elija el depósito de almacenamiento que está contando. En este recorrido el conteo de demostración se prepara por usted.</string>
+    <string name="tour_desc_stock_count_tap">Toque Conteo de existencias para empezar a contar el inventario.</string>
+    <string name="tour_desc_verify_rx_proceed">Toque Continuar para empezar a contar esta receta.</string>
+    <string name="tour_title_add_note_actions">Omitir o guardar</string>
+    <string name="tour_title_count_add_circle">Añadir un conteo</string>
+    <string name="tour_title_dispense_tap">Iniciar una dispensación</string>
+    <string name="tour_title_inv_camera_preview">Escanear un medicamento</string>
+    <string name="tour_title_inv_counter">Ajustar el conteo</string>
+    <string name="tour_title_inv_edit_actions">Cancelar o guardar</string>
+    <string name="tour_title_inv_edit_button">Editar los detalles (opcional)</string>
+    <string name="tour_title_inv_end_count">Finalizar el conteo</string>
+    <string name="tour_title_inv_scan_pills">Contar pastillas sueltas (opcional)</string>
+    <string name="tour_title_scan_container">Escanear el envase</string>
+    <string name="tour_title_scan_rx_camera">Escanear la etiqueta de la receta</string>
+    <string name="tour_title_select_bucket">Seleccionar un depósito</string>
+    <string name="tour_title_stock_count_tap">Iniciar un conteo de existencias</string>
+    <string name="tour_title_verify_rx_proceed">Confirmar y contar</string>
+    <string name="tour_ended_locked">El recorrido terminó porque la sesión se bloqueó.</string>
+
+    <!-- Canada wording (Region.wording) -->
+    <string name="queue_tab_controlled_ca">CONTROLADO / SUSTANCIA ESPECÍFICA</string>
+    <string name="queue_tab_hazardous_ca">CITOTÓXICO</string>
+    <string name="kpi_cont_drugs_ca">Controlados / Sustancias específicas</string>
+    <string name="kpi_hazardous_ca">Citotóxicos</string>
+    <string name="tour_desc_kpi_dispense_ca">Conteos de Alta prioridad, Controlados / Sustancias específicas y Citotóxicos de sus dispensaciones. Toque una tarjeta para filtrar la cola.</string>
+    <string name="tour_desc_scan_container_ca">Apunte la cámara al código QR o al código de barras DIN del envase.</string>
+    <string name="tour_desc_inv_camera_preview_ca">Apunte la cámara al código de barras DIN de un frasco para empezar a contarlo.</string>
+    <string name="tour_desc_inv_edit_actions_ca">Cancele para descartar los cambios, o guarde para actualizar los conteos de este DIN.</string>
+    <string name="tour_desc_inv_end_count_ca">Toque Finalizar conteo cuando se haya contado cada DIN de este lote. Siguiente abre la pantalla de notas.</string>
+    <string name="ndc_value_ca">DIN %1$s</string>
+    <string name="ndc_ca">DIN</string>
+    <string name="ndc_gtin14_ca">DIN/GTIN14</string>
+    <string name="ndc_number_ca">Número DIN</string>
+    <string name="the_scanned_ndc_does_not_match_ca">El DIN escaneado no coincide</string>
+    <string name="scan_ndc_toast_ca">Escanear DIN</string>
+    <string name="rescan_ndc_does_not_match_toast_ca">Reescanear — el DIN no coincide</string>
+    <string name="ndcs_label_ca">DINs</string>
+    <string name="total_ndc_count_ca">CONTEO TOTAL DE DIN</string>
+    <string name="pdf_ndc_label_ca">DIN</string>
+    <string name="batch_stock_count_scanned_drug_details_ca">DETALLES DEL DIN ESCANEADO</string>
+    <string name="batch_stock_count_label_ndc_ca">Número DIN</string>
+    <string name="batch_stock_count_total_ndcs_ca">Total de DINs</string>
+    <string name="batch_stock_count_drug_not_found_ca">DIN inválido %1$s</string>
+    <string name="batch_stock_count_ndc_not_in_request_ca">El DIN %1$s no forma parte de esta solicitud de inventario</string>
+    <string name="photo_label_requested_ndc_ca">DIN solicitado</string>
+    <string name="photo_label_dispensed_ndc_ca">DIN dispensado</string>
+    <string name="hl7_notification_drug_not_found_api_failed_ca">No se pudo resolver el DIN %1$s. La solicitud a la API falló.</string>
+    <string name="hl7_notification_drug_not_found_no_drug_ca">No se encontró ningún medicamento para el DIN %1$s.</string>
+    <string name="hl7_notification_edit_rx_drug_not_found_ca">Falló la actualización de Rx %1$s: DIN %2$s del medicamento no encontrado.</string>
+    <string name="hl7_notification_new_rx_ndc_missing_ca">Nuevo pedido para Rx %1$s ignorado — falta el DIN en RXE-2</string>
+    <string name="hl7_notification_refill_ndc_or_qty_missing_ca">Resurtido de Rx %1$s ignorado — DIN o cantidad faltantes o no válidos</string>
+    <string name="setting_group_controlled_drug_ca">DISPENSACIÓN DE SUSTANCIAS CONTROLADAS / ESPECÍFICAS</string>
+    <string name="setting_group_hazardous_ca">CONTEO DE PÍLDORAS CITOTÓXICAS</string>
+    <string name="setting_hazardous_drug_ca">Medicamento citotóxico</string>
+    <string name="tray_classification_message_ca">La bandeja de color %s no está clasificada. ¿Marcarla como bandeja citotóxica?</string>
+    <string name="hazardous_tray_warning_ca">Advertencia: Está utilizando una bandeja citotóxica. Utilice una bandeja no citotóxica.</string>
+    <string name="non_hazardous_tray_warning_ca">Esta no es la bandeja citotóxica. Utilice la bandeja citotóxica.</string>
+    <string name="clear_tray_color_lists_confirm_ca">¿Está seguro de que desea borrar la clasificación de color de bandeja citotóxica?</string>
 </resources>

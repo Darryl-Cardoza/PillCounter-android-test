@@ -3,17 +3,18 @@ package com.dispensesure.retail.feature.unsyncedTransaction.presentation.viewmod
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
-import com.dispensesure.retail.feature.countResume.domain.model.CountItem
+import com.dispensesure.retail.feature.unsyncedTransaction.domain.model.CountItem
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import com.dispensesure.retail.feature.unsyncedTransaction.domain.model.UnsyncedTransactionUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -29,10 +30,11 @@ import javax.inject.Inject
 
 @HiltViewModel
 class UnsyncedTransactionViewModel @Inject constructor(
-    private val pillCountTxnDao: PillCountTxnDao,
-    private val batchDao: BatchDao,
-    private val hl7Repository: Hl7Repository,
+    private val dispenseTxnDao: DispenseTxnDao,
+    private val stockBatchDao: StockBatchDao,
+    private val stockHl7Repository: StockHl7Repository,
     private val hl7EventHandler: Hl7EventHandler,
+    private val regionProvider: RegionProvider,
 ) : ViewModel() {
 
     private val _unsyncedTransactionUiState = MutableStateFlow(UnsyncedTransactionUiState())
@@ -50,9 +52,9 @@ class UnsyncedTransactionViewModel @Inject constructor(
 
     private fun observeUnsyncedDispense() {
         viewModelScope.launch {
-            pillCountTxnDao.observeUnsyncedByIsDispense(
-                isDispense = true,
-                type = StepState.TARGET_VERIFICATION.toString()
+            dispenseTxnDao.observeUnsyncedDispenses(
+                region = regionProvider.current,
+                step = StepState.TARGET_VERIFICATION.toString()
             )
                 .map { txns -> txns.map { it.toCountItem() } }
                 .catch { e -> logger.e("Failed to observe unsynced dispense transactions", e, event = LogEvent.TRANSACTION_SYNC_FAILED) }
@@ -64,7 +66,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
 
     private fun observeUnsyncedBatches() {
         viewModelScope.launch {
-            batchDao.observeUnsyncedCompletedBatches()
+            stockBatchDao.observeUnsyncedCompletedBatches(regionProvider.current)
                 .map { dtos ->
                     dtos.map { dto ->
                         BatchSummary(
@@ -90,7 +92,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
                 .filter { it }
                 .collect {
                     try {
-                        hl7Repository.resendPendingHl7BatchTransactions()
+                        stockHl7Repository.sendPendingBatches()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -100,19 +102,17 @@ class UnsyncedTransactionViewModel @Inject constructor(
         }
     }
 
-    private fun PillCountWithDrugAndTotal.toCountItem() = CountItem(
+    private fun DispenseTxnWithDrug.toCountItem() = CountItem(
         id = txnId,
         name = drugName ?: "",
         ndc = ndc,
         drugType = drugType,
         bucketId = bucketId,
-        pillCount = totalPillCount,
         target = targetCount ?: 0,
-        bottleInfoListJson = bottleInfoListJson,
-        date = createdAt.toFormattedDate(),
+        bottlesJson = bottlesJson,
+        date = createdAt.toFormattedDate(regionProvider.current),
         isComingFromHL7 = isComingFromHL7,
         isNdcVerified = isNdcVerified,
-        isDispense = isDispense,
         strength = strength,
         dosageForm = dosageForm,
         drugImagePath = drugImagePath,

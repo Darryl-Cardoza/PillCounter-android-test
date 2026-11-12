@@ -21,14 +21,25 @@ object SecurityUtils {
 
     private val logger = AppLogger.create<SecurityUtils>()
 
-    /**
-     * Checks the device and app environment for known violations.
-     *
-     * @param context The application context.
-     * @return A list of localized violation messages (empty if all clear).
-     */
-    init {
+    /** Names of the integrity checks, shared by the dialog path, the audit event and the old audit log. */
+    object CheckName {
+        const val ADB_ENABLED = "ADB_ENABLED"
+        const val SCREEN_OVERLAY_ACTIVE = "SCREEN_OVERLAY_ACTIVE"
+        const val ROOTED = "ROOTED"
+        const val DEBUGGER_ATTACHED = "DEBUGGER_ATTACHED"
+        const val EMULATOR = "EMULATOR"
+        const val DEBUGGABLE_BUILD = "DEBUGGABLE_BUILD"
+        const val SIGNATURE_INVALID = "SIGNATURE_INVALID"
+        const val NOT_FROM_PLAYSTORE = "NOT_FROM_PLAYSTORE"
+    }
+
+    // libsecurity.so isn't packaged yet; without it ROOTED / DEBUGGER_ATTACHED report "not checked".
+    private val isNativeLibraryLoaded: Boolean = try {
         System.loadLibrary("security")
+        true
+    } catch (e: UnsatisfiedLinkError) {
+        logger.w("libsecurity not loaded; native integrity checks skipped", e)
+        false
     }
 
     // JNI declarations
@@ -37,6 +48,12 @@ object SecurityUtils {
 
     private var appContext: Context? = null
 
+    /**
+     * Checks the device and app environment for known violations.
+     *
+     * @param context The application context.
+     * @return A list of localized violation messages (empty if all clear).
+     */
     fun getSecurityViolations(context: Context): List<String> {
         appContext = context.applicationContext
         val violations = mutableListOf<String>()
@@ -53,20 +70,78 @@ object SecurityUtils {
             if (isViolation) violations.add(context.getString(violationStringRes))
         }
 
-        check("ADB_ENABLED",        isAdbEnabled(context),      R.string.violation_adb_enabled)
-        check("SCREEN_OVERLAY_ACTIVE",        isScreenOverlayActive(context),      R.string.violation_screen_overlay)
-        check("ROOTED",             nativeIsRooted(),            R.string.violation_rooted)
-        check("DEBUGGER_ATTACHED",  nativeIsDebuggerAttached(),  R.string.violation_debugger_attached)
-        check("EMULATOR",           isRunningOnEmulator(),       R.string.violation_emulator)
-        check("DEBUGGABLE_BUILD",   isAppDebuggable(context),    R.string.violation_debuggable_build)
-        check("SIGNATURE_INVALID",  !isSignatureValid(context),  R.string.violation_signature_mismatch)
-        check("NOT_FROM_PLAYSTORE", !isFromPlayStore(context),   R.string.violation_not_from_playstore,
+        check(CheckName.ADB_ENABLED,        isAdbEnabled(context),      R.string.violation_adb_enabled)
+        check(CheckName.SCREEN_OVERLAY_ACTIVE,        isScreenOverlayActive(context),      R.string.violation_screen_overlay)
+        check(CheckName.ROOTED,             isNativeLibraryLoaded && nativeIsRooted(),            R.string.violation_rooted)
+        check(CheckName.DEBUGGER_ATTACHED,  isNativeLibraryLoaded && nativeIsDebuggerAttached(),  R.string.violation_debugger_attached)
+        check(CheckName.EMULATOR,           isRunningOnEmulator(),       R.string.violation_emulator)
+        check(CheckName.DEBUGGABLE_BUILD,   isAppDebuggable(context),    R.string.violation_debuggable_build)
+        check(CheckName.SIGNATURE_INVALID,  !isSignatureValid(context),  R.string.violation_signature_mismatch)
+        check(CheckName.NOT_FROM_PLAYSTORE, !isFromPlayStore(context),   R.string.violation_not_from_playstore,
             detail = getInstallerName(context)) // log actual installer for audit trail
 
         // Write all events in one pass
         SecurityAuditLogger.logAll(context, events)
 
         return violations
+    }
+
+    /** Outcome of [runIntegrityChecks]; names match the checkName values in [getSecurityViolations]. */
+    data class IntegrityCheckReport(
+        val failedChecks: List<String>,
+        val notChecked: List<String>,
+        val installer: String
+    )
+
+    /** Runs every integrity check for the audit log only: nothing is blocked. Call off the main thread. */
+    fun runIntegrityChecks(context: Context): IntegrityCheckReport {
+        appContext = context.applicationContext
+        val overlayPackages = try {
+            overlayAppPackages(context)
+        } catch (e: Exception) {
+            logger.e("overlayAppPackages() check failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
+            emptyList()
+        }
+        val installer = getInstallerName(context)
+        // null = could not run (native library missing).
+        val violationByCheckName: Map<String, Boolean?> = linkedMapOf(
+            CheckName.ADB_ENABLED to isAdbEnabled(context),
+            CheckName.SCREEN_OVERLAY_ACTIVE to overlayPackages.isNotEmpty(),
+            CheckName.ROOTED to if (isNativeLibraryLoaded) nativeIsRooted() else null,
+            CheckName.DEBUGGER_ATTACHED to if (isNativeLibraryLoaded) nativeIsDebuggerAttached() else null,
+            CheckName.EMULATOR to isRunningOnEmulator(),
+            CheckName.DEBUGGABLE_BUILD to isAppDebuggable(context),
+            CheckName.SIGNATURE_INVALID to !isSignatureValid(context),
+            CheckName.NOT_FROM_PLAYSTORE to !isFromPlayStore(context)
+        )
+        return IntegrityCheckReport(
+            failedChecks = violationByCheckName.filterValues { it == true }.keys.toList(),
+            notChecked = violationByCheckName.filterValues { it == null }.keys.toList(),
+            installer = installer
+        )
+    }
+
+    // Third-party apps holding SYSTEM_ALERT_WINDOW; shared by the overlay check and runIntegrityChecks.
+    private fun overlayAppPackages(context: Context): List<String> {
+        val pm = context.packageManager
+        val packages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getInstalledPackages(
+                PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+        }
+        return packages.filter { pkg ->
+            pkg.packageName != context.packageName &&  // exclude ourselves
+                    pkg.requestedPermissions?.contains(
+                        android.Manifest.permission.SYSTEM_ALERT_WINDOW
+                    ) == true &&
+                    pm.checkPermission(
+                        android.Manifest.permission.SYSTEM_ALERT_WINDOW,
+                        pkg.packageName
+                    ) == PackageManager.PERMISSION_GRANTED
+        }.map { it.packageName }
     }
 
     private fun isScreenOverlayActive(context: Context): Boolean {
@@ -98,34 +173,15 @@ object SecurityUtils {
                 }
 
                 // If a third-party app has SYSTEM_ALERT_WINDOW granted, flag it
-                val pm = context.packageManager
-                val packages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    pm.getInstalledPackages(
-                        PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
-                    )
-                } else {
-                    @Suppress("DEPRECATION")
-                    pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
-                }
-
-                val overlayApps = packages.filter { pkg ->
-                    pkg.packageName != context.packageName &&  // exclude ourselves
-                            pkg.requestedPermissions?.contains(
-                                android.Manifest.permission.SYSTEM_ALERT_WINDOW
-                            ) == true &&
-                            pm.checkPermission(
-                                android.Manifest.permission.SYSTEM_ALERT_WINDOW,
-                                pkg.packageName
-                            ) == PackageManager.PERMISSION_GRANTED
-                }
+                val overlayApps = overlayAppPackages(context)
 
                 if (overlayApps.isNotEmpty()) {
                     // Log which apps have overlay permission for audit trail
                     SecurityAuditLogger.log(context, AuditEvent(
                         timestampMs = System.currentTimeMillis(),
-                        checkName   = "SCREEN_OVERLAY",
+                        checkName   = CheckName.SCREEN_OVERLAY_ACTIVE,
                         passed      = false,
-                        detail      = overlayApps.joinToString(",") { it.packageName }
+                        detail      = overlayApps.joinToString(",")
                     ))
                     return true
                 }

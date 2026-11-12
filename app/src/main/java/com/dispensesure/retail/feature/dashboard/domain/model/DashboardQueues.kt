@@ -1,12 +1,13 @@
 package com.dispensesure.retail.feature.dashboard.domain.model
 
 import com.dispensesure.retail.core.models.isControlledDrugType
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
-import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 
 // Mapped Room lists per tab, before any KPI filter.
 internal data class QueueSources(
@@ -77,13 +78,13 @@ private fun QueueItem.Inventory.matches(filter: KpiFilter): Boolean = when (filt
 }
 
 // Keeps the DAO order: priority, then oldest first.
-internal fun List<PillCountWithDrugAndTotal>.toPendingDispenseItems(): List<QueueItem.Dispense> =
+internal fun List<DispenseTxnWithDrug>.toPendingDispenseItems(region: Region): List<QueueItem.Dispense> =
     map { txn ->
         QueueItem.Dispense(
             txn = txn,
             isHazardous = txn.isHazardous,
             isHighPriority = txn.priority == TxnPriority.High,
-            isControlled = isControlledDrugType(txn.drugType),
+            isControlled = isControlledDrugType(txn.drugType, region),
         )
     }
 
@@ -93,12 +94,13 @@ internal fun List<BatchSummaryDto>.toPendingInventoryItems(): List<QueueItem.Inv
 
 // Completed dispenses and completed batches, newest first.
 internal fun recentActivityItems(
-    dispenses: List<TxnWithDrugDto>,
+    dispenses: List<DispenseTxnSummary>,
     batches: List<BatchSummaryDto>,
+    region: Region,
 ): List<QueueItem> {
     val dispenseItems = dispenses.map { completedTxn ->
         QueueItem.Dispense(
-            txn = PillCountWithDrugAndTotal(
+            txn = DispenseTxnWithDrug(
                 txnId = completedTxn.txnId,
                 drugName = completedTxn.drugName,
                 ndc = completedTxn.ndc,
@@ -106,11 +108,10 @@ internal fun recentActivityItems(
                 bucketId = completedTxn.bucketId,
                 createdAt = completedTxn.createdAt,
                 targetCount = completedTxn.targetCount,
-                bottleInfoListJson = completedTxn.bottleInfoListJson,
+                bottlesJson = completedTxn.bottlesJson,
                 totalPillCount = completedTxn.pillCount ?: 0,
                 isComingFromHL7 = false,
                 isNdcVerified = false,
-                isDispense = completedTxn.isDispense,
                 priority = null,
                 strength = completedTxn.strength,
                 dosageForm = completedTxn.dosageForm,
@@ -120,7 +121,7 @@ internal fun recentActivityItems(
             ),
             isHazardous = false,
             isHighPriority = false,
-            isControlled = isControlledDrugType(completedTxn.drugType),
+            isControlled = isControlledDrugType(completedTxn.drugType, region),
         )
     }
     val inventoryItems = batches

@@ -1,13 +1,13 @@
 package com.dispensesure.retail.core.health.di
 
 import android.content.Context
-import com.chuckerteam.chucker.api.ChuckerInterceptor
 import com.dispensesure.retail.BuildConfig
 import com.dispensesure.retail.core.api.interfaceDetail.HeaderInterceptor
 import com.dispensesure.retail.core.health.data.HealthRepository
 import com.dispensesure.retail.core.health.data.remote.IHealthApi
 import com.dispensesure.retail.core.health.domain.data.IHealthRepository
 import com.dispensesure.retail.core.security.RuntimeUnit
+import com.dispensesure.retail.core.utils.logger.redactedChuckerInterceptor
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Binds
@@ -44,7 +44,7 @@ object HealthModule {
      *
      * What it does:
      * - Attaches only the [HeaderInterceptor] so `X-Server-Key` and `Content-Type` are sent.
-     * - Attaches a plain body-logging interceptor for parity with the refresh stack.
+     * - Attaches the shared logging and Chucker interceptors, with confidential data hidden.
      * - Uses tight 15s timeouts so a stuck server does not delay foreground checks.
      *
      * @param runtimeUnit Source of the server key material.
@@ -55,17 +55,15 @@ object HealthModule {
     @Named("health_okhttp")
     fun provideHealthOkHttpClient(
         runtimeUnit: RuntimeUnit,
+        loggingInterceptor: HttpLoggingInterceptor,
         @ApplicationContext context: Context
     ): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(HeaderInterceptor(runtimeUnit))
-            .addInterceptor(HttpLoggingInterceptor().apply {
-                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY
-                else HttpLoggingInterceptor.Level.NONE
-            })
+            .addInterceptor(loggingInterceptor)
             // Attach Chucker so /health traffic shows up alongside main-stack calls
             // in the in-app debug inspector. Mirrors the main NetworkModule wiring.
-            .addInterceptor(ChuckerInterceptor(context))
+            .addInterceptor(redactedChuckerInterceptor(context))
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)

@@ -1,20 +1,34 @@
 package com.dispensesure.retail.feature.dashboard.presentation.viewmodel
 
 import android.util.Log
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.key.DekVersionRecorder
+import com.dispensesure.retail.core.audit.model.CertPinChoice
+import com.dispensesure.retail.core.audit.model.DataPurged
+import com.dispensesure.retail.core.audit.model.PmsCertPinMismatch
+import com.dispensesure.retail.core.audit.model.ServerConfigChanged
+import com.dispensesure.retail.core.audit.model.ServerSetting
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
+import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.models.ApiResponse
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.UserDao
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
-import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
-import com.dispensesure.retail.core.health.logic.SessionHealthController
+import com.dispensesure.retail.core.security.DatabaseKeyProvider
+import com.dispensesure.retail.core.security.DekWrap
+import com.dispensesure.retail.core.security.KekInfo
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.data.IUserDetailRepository
@@ -26,13 +40,15 @@ import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
 import com.dispensesure.retail.feature.dashboard.domain.model.UserDetail
 import com.dispensesure.retail.feature.dashboard.domain.model.UserProfile
 import com.dispensesure.retail.feature.dashboard.domain.model.UserSettings
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkObject
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
@@ -62,14 +78,16 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class DashboardViewModelTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var userDetailRepository: IUserDetailRepository
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var userDao: UserDao
     private lateinit var operatorNameProvider: OperatorNameProvider
-    private lateinit var batchDao: BatchDao
-    private lateinit var pillCountTxnDao: PillCountTxnDao
+    private lateinit var stockBatchDao: StockBatchDao
+    private lateinit var dispenseTxnDao: DispenseTxnDao
     private lateinit var hl7EventHandler: Hl7EventHandler
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var deviceKeyProvider: DeviceKeyProvider
@@ -101,8 +119,8 @@ class DashboardViewModelTest {
         preferenceHelper = mockk(relaxed = true)
         userDao = mockk(relaxed = true)
         operatorNameProvider = mockk(relaxed = true)
-        batchDao = mockk(relaxed = true)
-        pillCountTxnDao = mockk(relaxed = true)
+        stockBatchDao = mockk(relaxed = true)
+        dispenseTxnDao = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
         deviceKeyProvider = mockk(relaxed = true)
@@ -127,14 +145,14 @@ class DashboardViewModelTest {
         // Relaxed mocks hand back a mock Flow, which never emits — give every test a real one.
         every { operatorNameProvider.observe() } returns flowOf(OperatorName(null, null))
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 5L
-        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(emptyList())
-        every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(emptyList())
-        every { batchDao.observeInProgressBatchKpiCounts(any()) } returns flowOf(InventoryKpiCountsDto(0, 0))
+        every { dispenseTxnDao.observePartialDispenses(any(), any(), any()) } returns flowOf(emptyList())
+        every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns flowOf(emptyList())
+        every { stockBatchDao.observeInProgressBatchKpiCounts(any(), any()) } returns flowOf(InventoryKpiCountsDto(0, 0))
         every {
-            pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
+            dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any())
         } returns flowOf(emptyList())
-        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
-        coEvery { batchDao.getLatest() } returns null
+        every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(emptyList())
+        coEvery { stockBatchDao.getLatest(any()) } returns null
     }
 
     @After
@@ -148,14 +166,23 @@ class DashboardViewModelTest {
         preferenceHelper,
         userDao,
         operatorNameProvider,
-        batchDao,
-        pillCountTxnDao,
+        stockBatchDao,
+        dispenseTxnDao,
         hl7EventHandler,
         hl7ServiceManager,
         deviceKeyProvider,
         sessionHealthController,
+        mockk(relaxed = true),
         testDispatcher,
+        regionProvider,
+        auditLogger,
+        auditLogUploader,
+        dekVersionRecorder,
     )
+
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
+    private val auditLogUploader = mockk<AuditLogUploader>(relaxed = true)
+    private val dekVersionRecorder = mockk<DekVersionRecorder>(relaxed = true)
 
     // ─────────────────────────────── helpers ───────────────────────────────
 
@@ -166,7 +193,7 @@ class DashboardViewModelTest {
         priority: TxnPriority? = null,
         isHazardous: Boolean = false,
         bucketId: String? = null,
-    ) = PillCountWithDrugAndTotal(
+    ) = DispenseTxnWithDrug(
         txnId = txnId,
         drugName = "Drug$txnId",
         ndc = "ndc$txnId",
@@ -174,11 +201,10 @@ class DashboardViewModelTest {
         bucketId = bucketId,
         createdAt = createdAt,
         targetCount = 10,
-        bottleInfoListJson = null,
+        bottlesJson = null,
         totalPillCount = 0,
         isComingFromHL7 = false,
         isNdcVerified = false,
-        isDispense = true,
         priority = priority,
         isHazardous = isHazardous,
     )
@@ -205,14 +231,13 @@ class DashboardViewModelTest {
         strength: String? = null,
         dosageForm: String? = null,
         drugImagePath: String? = null,
-    ) = TxnWithDrugDto(
+    ) = DispenseTxnSummary(
         txnId = txnId,
-        isDispense = true,
         status = CountStatus.COMPLETED,
         pillCount = 7,
         drugName = "Drug$txnId",
         ndc = "ndc$txnId",
-        bottleInfoListJson = null,
+        bottlesJson = null,
         createdAt = createdAt,
         targetCount = 10,
         note = null,
@@ -288,7 +313,7 @@ class DashboardViewModelTest {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        vm.clearPmsCertPin()
+        vm.clearPmsCertPin(CertPinChoice.CONFIRM)
 
         verify(exactly = 1) { hl7ServiceManager.clearPmsCertPin(hl7EventHandler) }
     }
@@ -299,7 +324,19 @@ class DashboardViewModelTest {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        assertFalse(vm.clearPmsCertPin())
+        assertFalse(vm.clearPmsCertPin(CertPinChoice.CONFIRM))
+    }
+
+    @Test
+    fun `clearPmsCertPin logs the old fingerprint and the choice once cleared`() = runTest(testDispatcher) {
+        every { hl7ServiceManager.pinnedPmsFingerprint() } returns "AB:CD"
+        every { hl7ServiceManager.clearPmsCertPin(hl7EventHandler) } returns true
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.clearPmsCertPin(CertPinChoice.CANCEL)
+
+        verify { auditLogger.log(PmsCertPinMismatch(oldFingerprint = "AB:CD", choice = CertPinChoice.CANCEL)) }
     }
 
     @Test
@@ -459,11 +496,11 @@ class DashboardViewModelTest {
         createViewModel()
         advanceUntilIdle()
 
-        verify(exactly = 1) { pillCountTxnDao.observePartialByIsDispense(any(), any(), 1L, any()) }
-        verify(exactly = 1) { batchDao.observeInProgressBatchKpiCounts(any()) }
-        verify(exactly = 0) { batchDao.observeInProgressBatchSummaries(any()) }
-        verify(exactly = 0) { pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any()) }
-        verify(exactly = 0) { batchDao.getBatchSummaries(any(), any()) }
+        verify(exactly = 1) { dispenseTxnDao.observePartialDispenses(any(), 1L, any()) }
+        verify(exactly = 1) { stockBatchDao.observeInProgressBatchKpiCounts(any(), any()) }
+        verify(exactly = 0) { stockBatchDao.observeInProgressBatchSummaries(any(), any()) }
+        verify(exactly = 0) { dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any()) }
+        verify(exactly = 0) { stockBatchDao.getBatchSummaries(any(), any(), any()) }
     }
 
     @Test
@@ -477,14 +514,14 @@ class DashboardViewModelTest {
         vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
         advanceUntilIdle()
 
-        verify(exactly = 0) { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) }
-        verify(exactly = 0) { batchDao.observeInProgressBatchSummaries(any()) }
-        verify(exactly = 0) { batchDao.getBatchSummaries(any(), any()) }
+        verify(exactly = 0) { dispenseTxnDao.observePartialDispenses(any(), any(), any()) }
+        verify(exactly = 0) { stockBatchDao.observeInProgressBatchSummaries(any(), any()) }
+        verify(exactly = 0) { stockBatchDao.getBatchSummaries(any(), any(), any()) }
     }
 
     @Test
     fun `inventory tab subscribes once on first visit and stays live`() = runTest(testDispatcher) {
-        every { batchDao.observeInProgressBatchSummaries(any()) } returns MutableStateFlow(emptyList())
+        every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns MutableStateFlow(emptyList())
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -494,15 +531,15 @@ class DashboardViewModelTest {
         vm.onTabSelected(DashboardTab.INVENTORY_QUEUE)
         advanceUntilIdle()
 
-        verify(exactly = 1) { batchDao.observeInProgressBatchSummaries(any()) }
+        verify(exactly = 1) { stockBatchDao.observeInProgressBatchSummaries(any(), any()) }
     }
 
     @Test
     fun `recent tab subscribes once on first visit and stays live`() = runTest(testDispatcher) {
         every {
-            pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
+            dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any())
         } returns MutableStateFlow(emptyList())
-        every { batchDao.getBatchSummaries(any(), any()) } returns MutableStateFlow(emptyList())
+        every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns MutableStateFlow(emptyList())
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -512,14 +549,14 @@ class DashboardViewModelTest {
         vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
         advanceUntilIdle()
 
-        verify(exactly = 1) { batchDao.getBatchSummaries(any(), any()) }
+        verify(exactly = 1) { stockBatchDao.getBatchSummaries(any(), any(), any()) }
     }
 
     // ─────────────────────────────── loaded state ───────────────────────────────
 
     @Test
     fun `dispense tab is never loaded with its list missing`() = runTest(testDispatcher) {
-        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns
+        every { dispenseTxnDao.observePartialDispenses(any(), any(), any()) } returns
             flowOf(listOf(dispenseTxn(txnId = 1)))
         val states = mutableListOf<DashboardUiState>()
         val vm = createViewModel()
@@ -533,7 +570,7 @@ class DashboardViewModelTest {
     @Test
     fun `tab stays loading until its source emits`() = runTest(testDispatcher) {
         val batches = MutableSharedFlow<List<BatchSummaryDto>>()
-        every { batchDao.observeInProgressBatchSummaries(any()) } returns batches
+        every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns batches
         val vm = createViewModel()
         advanceUntilIdle()
 
@@ -551,9 +588,9 @@ class DashboardViewModelTest {
     @Test
     fun `queue source failure is caught, does not crash, and clears the loading flag`() =
         runTest(testDispatcher) {
-            every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns
+            every { dispenseTxnDao.observePartialDispenses(any(), any(), any()) } returns
                 flow { throw RuntimeException("db boom") }
-            every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(emptyList())
+            every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns flowOf(emptyList())
 
             val vm = createViewModel()
             advanceUntilIdle()
@@ -570,7 +607,7 @@ class DashboardViewModelTest {
         vm.onTabVisible(DashboardTab.INVENTORY_QUEUE)
         advanceUntilIdle()
 
-        verify(exactly = 1) { batchDao.observeInProgressBatchSummaries(any()) }
+        verify(exactly = 1) { stockBatchDao.observeInProgressBatchSummaries(any(), any()) }
         assertEquals(DashboardTab.DISPENSE_QUEUE, vm.uiState.value.activeTab)
         assertTrue(DashboardTab.INVENTORY_QUEUE in vm.uiState.value.loadedTabs)
     }
@@ -578,20 +615,20 @@ class DashboardViewModelTest {
     // ─────────────────────────────── lists / KPI ───────────────────────────────
 
     private fun stubQueues() {
-        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(
+        every { dispenseTxnDao.observePartialDispenses(any(), any(), any()) } returns flowOf(
             listOf(
                 // DAO order: high priority first.
                 dispenseTxn(txnId = 2, createdAt = 3, priority = TxnPriority.High, drugType = "CII"),
                 dispenseTxn(txnId = 1, createdAt = 1, isHazardous = true),
             )
         )
-        every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(
+        every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns flowOf(
             listOf(
                 batchSummary(batchId = 11, createdAt = 4, requestIdFromPMS = null),
                 batchSummary(batchId = 10, createdAt = 2, requestIdFromPMS = "pms-1"),
             )
         )
-        every { batchDao.observeInProgressBatchKpiCounts(any()) } returns flowOf(InventoryKpiCountsDto(1, 1))
+        every { stockBatchDao.observeInProgressBatchKpiCounts(any(), any()) } returns flowOf(InventoryKpiCountsDto(1, 1))
     }
 
     @Test
@@ -701,9 +738,9 @@ class DashboardViewModelTest {
     @Test
     fun `recent activity tab shows completed rows and is never filtered`() = runTest(testDispatcher) {
         every {
-            pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
+            dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any())
         } returns flowOf(listOf(txnWithDrug(txnId = 1, createdAt = 5, drugType = "CIV")))
-        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(
+        every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(
             listOf(
                 batchSummary(batchId = 20, createdAt = 6, status = BatchStatus.COMPLETED.name),
                 batchSummary(batchId = 21, createdAt = 7, status = BatchStatus.INPROGRESS.name),
@@ -726,9 +763,9 @@ class DashboardViewModelTest {
     fun `loadRecentActivity failure is caught, does not crash, and clears the loading flag`() =
         runTest(testDispatcher) {
             every {
-                pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
+                dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
             } returns flow { throw RuntimeException("db boom") }
-            every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
+            every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(emptyList())
 
             val vm = createViewModel()
             advanceUntilIdle()
@@ -752,9 +789,9 @@ class DashboardViewModelTest {
             )
         )
         every {
-            pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
+            dispenseTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any())
         } returns flowOf(completedDispense)
-        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
+        every { stockBatchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(emptyList())
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -772,8 +809,8 @@ class DashboardViewModelTest {
     @Test
     fun `unchanged dispense list keeps its instance when inventory changes`() = runTest(testDispatcher) {
         val batches = MutableStateFlow(listOf(batchSummary(batchId = 10, createdAt = 2)))
-        every { batchDao.observeInProgressBatchSummaries(any()) } returns batches
-        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns
+        every { stockBatchDao.observeInProgressBatchSummaries(any(), any()) } returns batches
+        every { dispenseTxnDao.observePartialDispenses(any(), any(), any()) } returns
             flowOf(listOf(dispenseTxn(txnId = 1)))
         val vm = createViewModel()
         advanceUntilIdle()
@@ -790,9 +827,9 @@ class DashboardViewModelTest {
 
     @Test
     fun `identical room re-emission leaves state untouched`() = runTest(testDispatcher) {
-        val rows = MutableSharedFlow<List<PillCountWithDrugAndTotal>>(replay = 1)
+        val rows = MutableSharedFlow<List<DispenseTxnWithDrug>>(replay = 1)
         rows.tryEmit(listOf(dispenseTxn(txnId = 1)))
-        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns rows
+        every { dispenseTxnDao.observePartialDispenses(any(), any(), any()) } returns rows
         val vm = createViewModel()
         advanceUntilIdle()
         val before = vm.uiState.value
@@ -848,6 +885,101 @@ class DashboardViewModelTest {
         assertFalse(vm.uiState.value.isLoadingUserDetail)
         // no persistence because data was null (saveUserId only runs in the non-null branch).
         verify(exactly = 0) { preferenceHelper.saveUserId(any()) }
+    }
+
+    @Test
+    fun `synced cleanup leaves out a txn that was already gone`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        every { preferenceHelper.isAllowLocalStorage() } returns false
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail()))
+        coEvery { dispenseTxnDao.getSyncedDispenses() } returns listOf(DispenseTxnEntity(txnId = 1L, status = CountStatus.COMPLETED), DispenseTxnEntity(txnId = 2L, status = CountStatus.COMPLETED))
+        coEvery { dispenseTxnDao.deleteTransaction(1L) } returns 0
+        coEvery { dispenseTxnDao.deleteTransaction(2L) } returns 1
+
+        createViewModel()
+        advanceUntilIdle()
+
+        verify { auditLogger.log(match { it is DataPurged && it.txnIds == listOf(2L) && it.count == 1 }) }
+    }
+
+    @Test
+    fun `fetchUserDetail with a claimed terminal that has no id logs no terminal change`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        every { preferenceHelper.getSelectedTerminalId() } returns "t1"
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-A"
+        val terminals = listOf(Terminal(terminalId = null, terminalName = "T1", isActive = true, deviceKey = "device-A"))
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail(terminals = terminals)))
+
+        createViewModel()
+        advanceUntilIdle()
+
+        verify(exactly = 0) { auditLogger.log(match { it is ServerConfigChanged && it.setting == ServerSetting.TERMINAL }) }
+        verify(exactly = 0) { preferenceHelper.saveSelectedTerminalId(any()) }
+    }
+
+    @Test
+    fun `fetchUserDetail success records the current dek wrap before applying the kek`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-A"
+        val kekInfo = KekInfo(keyId = "kek-1", version = 1, algorithm = "AES-256-GCM", keyMaterial = "abcd")
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail().copy(kek = kekInfo)))
+        mockkObject(DatabaseKeyProvider)
+        every { DatabaseKeyProvider.currentWrap(any()) } returns DekWrap(byteArrayOf(1), "local-bootstrap", 0, "AES-256-GCM")
+        every { DatabaseKeyProvider.rotateKekIfNewer(any(), any()) } returns Unit
+
+        createViewModel()
+        advanceUntilIdle()
+
+        // The bootstrap wrap gets its row on the first login, before the server KEK replaces it.
+        coVerifyOrder {
+            dekVersionRecorder.recordCurrentWrap("device-A")
+            DatabaseKeyProvider.rotateKekIfNewer(any(), kekInfo)
+            auditLogUploader.requestUpload()
+        }
+    }
+
+    @Test
+    fun `a failing dek wrap record still rotates the kek and requests an upload`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-A"
+        val kekInfo = KekInfo(keyId = "kek-1", version = 1, algorithm = "AES-256-GCM", keyMaterial = "abcd")
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail().copy(kek = kekInfo)))
+        mockkObject(DatabaseKeyProvider)
+        every { DatabaseKeyProvider.currentWrap(any()) } returns DekWrap(byteArrayOf(1), "local-bootstrap", 0, "AES-256-GCM")
+        every { DatabaseKeyProvider.rotateKekIfNewer(any(), any()) } returns Unit
+        coEvery { dekVersionRecorder.recordCurrentWrap(any()) } throws IllegalStateException("db closed")
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        verify { DatabaseKeyProvider.rotateKekIfNewer(any(), kekInfo) }
+        verify { auditLogUploader.requestUpload() }
+        assertNull(vm.uiState.value.userDetailError)
+    }
+
+    @Test
+    fun `an unchanged kek version does not record the dek wrap`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-A"
+        val kekInfo = KekInfo(keyId = "kek-1", version = 1, algorithm = "AES-256-GCM", keyMaterial = "abcd")
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail().copy(kek = kekInfo)))
+        mockkObject(DatabaseKeyProvider)
+        every { DatabaseKeyProvider.currentWrap(any()) } returns DekWrap(byteArrayOf(1), "kek-1", 1, "AES-256-GCM")
+        every { DatabaseKeyProvider.rotateKekIfNewer(any(), any()) } returns Unit
+        // Counted by hand: coVerify(exactly = 0) trips on the mocked Dispatchers (see the note above).
+        var recordCalls = 0
+        coEvery { dekVersionRecorder.recordCurrentWrap(any()) } answers { recordCalls += 1 }
+
+        createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(0, recordCalls)
+        verify { DatabaseKeyProvider.rotateKekIfNewer(any(), kekInfo) }
     }
 
     @Test
@@ -980,7 +1112,7 @@ class DashboardViewModelTest {
         advanceUntilIdle()
 
         // Dispense subscription (localId=9) started from the fetch path.
-        verify { pillCountTxnDao.observePartialByIsDispense(any(), any(), 9L, any()) }
+        verify { dispenseTxnDao.observePartialDispenses(any(), 9L, any()) }
         verify { preferenceHelper.saveLocalId(9L) }
         assertEquals("First", vm.uiState.value.userDetail?.profile?.fName)
     }
@@ -1106,26 +1238,6 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun `saveTxnId saves zero`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.saveTxnId()
-
-        verify { preferenceHelper.saveTxnId(0) }
-    }
-
-    @Test
-    fun `selectCurrentTransaction saves provided id`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.selectCurrentTransaction(42L)
-
-        verify { preferenceHelper.saveTxnId(42L) }
-    }
-
-    @Test
     fun `createBatch stages pending bucket id`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()
@@ -1133,16 +1245,6 @@ class DashboardViewModelTest {
         vm.createBatch("bucket-1")
 
         assertEquals("bucket-1", vm.uiState.value.pendingStockCountBucketId)
-    }
-
-    @Test
-    fun `clearCreatedBatchId nulls field`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.clearCreatedBatchId()
-
-        assertNull(vm.uiState.value.createdBatchId)
     }
 
     @Test

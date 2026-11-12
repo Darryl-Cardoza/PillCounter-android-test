@@ -1,0 +1,151 @@
+package com.dispensesure.retail.feature.stockCount.batch.presentation.viewmodel
+
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.analytics.collect.CountDurationTracker
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.BatchDeleted
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockTxnDao
+import com.dispensesure.retail.core.room.models.StockBatchEntity
+import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
+import com.dispensesure.retail.core.room.models.dtos.unsyncedIds
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import com.dispensesure.retail.feature.stockCount.batch.domain.model.BatchDrugGroup
+import com.dispensesure.retail.feature.stockCount.batch.domain.model.BatchLotEntry
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+@HiltViewModel
+class StockBatchDetailViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
+    private val stockTxnDao: StockTxnDao,
+    private val stockBottleInfoDao: StockBottleInfoDao,
+    private val stockBatchDao: StockBatchDao,
+    private val preferenceHelper: PreferenceHelper,
+    private val regionProvider: RegionProvider,
+    private val auditLogger: AuditLogger,
+    private val durationTracker: CountDurationTracker,
+) : ViewModel() {
+
+    private val argBatchId: Long = savedStateHandle["batch_id"] ?: 0
+
+    private val _resolvedBatchId = MutableStateFlow(argBatchId)
+    val displayBatchId: StateFlow<Long> = _resolvedBatchId.asStateFlow()
+
+    private val _batchEntity = MutableStateFlow<StockBatchEntity?>(null)
+    val batchEntity: StateFlow<StockBatchEntity?> = _batchEntity.asStateFlow()
+
+    private val _uniqueNdcCount = MutableStateFlow(0)
+    val uniqueNdcCount: StateFlow<Int> = _uniqueNdcCount.asStateFlow()
+
+    private val logger = AppLogger.create<StockBatchDetailViewModel>()
+
+    init {
+        viewModelScope.launch {
+            try {
+                val batchId = if (argBatchId == 0L) {
+                    stockBatchDao.getLatest(regionProvider.current)?.batchId?.also { _resolvedBatchId.value = it } ?: 0L
+                } else {
+                    argBatchId
+                }
+                if (batchId != 0L) {
+                    val entity = stockBatchDao.getById(batchId)
+                    _batchEntity.value = entity
+                    _uniqueNdcCount.value = stockTxnDao.getUniqueNdcCountForBatch(batchId)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to load initial batch data", e, event = LogEvent.BATCH_CREATE_FAILED)
+            }
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val drugGroups: StateFlow<List<BatchDrugGroup>> = _resolvedBatchId
+        .flatMapLatest { id ->
+            if (id == 0L) flowOf(emptyList())
+            else stockBottleInfoDao.observeByBatchId(id).map { it.groupAndMap() }
+        }
+        .catch { e -> logger.e("Failed to build batch drug groups", e, event = LogEvent.BATCH_PROCESS_FAILED) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
+    fun deleteBatch(onDone: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                val id = _resolvedBatchId.value
+                if (id != 0L) {
+                    // Re-read, not the state loaded at init, which may be stale by now.
+                    val rowsToDelete = stockBatchDao.getSyncStatesByIds(listOf(id))
+                    stockBatchDao.softDelete(id)
+                    stockTxnDao.deleteByBatchIds(listOf(id))
+                    // The batch's transactions are gone, so nothing will arrive to finish its
+                    // count timer. Release it now instead of holding a slot until eviction.
+                    durationTracker.cancel(CountDurationTracker.batchKey(id))
+                    auditLogger.log(
+                        BatchDeleted(
+                            batchIds = listOf(id),
+                            rangeStart = null,
+                            rangeEnd = null,
+                            unsyncedIds = rowsToDelete.unsyncedIds()
+                        )
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to delete batch", e, event = LogEvent.BATCH_DELETE_FAILED)
+            } finally {
+                onDone()
+            }
+        }
+    }
+
+    fun getCurrentUser(): String =
+        preferenceHelper.getLoggedInEmail()
+            ?: preferenceHelper.getUserId()
+            ?: "—"
+
+    private fun List<StockBottleInfoDto>.groupAndMap(): List<BatchDrugGroup> =
+        groupBy { it.drugId }
+            .map { (_, txns) ->
+                val sealedLots = txns
+                    .filter { (it.bottleQty ?: 0) > 0 }
+                    .map { BatchLotEntry(it.lotNo, it.expiry, (it.bottleQty ?: 0) * (it.packageQty ?: 1)) }
+                val openedLots = txns
+                    .filter { (it.looseQty ?: 0) > 0 }
+                    .map { BatchLotEntry(it.lotNo, it.expiry, it.looseQty ?: 0) }
+
+                val first = txns.first()
+                val sealedBottleQty = txns.sumOf { it.bottleQty ?: 0 }
+                BatchDrugGroup(
+                    drugId = first.drugId,
+                    drugName = first.drugName.orEmpty(),
+                    ndc = first.ndc ?: "",
+                    sealedTotal = sealedLots.sumOf { it.count },
+                    openedTotal = openedLots.sumOf { it.count },
+                    totalCount = sealedLots.sumOf { it.count } + openedLots.sumOf { it.count },
+                    sealedBottleQty = sealedBottleQty,
+                    sealedLots = sealedLots,
+                    openedLots = openedLots
+                )
+            }
+}

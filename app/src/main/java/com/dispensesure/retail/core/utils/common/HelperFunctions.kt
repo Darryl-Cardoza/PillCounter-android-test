@@ -16,10 +16,8 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.core.net.toUri
-import com.dispensesure.retail.core.room.models.dtos.StatusTypeCount
-import com.dispensesure.retail.core.room.models.enums.CountStatus
+import com.dispensesure.retail.core.audit.model.SessionEndReason
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.menu.domain.model.CountBuckets
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -36,7 +34,6 @@ import kotlin.system.exitProcess
  * Provides functionality for:
  * - Email masking for UI display.
  * - Route resolution during app start.
- * - Dashboard count mapping.
  * - Immersive fullscreen toggling.
  * - Bitmap saving and Play Store navigation.
  */
@@ -87,15 +84,26 @@ object HelperFunctions {
      * - Clears tokens and returns `AUTH_GRAPH_ROUTE` when the threshold has been exceeded.
      *
      * Side effect: on threshold-exceeded, tokens, login flag, local id and HL7 config are cleared before returning.
+     * A logged-in session with no stored region is cleared the same way.
      *
      * @param preferenceHelper Persistent preference handler.
+     * @param onSessionCleared Called with the reason whenever this clears the session, for the audit log.
      * @return Route string — either `Dashboard.route` or `AUTH_GRAPH_ROUTE`.
      *
      * Example Usage:
      * val startDestination = resolveStartDestinationAndClearIfExpired(preferenceHelper)
      */
-    fun resolveStartDestinationAndClearIfExpired(preferenceHelper: PreferenceHelper): String {
+    fun resolveStartDestinationAndClearIfExpired(
+        preferenceHelper: PreferenceHelper,
+        onSessionCleared: (SessionEndReason) -> Unit = {}
+    ): String {
         if (!preferenceHelper.isUserLoggedIn()) return AUTH_GRAPH_ROUTE
+        // Sessions from before region support have none stored; log in again to get it.
+        if (preferenceHelper.getRegion() == null) {
+            onSessionCleared(SessionEndReason.REGION_MISSING_ON_LAUNCH)
+            clearLocalSession(preferenceHelper)
+            return AUTH_GRAPH_ROUTE
+        }
         val lastHealthAt = preferenceHelper.getLastHealthCheckedAt()
         // Fall back to loggedInAt when no /health has ever succeeded on this install, so the
         // expiry clock still ticks from the session start instead of remaining unbounded.
@@ -104,6 +112,7 @@ object HelperFunctions {
         val thresholdMs = preferenceHelper.getOfflineSessionThresholdSeconds() * 1_000L
         val elapsed = System.currentTimeMillis() - anchor
         return if (elapsed > thresholdMs) {
+            onSessionCleared(SessionEndReason.EXPIRED_ON_LAUNCH)
             clearLocalSession(preferenceHelper)
             AUTH_GRAPH_ROUTE
         } else {
@@ -111,57 +120,28 @@ object HelperFunctions {
         }
     }
 
-    /** Logs out a user who didn't tick "Remember me". Call once per cold launch, before anything reads the login flag. */
-    fun clearSessionIfNotRemembered(preferenceHelper: PreferenceHelper) {
+    /**
+     * Logs out a user who didn't tick "Remember me". Call once per cold launch, before anything reads the login flag.
+     * Calls [onSessionCleared] with the reason when it clears the session, for the audit log.
+     */
+    fun clearSessionIfNotRemembered(
+        preferenceHelper: PreferenceHelper,
+        onSessionCleared: (SessionEndReason) -> Unit = {}
+    ) {
         if (preferenceHelper.isUserLoggedIn() && !preferenceHelper.isRememberMeEnabled()) {
+            onSessionCleared(SessionEndReason.NOT_REMEMBERED_ON_LAUNCH)
             clearLocalSession(preferenceHelper)
         }
     }
 
     // Local-only logout: tokens, login flag, session start time, local user id and HL7 config.
     // Resetting the local id stops the next user's Dashboard showing the previous user's data.
-    private fun clearLocalSession(preferenceHelper: PreferenceHelper) {
+    fun clearLocalSession(preferenceHelper: PreferenceHelper) {
         preferenceHelper.clearTokens()
         preferenceHelper.setUserLoggedIn(false)
         preferenceHelper.clearLoggedInAt()
         preferenceHelper.saveLocalId(0)
         preferenceHelper.clearHl7Config()
-    }
-
-    /**
-     * Maps aggregated status and type counts into [CountBuckets] for dashboard visualization.
-     *
-     * @param rows List of status-type aggregates.
-     * @return Structured [CountBuckets] separating fixed/regular and completed/partial counts.
-     */
-    fun mapCounts(rows: List<StatusTypeCount>): CountBuckets {
-        var fixedCompleted = 0
-        var fixedPartial = 0
-        var regularCompleted = 0
-        var regularPartial = 0
-
-        rows.forEach { row ->
-            if (row.isDispense) {
-                when (row.status) {
-                    CountStatus.COMPLETED -> fixedCompleted = row.cnt
-                    CountStatus.PARTIAL -> fixedPartial = row.cnt
-                    else -> {}
-                }
-            } else {
-                when (row.status) {
-                    CountStatus.COMPLETED -> regularCompleted = row.cnt
-                    CountStatus.PARTIAL -> regularPartial = row.cnt
-                    else -> {}
-                }
-            }
-        }
-
-        return CountBuckets(
-            fixedCompleted = fixedCompleted,
-            fixedPartial = fixedPartial,
-            regularCompleted = regularCompleted,
-            regularPartial = regularPartial
-        )
     }
 
     /** Immediately terminates the app process. */

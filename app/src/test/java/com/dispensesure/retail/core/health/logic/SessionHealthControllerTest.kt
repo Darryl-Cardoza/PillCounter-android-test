@@ -1,11 +1,20 @@
 package com.dispensesure.retail.core.health.logic
 
 import android.util.Log
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.OfflineEndedBy
+import com.dispensesure.retail.core.audit.model.OfflineModeEntered
+import com.dispensesure.retail.core.audit.model.OfflineModeExited
+import com.dispensesure.retail.core.audit.model.OfflineTrigger
+import com.dispensesure.retail.core.audit.model.ServerConfigChanged
+import com.dispensesure.retail.core.audit.model.ServerSetting
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.health.data.remote.dto.HealthCheckData
 import com.dispensesure.retail.core.health.domain.data.IHealthRepository
 import com.dispensesure.retail.core.health.domain.model.HealthState
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.DispenseHl7Repository
+import com.dispensesure.retail.feature.hl7.data.repository.StockHl7Repository
 import dagger.Lazy
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -41,8 +50,8 @@ class SessionHealthControllerTest {
 
     private lateinit var healthRepository: IHealthRepository
     private lateinit var preferenceHelper: PreferenceHelper
-    private lateinit var hl7Repository: Hl7Repository
-    private lateinit var hl7RepositoryLazy: Lazy<Hl7Repository>
+    private lateinit var dispenseHl7Repository: DispenseHl7Repository
+    private lateinit var stockHl7Repository: StockHl7Repository
 
     @Before
     fun setup() {
@@ -54,8 +63,8 @@ class SessionHealthControllerTest {
 
         healthRepository = mockk()
         preferenceHelper = mockk(relaxed = true)
-        hl7Repository = mockk(relaxed = true)
-        hl7RepositoryLazy = Lazy { hl7Repository }
+        dispenseHl7Repository = mockk(relaxed = true)
+        stockHl7Repository = mockk(relaxed = true)
         every { preferenceHelper.getLastHealthCheckedAt() } returns 0L
         every { preferenceHelper.getOfflineSessionThresholdSeconds() } returns 60L
         every { preferenceHelper.getLoggedInAt() } returns 0L
@@ -66,8 +75,123 @@ class SessionHealthControllerTest {
         unmockkAll()
     }
 
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
+    private val auditLogUploader = mockk<AuditLogUploader>(relaxed = true)
+
     private fun newController(): SessionHealthController =
-        SessionHealthController(healthRepository, preferenceHelper, hl7RepositoryLazy)
+        SessionHealthController(
+            healthRepository,
+            preferenceHelper,
+            Lazy { dispenseHl7Repository },
+            Lazy { stockHl7Repository },
+            auditLogger,
+            Lazy { auditLogUploader },
+        )
+
+    // ─────────────────────── offline periods (audit) ───────────────────────
+
+    @Test
+    fun offline_isLoggedOnTheTransitionOnly_withItsTrigger() = runTest {
+        coEvery { healthRepository.checkHealth() } returns Result.failure(IOException("no net"))
+        val controller = newController()
+
+        controller.checkHealth(force = true, trigger = OfflineTrigger.APP_RESUMED)
+        controller.checkHealth(force = true, trigger = OfflineTrigger.REQUEST_FAILED)
+
+        verify(exactly = 1) { auditLogger.log(match { it is OfflineModeEntered }) }
+        verify { auditLogger.log(match { it is OfflineModeEntered && it.trigger == OfflineTrigger.APP_RESUMED }) }
+        verify { preferenceHelper.setOfflineStartedAt(any()) }
+    }
+
+    @Test
+    fun backOnline_closesTheOpenPeriod() = runTest {
+        coEvery { healthRepository.checkHealth() } returns Result.failure(IOException("no net"))
+        val controller = newController()
+        controller.checkHealth(force = true)
+        every { preferenceHelper.getOfflineStartedAt() } returns System.currentTimeMillis() - 5_000L
+        coEvery { healthRepository.checkHealth() } returns Result.success(
+            HealthCheckData(isHealthy = true, checks = null, checkedAt = "2026-08-24T12:00:00Z")
+        )
+
+        controller.checkHealth(force = true)
+
+        verify { auditLogger.log(match { it is OfflineModeExited && it.endedBy == OfflineEndedBy.BACK_ONLINE }) }
+        verify { preferenceHelper.clearOfflineStartedAt() }
+    }
+
+    @Test
+    fun backOnline_asksForAnAuditUpload() = runTest {
+        coEvery { healthRepository.checkHealth() } returns Result.failure(IOException("no net"))
+        val controller = newController()
+        controller.checkHealth(force = true)
+        coEvery { healthRepository.checkHealth() } returns Result.success(
+            HealthCheckData(isHealthy = true, checks = null, checkedAt = "2026-08-24T12:00:00Z")
+        )
+
+        controller.checkHealth(force = true)
+
+        // The collector runs on the controller's own Default-dispatcher scope.
+        verify(timeout = 3_000) { auditLogUploader.requestUpload() }
+    }
+
+    @Test
+    fun expiry_closesThePeriodAsLimitReached() {
+        every { preferenceHelper.getLastHealthCheckedAt() } returns System.currentTimeMillis() - 120_000L
+        every { preferenceHelper.getOfflineStartedAt() } returns System.currentTimeMillis() - 60_000L
+        val controller = newController()
+        controller.forceStateForTest(HealthState.OFFLINE)
+
+        assertTrue(controller.evaluateExpiry())
+
+        verify { auditLogger.log(match { it is OfflineModeExited && it.endedBy == OfflineEndedBy.OFFLINE_LIMIT_REACHED }) }
+    }
+
+    @Test
+    fun logout_closesAnOpenPeriod_andLogsNothingWhenNoneIsOpen() {
+        every { preferenceHelper.getOfflineStartedAt() } returns 0L
+        val controller = newController()
+        controller.markLoggedOut()
+        verify(exactly = 0) { auditLogger.log(match { it is OfflineModeExited }) }
+
+        every { preferenceHelper.getOfflineStartedAt() } returns System.currentTimeMillis() - 1_000L
+        controller.markLoggedOut()
+        verify { auditLogger.log(match { it is OfflineModeExited && it.endedBy == OfflineEndedBy.LOGGED_OUT }) }
+    }
+
+    @Test
+    fun markLoggedOut_resetsOfflineState_soNextDropIsLogged() = runTest {
+        coEvery { healthRepository.checkHealth() } returns Result.failure(IOException("no net"))
+        val controller = newController()
+        controller.checkHealth(force = true)
+
+        controller.markLoggedOut()
+
+        assertEquals(HealthState.UNKNOWN, controller.state.value)
+        controller.checkHealth(force = true)
+        verify(exactly = 2) { auditLogger.log(match { it is OfflineModeEntered }) }
+    }
+
+    @Test
+    fun aPeriodLeftOpenByAKill_isClosedAtStartup() {
+        every { preferenceHelper.getOfflineStartedAt() } returns System.currentTimeMillis() - 30_000L
+
+        newController()
+
+        verify(timeout = 2_000) {
+            auditLogger.log(match { it is OfflineModeExited && it.endedBy == OfflineEndedBy.APP_RESTARTED })
+        }
+    }
+
+    @Test
+    fun updateThreshold_logsOnlyARealChange() {
+        val controller = newController()
+
+        controller.updateThreshold(60L)
+        controller.updateThreshold(120L)
+
+        verify(exactly = 1) { auditLogger.log(match { it is ServerConfigChanged }) }
+        verify { auditLogger.log(ServerConfigChanged(ServerSetting.OFFLINE_LIMIT_SECONDS, "60", "120")) }
+    }
 
     // ─────────────────────── checkHealth ───────────────────────
 

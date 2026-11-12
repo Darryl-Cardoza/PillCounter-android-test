@@ -39,9 +39,13 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.isControlledDrugType
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.wording
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.common.drugDisplayName
 import com.dispensesure.retail.ui.theme.AppTheme
 import java.io.File
 
@@ -52,9 +56,7 @@ data class DrugCountRowData(
     val drugName: String,
     val date: String,
     val bucketId: String?,
-    val pillCount: Int,
     val targetCount: Int,
-    val isDispense: Boolean,
     val strength: String? = null,
     val dosageForm: String? = null,
     /** Absolute local path to the downloaded drug image (.webp). Shown first when available. */
@@ -68,6 +70,7 @@ private const val IdentifierLineSeparator = "  •  "
 // Second line of a drug row: "Rx 7654321-2  •  340B  •  CII".
 // NDC stands in when there is no Rx number; missing parts are dropped.
 internal fun DrugCountRowData.buildIdentifierLine(
+    region: Region,
     rxLabel: (String) -> String,
     ndcLabel: (String) -> String,
 ): String {
@@ -78,9 +81,10 @@ internal fun DrugCountRowData.buildIdentifierLine(
         ndcValue != null -> ndcLabel(ndcValue)
         else -> null
     }
-    // Only DEA schedule codes (CII–CVI) render; drugType can hold other values.
-    val scheduleCode = drugType.trimmedOrNull()?.uppercase()?.takeIf { isControlledDrugType(it) }
-    return listOfNotNull(id, bucketId.trimmedOrNull(), scheduleCode).joinToString(IdentifierLineSeparator)
+    // Only the region's schedule codes render (CII–CVI, or C/N/TS); drugType can hold other values.
+    val scheduleCode = drugType.trimmedOrNull()?.uppercase()?.takeIf { isControlledDrugType(it, region) }
+    val bucket = bucketId.trimmedOrNull()?.takeIf { region.showsBucket }
+    return listOfNotNull(id, bucket, scheduleCode).joinToString(IdentifierLineSeparator)
 }
 
 // Trimmed value, or null when missing or blank.
@@ -89,9 +93,11 @@ private fun String?.trimmedOrNull(): String? = this?.trim()?.takeIf { it.isNotEm
 @Composable
 fun DrugCountRowData.identifierLine(): String {
     val resources = LocalResources.current
+    val loggedInRegion = LocalRegion.current
     return buildIdentifierLine(
+        region = loggedInRegion,
         rxLabel = { resources.getString(R.string.rx_value, it) },
-        ndcLabel = { resources.getString(R.string.ndc_value, it) },
+        ndcLabel = { resources.getString(loggedInRegion.wording(R.string.ndc_value), it) },
     )
 }
 
@@ -157,7 +163,7 @@ fun DrugCountRow(
                 // drug name | Rx + refill + bucket + schedule | date
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = data.drugName,
+                        text = drugDisplayName(data.drugName),
                         fontSize = responsiveSp(8.sp),
                         lineHeight = lineHeightResponsiveSp,
                         fontWeight = FontWeight.SemiBold,
@@ -191,11 +197,7 @@ fun DrugCountRow(
 
                 // count
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    val countText = if (data.isDispense) {
-                        "${data.targetCount}"
-                    } else {
-                        "${data.pillCount}"
-                    }
+                    val countText = "${data.targetCount}"
                     Text(
                         text = countText,
                         fontSize = responsiveSp(12.sp),
@@ -242,7 +244,7 @@ fun DrugThumbnail(
                             .error(R.drawable.prescription_icon)
                             .build()
                     ),
-                    contentDescription = data.drugName,
+                    contentDescription = drugDisplayName(data.drugName),
                     contentScale = ContentScale.FillBounds,
                     modifier = Modifier
                         .fillMaxSize()

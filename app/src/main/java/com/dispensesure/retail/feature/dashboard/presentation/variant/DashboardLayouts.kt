@@ -107,6 +107,7 @@ private fun DashboardScreenFrame(
                 isPmsConnected = params.isPmsConnected,
                 navController = params.navController,
                 compact = compact,
+                tourState = params.tourState,
             )
             Box(
                 modifier = Modifier

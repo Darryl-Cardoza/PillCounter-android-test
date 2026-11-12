@@ -21,8 +21,8 @@ network auto-discovery (NSD). Data is persisted in an **encrypted Room
 │ MainActivity (single Activity, @AndroidEntryPoint)                 │
 │  └─ Compose NavHost (navigation/AppNavGraph.kt)                    │
 │      ├─ auth graph: Login → OtpVerify                              │
-│      └─ app graph:  Dashboard, Menu, DispenseFlow, PillScanning,   │
-│                     History, Profile, Settings, Resume…            │
+│      └─ app graph:  Dashboard, Menu, DispenseFlow, StockCount,     │
+│                     History, Profile, Settings, LooseCount…        │
 └──────────────────────────────────────────────────────────────────┘
             │ Hilt @HiltViewModel                     │ field-injected
             ▼                                          ▼
@@ -94,7 +94,7 @@ presentation-heavy). Shared infrastructure lives under `core/`.
   to avoid an authenticator ↔ client dependency cycle.
 - **Repositories** are bound interface→impl via `@Provides` in each feature
   module (e.g. `ILoginRepository` → `LoginRepository`). Some classes
-  (`HistoryRepository`, `Hl7Repository`, `PreferenceHelper`, `CredentialsValidator`,
+  (`HistoryRepository`, `DispenseHl7Repository`, `StockHl7Repository`, `PreferenceHelper`, `CredentialsValidator`,
   `BarcodeDecoder`) use **constructor injection** with no explicit module.
 - **15 `@HiltViewModel`s** drive the screens; they are obtained in Compose via
   `hiltViewModel()`.
@@ -117,10 +117,11 @@ presentation-heavy). Shared infrastructure lives under `core/`.
   `MainActivity` based on auth state (auth graph vs. dashboard).
 - Primary flows:
   - `Login → OtpVerify → Dashboard`
-  - `Dashboard → {Menu, InventoryScan, History, PartialCounts}`
+  - `Dashboard → {Menu, DispenseFlow, StockCount, HistoryDetail, BatchHistoryDetail, Profile}`
+  - `Menu → History`
   - `DispenseFlow` is the merged single-screen RX-scan → NDC-scan → pill-count
     transaction flow (also entered from HL7/PMS-created transactions via the
-    `from_hl7` flag, and from resume screens).
+    `from_hl7` flag, and when resuming a count from the Dashboard).
 - **Known latent issue (see cleanup_report.md):** `Screen.PillCount` and
   `Screen.ScanBarcode` are referenced in code but their `composable()` entries
   are commented out in `AppNavGraph`, so navigating there has no destination.
@@ -134,9 +135,9 @@ presentation-heavy). Shared infrastructure lives under `core/`.
 - Each screen has a ViewModel exposing a `StateFlow<…UiState>` (immutable data
   class) collected with `collectAsStateWithLifecycle()`. One-shot effects
   (navigation, toasts) are modeled as `…Event` types delivered via channels/flows
-  (`countResume`, `dispenseFlow` have explicit `NavigationEvent`/`*Event` types).
+  (`dispense` has an explicit `DispenseCountNavigation` type).
 - UI is split into responsive **variants** (`variant/Dashboard*`,
-  `pillCountScan/variant/BatchStockCount*`) for phone/tablet × portrait/landscape.
+  `stockCount/sealed/presentation/variant/StockCount*`) for phone/tablet × portrait/landscape.
 
 ---
 
@@ -147,7 +148,7 @@ User → DispenseFlowScreen → DispenseFlowViewModel
    → IDrugRepository (Retrofit IDrugAPI)  ── drug/NDC lookup
    → CameraX + ML Kit (barcode/NDC)       ── on-device scan
    → PillAnalyzer + TFLite (PillDetectionModelLoader) ── on-device count
-   → PillCountTxnDao / PillCountTxnDetailsDao (encrypted Room) ── persist
+   → DispenseTxnDao / DispenseCountDao (encrypted Room) ── persist
    → Hl7ServiceManager / Hl7MessageSender ── emit HL7 RXD/INV to PMS (if connected)
 ```
 
@@ -165,7 +166,7 @@ User → DispenseFlowScreen → DispenseFlowViewModel
   service** for transferring captured images. `HL7Service` is a foreground
   service (`dataSync|connectedDevice`) declared in the manifest.
 - `feature/hl7` orchestrates: `Hl7ServiceManager`, `Hl7EventHandler`,
-  `Hl7MessageSender`, `Hl7Repository`, `Hl7Notifier`.
+  `Hl7MessageSender`, `DispenseHl7Repository`, `StockHl7Repository`, `Hl7Notifier`.
 
 ---
 

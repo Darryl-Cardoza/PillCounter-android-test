@@ -1,10 +1,11 @@
 package com.dispensesure.retail.core.room.di
 
 import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.room.dao.BatchDao
+import com.dispensesure.retail.core.room.dao.DekVersionDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.UserDao
 import io.mockk.every
 import io.mockk.mockk
@@ -32,9 +33,10 @@ class DatabaseModuleTest {
         db = mockk(relaxed = true)
         every { db.userDao() } returns mockk<UserDao>(relaxed = true)
         every { db.drugMasterDao() } returns mockk<DrugMasterDao>(relaxed = true)
-        every { db.pillCountTxnDao() } returns mockk<PillCountTxnDao>(relaxed = true)
-        every { db.pillCountTxnDetailsDao() } returns mockk<PillCountTxnDetailsDao>(relaxed = true)
-        every { db.batchDao() } returns mockk<BatchDao>(relaxed = true)
+        every { db.dispenseTxnDao() } returns mockk<DispenseTxnDao>(relaxed = true)
+        every { db.dispenseCountDao() } returns mockk<DispenseCountDao>(relaxed = true)
+        every { db.stockBatchDao() } returns mockk<StockBatchDao>(relaxed = true)
+        every { db.dekVersionDao() } returns mockk<DekVersionDao>(relaxed = true)
     }
 
     @Test
@@ -48,17 +50,22 @@ class DatabaseModuleTest {
     }
 
     @Test
-    fun `providePillCountTxnDao returns non-null PillCountTxnDao`() {
-        assertNotNull(DatabaseModule.providePillCountTxnDao(db))
+    fun `provideDispenseTxnDao returns non-null DispenseTxnDao`() {
+        assertNotNull(DatabaseModule.provideDispenseTxnDao(db))
     }
 
     @Test
-    fun `providePillCountTxnDetailsDao returns non-null PillCountTxnDetailsDao`() {
-        assertNotNull(DatabaseModule.providePillCountTxnDetailsDao(db))
+    fun `provideDispenseCountDao returns non-null DispenseCountDao`() {
+        assertNotNull(DatabaseModule.provideDispenseCountDao(db))
     }
 
     @Test
-    fun `provideBatchDao returns non-null BatchDao`() {
-        assertNotNull(DatabaseModule.provideBatchDao(db))
+    fun `provideStockBatchDao returns non-null StockBatchDao`() {
+        assertNotNull(DatabaseModule.provideStockBatchDao(db))
+    }
+
+    @Test
+    fun `provideDekVersionDao returns non-null DekVersionDao`() {
+        assertNotNull(DatabaseModule.provideDekVersionDao(db))
     }
 }

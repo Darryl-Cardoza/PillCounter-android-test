@@ -6,6 +6,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.dispensesure.retail.core.region.LocalRegion
 import java.io.File
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,7 +51,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.compose.cardSelectionShadow
-import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
+import com.dispensesure.retail.core.utils.compose.HeadlineBar
 import com.dispensesure.retail.feature.faceAuth.presentation.viewmodel.FaceAuthViewModel
 import com.dispensesure.retail.navigation.Screen
 import com.dispensesure.retail.ui.theme.AppTheme
@@ -272,7 +273,7 @@ private fun FaceUserCard(
             )
             profile.lastUsedAt?.let {
                 Text(
-                    text = stringResource(R.string.face_users_last_used, it.toFormattedDate()),
+                    text = stringResource(R.string.face_users_last_used, it.toFormattedDate(LocalRegion.current)),
                     color = AppTheme.extendedColors.textColor,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 4.dp)

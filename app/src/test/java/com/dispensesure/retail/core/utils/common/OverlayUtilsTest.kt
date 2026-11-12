@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.RectF
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.region.Region
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.TrayClass
 import com.dispensesure.retail.core.scanning.logic.TrayDetection
@@ -51,6 +52,9 @@ class OverlayUtilsTest {
             R.string.photo_label_date_time to "Date & Time",
             R.string.photo_label_operator to "Operator",
             R.string.location to "Location",
+            R.string.ndc_ca to "DIN",
+            R.string.photo_label_requested_ndc_ca to "Requested DIN",
+            R.string.photo_label_dispensed_ndc_ca to "Dispensed DIN",
         )
         every { getString(any()) } answers { labels.getValue(firstArg()) }
     }
@@ -85,6 +89,7 @@ class OverlayUtilsTest {
         lotNumber = lot, serialNumber = serial, expirationDate = expiry,
         count = count, rxRefill = rxRefill, stepLabel = step,
         userName = user, location = location, timestamp = 1_700_000_000_000L,
+        region = Region.US,
     )
 
     /** First row whose left-edge pixel is [color]: where the photo starts. */
@@ -124,6 +129,27 @@ class OverlayUtilsTest {
     fun `stored expiry shows in US format`() {
         val top = OverlayUtils.topRowFields(info(), res).associate { it.label to it.value }
         assertEquals("07/31/28", top["Expiry"])
+    }
+
+    @Test
+    fun `canada photo strip shows ISO expiry and date-time`() {
+        val canadaInfo = info().copy(region = Region.CA)
+
+        val top = OverlayUtils.topRowFields(canadaInfo, res).associate { it.label to it.value }
+        assertEquals("2028-07-31", top["Expiry"])
+
+        val bottom = OverlayUtils.bottomRows(canadaInfo, res).flatten().associate { it.label to it.value }
+        // 14 or 15 Nov depending on the machine's time zone.
+        assertTrue(bottom.getValue("Date & Time").matches(Regex("""2023-11-1[45] \d\d:\d\d [AaPp][Mm]""")))
+    }
+
+    @Test
+    fun `canada photo strip says DIN`() {
+        val dispenseLabels = OverlayUtils.topRowFields(info().copy(region = Region.CA), res).map { it.label }
+        assertEquals(listOf("Requested DIN", "Dispensed DIN", "Lot No.", "Serial No.", "Expiry"), dispenseLabels)
+
+        val stockLabels = OverlayUtils.topRowFields(info(isStockCount = true).copy(region = Region.CA), res).map { it.label }
+        assertEquals("DIN", stockLabels.first())
     }
 
     @Test

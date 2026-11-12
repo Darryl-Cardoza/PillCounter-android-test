@@ -1,8 +1,9 @@
 package com.dispensesure.retail.feature.history.presentation.compose
 
 import androidx.test.core.app.ApplicationProvider
-import com.dispensesure.retail.feature.batchCount.domain.model.BatchDrugGroup
-import com.dispensesure.retail.feature.batchCount.domain.model.BatchLotEntry
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.feature.stockCount.batch.domain.model.BatchDrugGroup
+import com.dispensesure.retail.feature.stockCount.batch.domain.model.BatchLotEntry
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -62,7 +63,7 @@ class BatchStockCountPdfExporterTest {
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        exporter = BatchStockCountPdfExporter(context)
+        exporter = BatchStockCountPdfExporter(context, Region.US)
         reportsDir = File(
             context.getExternalFilesDir(null),
             "PillReports/StockCountReports"

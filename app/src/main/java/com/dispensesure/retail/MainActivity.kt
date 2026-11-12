@@ -9,11 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.WindowManager
-import com.dispensesure.retail.core.utils.permission.isLocationServicesEnabled
-import com.dispensesure.retail.core.utils.permission.isPermanentlyDenied
-import com.dispensesure.retail.core.utils.permission.markPermissionRequested
-import com.dispensesure.retail.core.utils.permission.openAppSettings
-import com.dispensesure.retail.core.utils.permission.openLocationSettings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,10 +30,16 @@ import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.NavDestination.Companion.hierarchy
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.DeviceIntegrityAuditor
+import com.dispensesure.retail.core.audit.model.SessionEndReason
+import com.dispensesure.retail.core.audit.model.SessionEnded
+import com.dispensesure.retail.core.audit.upload.AuditLogUploader
 import com.dispensesure.retail.core.auth.AuthEvent
 import com.dispensesure.retail.core.auth.AuthEventBus
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
@@ -44,34 +47,48 @@ import com.dispensesure.retail.core.health.domain.model.HealthState
 import com.dispensesure.retail.core.health.logic.ConnectivityCallback
 import com.dispensesure.retail.core.health.logic.ExpiryWatcher
 import com.dispensesure.retail.core.health.logic.SessionHealthController
+import com.dispensesure.retail.core.region.LocalRegion
+import com.dispensesure.retail.core.region.RegionProvider
 import com.dispensesure.retail.core.security.RuntimeUnit
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayScreen
-import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
-import com.dispensesure.retail.core.utils.logger.AppLogger
-import com.dispensesure.retail.core.utils.logger.LogEvent
-import com.dispensesure.retail.core.utils.logger.LoggerConfig
-import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersiveFullscreen
-import com.dispensesure.retail.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourEvent
+import com.dispensesure.retail.core.tourguide.TourSectionPrompt
 import com.dispensesure.retail.core.utils.common.HelperFunctions.clearSessionIfNotRemembered
+import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.dispensesure.retail.core.utils.common.HelperFunctions.openPlayStore
-import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
+import com.dispensesure.retail.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.SecurityErrorDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toColor
+import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
+import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.core.utils.compose.MaintenanceScreen
 import com.dispensesure.retail.core.utils.compose.OfflineOverlay
 import com.dispensesure.retail.core.utils.compose.UpdateScreen
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.notification.FCMService
+import com.dispensesure.retail.core.utils.permission.isLocationServicesEnabled
+import com.dispensesure.retail.core.utils.permission.isPermanentlyDenied
+import com.dispensesure.retail.core.utils.permission.markPermissionRequested
+import com.dispensesure.retail.core.utils.permission.openAppSettings
+import com.dispensesure.retail.core.utils.permission.openLocationSettings
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayScreen
+import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
+import com.dispensesure.retail.BuildConfig
+import com.dispensesure.retail.core.analytics.AnalyticsService
 import com.dispensesure.retail.navigation.AppNavGraph
 import com.dispensesure.retail.ui.theme.DispenseSureRetailTheme
 import com.dispensesure.retail.ui.theme.ExtendedColors
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 /**
@@ -105,10 +122,25 @@ class MainActivity : ComponentActivity() {
     lateinit var sessionHealthController: SessionHealthController
 
     @Inject
+    lateinit var auditLogUploader: AuditLogUploader
+
+    @Inject
     lateinit var authEventBus: AuthEventBus
 
     @Inject
+    lateinit var regionProvider: RegionProvider
+
+    @Inject
     lateinit var connectivityCallback: ConnectivityCallback
+
+    @Inject
+    lateinit var auditLogger: AuditLogger
+
+    @Inject
+    lateinit var deviceIntegrityAuditor: DeviceIntegrityAuditor
+
+    @Inject
+    lateinit var analyticsService: AnalyticsService
 
     private lateinit var navController: NavController
 
@@ -156,6 +188,12 @@ class MainActivity : ComponentActivity() {
         requestLocationPermission()
     }
 
+    override fun onDestroy() {
+        // View models survive rotation, so the tour can too; any other destroy rebuilds them.
+        if (!isChangingConfigurations) FtueController.end()
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -166,7 +204,7 @@ class MainActivity : ComponentActivity() {
             // Runs first so the face lock and permission chain see the logged-out state.
             // Skipped for notification taps, which keep the user in the app.
             if (!intent.getBooleanExtra(EXTRA_OPENED_FROM_NOTIFICATION, false)) {
-                clearSessionIfNotRemembered(preferenceHelper)
+                clearSessionIfNotRemembered(preferenceHelper, ::logSessionEnded)
             }
             sessionLockController.onAppLaunch()
         }
@@ -209,6 +247,11 @@ class MainActivity : ComponentActivity() {
 //            runtimeUnit.revokeClearance()
 //        }
 
+        // Log-only integrity check, once per fresh launch of a release build and off the main thread.
+        if (savedInstanceState == null && !BuildConfig.DEBUG) {
+            lifecycleScope.launch(Dispatchers.IO) { deviceIntegrityAuditor.logFailedIntegrityChecks() }
+        }
+
         lifecycleScope.launch {
             try {
                 delay(1500)
@@ -223,6 +266,9 @@ class MainActivity : ComponentActivity() {
 
 
 
+        // Create the tour's snapshot state outside composition; first touched inside a
+        // composition it is born in an unapplied snapshot and crashes on read.
+        FtueController.state
         setContent {
             LaunchedEffect(Unit) {
                 handleNavigationIntent(intent)
@@ -276,7 +322,9 @@ class MainActivity : ComponentActivity() {
                     ) {
                         navController = rememberNavController()
                         val preferenceHelper = remember { PreferenceHelper(this) }
-                        val startDestination = remember { resolveStartDestinationAndClearIfExpired(preferenceHelper) }
+                        val startDestination = remember {
+                            resolveStartDestinationAndClearIfExpired(preferenceHelper, ::logSessionEnded)
+                        }
                         // A local logout (Remember me off, offline expiry) doesn't stop HL7, and the
                         // settings fetch only stops it when online. Stop it here, with no network needed.
                         LaunchedEffect(Unit) {
@@ -299,7 +347,7 @@ class MainActivity : ComponentActivity() {
                                     val healthState by sessionHealthController.state.collectAsStateWithLifecycle()
                                     LaunchedEffect(healthState) {
                                         if (healthState == HealthState.EXPIRED) {
-                                            performLogoutTeardown()
+                                            performLogoutTeardown(SessionEndReason.OFFLINE_LIMIT_REACHED)
                                             sessionHealthController.resetAfterExpiry()
                                         }
                                     }
@@ -307,7 +355,7 @@ class MainActivity : ComponentActivity() {
                                     LaunchedEffect(Unit) {
                                         authEventBus.events.collect { event ->
                                             if (event is AuthEvent.SessionExpired) {
-                                                performLogoutTeardown()
+                                                performLogoutTeardown(SessionEndReason.REFRESH_REJECTED)
                                             }
                                         }
                                     }
@@ -317,8 +365,8 @@ class MainActivity : ComponentActivity() {
                                         ExpiryWatcher.start(lifecycleScope, sessionHealthController)
                                     }
                                     // OFFLINE -> HEALTHY drain lives inside SessionHealthController
-                                    // itself — see its init block. MainActivity no longer holds an
-                                    // Hl7Repository reference.
+                                    // itself — see its init block. MainActivity no longer holds the
+                                    // HL7 repositories.
 
                                     // Bump on every HEALTHY -> OFFLINE transition so the
                                     // OfflineOverlay re-expands its message pill on each
@@ -338,21 +386,58 @@ class MainActivity : ComponentActivity() {
                                             previous = current
                                         }
                                     }
-                                    AppNavGraph(
-                                        navController    = navController as NavHostController,
-                                        startDestination = startDestination,
-                                        onLogin          = {
-                                            settingsViewModel.onUserLoginOrLogOut()
-                                            // Enrolled operators verify their face before reaching the
-                                            // dashboard, but only after the permission chain finishes.
-                                            lockAfterPermissionChain = true
-                                            if (!permissionChainInProgress) {
-                                                permissionChainInProgress = true
-                                                requestNotificationPermission()
+                                    val loggedInRegion by regionProvider.region.collectAsStateWithLifecycle()
+                                    CompositionLocalProvider(LocalRegion provides (loggedInRegion ?: regionProvider.current)) {
+                                        AppNavGraph(
+                                            navController    = navController as NavHostController,
+                                            startDestination = startDestination,
+                                            onLogin          = {
+                                                analyticsService.userDidLogin()
+                                                settingsViewModel.onUserLoginOrLogOut()
+                                                // Enrolled operators verify their face before reaching the
+                                                // dashboard, but only after the permission chain finishes.
+                                                lockAfterPermissionChain = true
+                                                sessionLockController.setLockPending(true)
+                                                if (!permissionChainInProgress) {
+                                                    permissionChainInProgress = true
+                                                    requestNotificationPermission()
+                                                }
+                                            },
+                                            onLogOut         = {
+                                                FtueController.end()
+                                                // The Ended event has no collector once logged out; purge now.
+                                                settingsViewModel.purgeTutorialDataAsync()
+                                                FtueController.drainEvents()
+                                                sessionLockController.setLockPending(false)
+                                                settingsViewModel.onUserLoginOrLogOut()
                                             }
-                                        },
-                                        onLogOut         = { settingsViewModel.onUserLoginOrLogOut() }
-                                    )
+                                        )
+                                    }
+
+                                    // The tour ends (done, skipped, locked, logged out) or moves to its next
+                                    // section: purge tutorial data first, then show the Dashboard.
+                                    LaunchedEffect(Unit) {
+                                        FtueController.events.collect { event ->
+                                            // After a logout or expiry there is no user to mark or to show a Dashboard to.
+                                            val loggedIn = preferenceHelper.isUserLoggedIn()
+                                            // Let in-flight demo writes land (or finish cancelling) before the purge.
+                                            withTimeoutOrNull(3_000L) { FtueController.awaitTrackedJobs() }
+                                            // Between sections no step is running, so the finished section's data can go.
+                                            settingsViewModel.purgeTutorialData(force = event == TourEvent.ShowDashboard)
+                                            if (loggedIn) navController.navigateBackToDashboard()
+                                            if (event == TourEvent.ShowDashboard) FtueController.enterNextSection()
+                                            if (event == TourEvent.Ended) {
+                                                // end() cancels the running step, but the last step's completion writes run in
+                                                // viewModelScope and may still be landing; sweep again. After the navigation,
+                                                // so the wait can't pull the user back to the Dashboard later.
+                                                launch {
+                                                    delay(1500)
+                                                    settingsViewModel.purgeTutorialData()
+                                                }
+                                            }
+                                        }
+                                    }
+                                    TourSectionPrompt(FtueController.state)
 
                                     // App-wide offline indicator: thin red border + bottom-left
                                     // analog clock that visualises time remaining before the
@@ -372,6 +457,14 @@ class MainActivity : ComponentActivity() {
 
                                     val isLocked by sessionLockController.isLocked.collectAsStateWithLifecycle()
                                     val startOnScan by sessionLockController.startOnScan.collectAsStateWithLifecycle()
+                                    LaunchedEffect(isLocked) {
+                                        if (isLocked) {
+                                            if (FtueController.state.isActive) {
+                                                showToast(this@MainActivity, R.string.tour_ended_locked, Toast.LENGTH_LONG)
+                                            }
+                                            FtueController.end()
+                                        }
+                                    }
                                     if (isLocked) {
                                         SessionLockOverlayScreen(
                                             startOnScan = startOnScan,
@@ -433,7 +526,10 @@ class MainActivity : ComponentActivity() {
         // user action. Cheap: /health is on an isolated stack with 15s timeouts.
         if (::sessionHealthController.isInitialized && preferenceHelper.isUserLoggedIn()) {
             sessionHealthController.onForegroundResume()
+            // Also sends any closed audit log files.
+            auditLogUploader.requestUpload()
         }
+        analyticsService.applicationDidBecomeActive()
     }
 
     override fun onStart() {
@@ -468,7 +564,7 @@ class MainActivity : ComponentActivity() {
      * would be jarring. Full-logout path in AppNavGraph.onLogOut keeps the settings-reset
      * call. If that assumption ever changes, add the call here too.
      */
-    private fun performLogoutTeardown() {
+    private fun performLogoutTeardown(reason: SessionEndReason) {
         if (!sessionHealthController.beginTeardown()) return
         // currentDestination?.route is always a leaf (login, otp, …); the auth graph route
         // ("auth") only appears in the destination's parent. Walk the hierarchy so a second
@@ -479,10 +575,13 @@ class MainActivity : ComponentActivity() {
             sessionHealthController.endTeardown()
             return
         }
+        FtueController.end()
         try {
+            // Closes the offline period first, so it is logged under the user who is leaving.
+            sessionHealthController.markLoggedOut()
+            logSessionEnded(reason)
             preferenceHelper.clearTokens()
             preferenceHelper.setUserLoggedIn(false)
-            sessionHealthController.markLoggedOut()
             LoggerConfig.newSession()
             sessionLockController.unlock()
             if (::navController.isInitialized) {
@@ -494,6 +593,12 @@ class MainActivity : ComponentActivity() {
         } finally {
             sessionHealthController.endTeardown()
         }
+    }
+
+    // Logged before LoggerConfig.newSession(), so SESSION_ENDED belongs to the session it ends.
+    private fun logSessionEnded(reason: SessionEndReason) {
+        auditLogger.log(SessionEnded(userId = preferenceHelper.getUserId(), reason = reason))
+        auditLogger.onSessionEnded()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -584,6 +689,8 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     .setNegativeButton(R.string.not_now) { _, _ -> finishPermissionChain() }
+                    // Back / outside-tap cancels without a button press; without this the chain never ends.
+                    .setOnCancelListener { finishPermissionChain() }
                     .show()
                 return
             }
@@ -611,6 +718,7 @@ class MainActivity : ComponentActivity() {
             lockAfterPermissionChain = false
             sessionLockController.lockNow(startOnScan = true)
         }
+        sessionLockController.setLockPending(false)
         if (permanentlyDeniedPermissions.isEmpty()) {
             promptEnableLocationServicesIfNeeded()
             return

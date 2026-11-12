@@ -3,18 +3,27 @@ package com.dispensesure.retail.feature.settings.presentation.viewmodel
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import androidx.room.withTransaction
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.models.ApiResponse
 import com.dispensesure.retail.core.models.ScheduleCode
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.region.Region
+import com.dispensesure.retail.core.region.RegionProvider
+import com.dispensesure.retail.core.audit.AuditLogger
+import com.dispensesure.retail.core.audit.model.DataPurged
+import com.dispensesure.retail.core.audit.model.LocalDataCleared
+import com.dispensesure.retail.core.audit.model.SecuritySetting
+import com.dispensesure.retail.core.audit.model.SettingChanged
+import com.dispensesure.retail.core.room.AppDatabase
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
@@ -29,6 +38,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
@@ -50,14 +60,31 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainActivityViewModelTest {
 
+    private val regionProvider: RegionProvider = mockk { every { current } returns Region.US }
+
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var repository: IApplicationSettingsRepository
     private lateinit var preferenceHelper: PreferenceHelper
-    private lateinit var txnDao: PillCountTxnDao
-    private lateinit var batchDao: BatchDao
+    private lateinit var dispenseTxnDao: DispenseTxnDao
+    private lateinit var stockBatchDao: StockBatchDao
     private lateinit var stockTxnDao: StockTxnDao
-    private lateinit var bottleInfoDao: BottleInfoDao
+    private lateinit var stockBottleInfoDao: StockBottleInfoDao
+    private val auditLogger = mockk<AuditLogger>(relaxed = true)
+    private val appDatabase = mockk<AppDatabase>()
+
+    // Runs the withTransaction block for real and records which DAO calls happened inside it.
+    private var inTransaction = false
+    private val callsOutsideTransaction = mutableListOf<String>()
+    private fun stubTransaction() {
+        mockkStatic("androidx.room.RoomDatabaseKt")
+        val block = slot<suspend () -> Any?>()
+        coEvery { appDatabase.withTransaction(capture(block)) } coAnswers {
+            inTransaction = true
+            try { block.captured.invoke() } finally { inTransaction = false }
+        }
+    }
+    private fun track(name: String) { if (!inTransaction) callsOutsideTransaction += name }
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var hl7EventHandler: Hl7EventHandler
     private lateinit var sessionHealthController: SessionHealthController
@@ -112,6 +139,7 @@ class MainActivityViewModelTest {
 
     @Before
     fun setup() {
+        stubTransaction()
         mockkStatic(android.util.Log::class)
         every { android.util.Log.d(any(), any()) } returns 0
         every { android.util.Log.d(any(), any(), any()) } returns 0
@@ -127,10 +155,10 @@ class MainActivityViewModelTest {
 
         repository = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
-        txnDao = mockk(relaxed = true)
-        batchDao = mockk(relaxed = true)
+        dispenseTxnDao = mockk(relaxed = true)
+        stockBatchDao = mockk(relaxed = true)
         stockTxnDao = mockk(relaxed = true)
-        bottleInfoDao = mockk(relaxed = true)
+        stockBottleInfoDao = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
         sessionHealthController = mockk(relaxed = true)
@@ -145,8 +173,8 @@ class MainActivityViewModelTest {
         every { preferenceHelper.isSoundOverride() } returns false
         every { preferenceHelper.isHazardousDrugEnabled() } returns false
         every { preferenceHelper.getThemeColors() } returns null
-        every { preferenceHelper.isControlDrugTypesInitialized() } returns false
-        every { preferenceHelper.getControlDrugTypes() } returns emptySet()
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.US) } returns false
+        every { preferenceHelper.getControlDrugTypes(Region.US) } returns emptySet()
         every { preferenceHelper.isHl7Enabled() } returns false
         every { preferenceHelper.isHl7ConfigFetched() } returns false
         every { preferenceHelper.isUserLoggedIn() } returns false
@@ -158,8 +186,8 @@ class MainActivityViewModelTest {
         every { preferenceHelper.getContext() } returns defaultContext
 
         coEvery { repository.getApplicationSettings() } returns apiResponse(dto())
-        coEvery { txnDao.getTransactionsBefore(any()) } returns emptyList()
-        coEvery { txnDao.getTransactionDetailsImages(any()) } returns emptyList()
+        coEvery { dispenseTxnDao.getTransactionsBefore(any()) } returns emptyList()
+        coEvery { dispenseTxnDao.getTransactionDetailsImages(any()) } returns emptyList()
     }
 
     @After
@@ -171,15 +199,42 @@ class MainActivityViewModelTest {
     private fun createViewModel() = MainActivityViewModel(
         repository,
         preferenceHelper,
-        txnDao,
-        batchDao,
+        dispenseTxnDao,
+        stockBatchDao,
         stockTxnDao,
-        bottleInfoDao,
+        stockBottleInfoDao,
         hl7ServiceManager,
         hl7EventHandler,
+        mockk(relaxed = true),
         sessionHealthController,
         testDispatcher,
+        regionProvider,
+        auditLogger,
+        appDatabase,
     )
+
+    @Test
+    fun `a security setting change is logged once with old and new`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.toggleRequireBackCountOnOff(true)
+        vm.toggleRequireBackCountOnOff(true)
+
+        verify(exactly = 1) {
+            auditLogger.log(SettingChanged(SecuritySetting.REQUIRE_BACK_COUNT, "false", "true"))
+        }
+    }
+
+    @Test
+    fun `re-selecting the same face lock timeout logs nothing`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.updateFaceLockTimeoutMinutes(vm.faceLockTimeoutMinutes.value)
+
+        verify(exactly = 0) { auditLogger.log(match { it is SettingChanged }) }
+    }
 
     // ─────────────────────────── init / theme loading ───────────────────────────
 
@@ -212,18 +267,55 @@ class MainActivityViewModelTest {
     }
 
     @Test
-    fun `init seeds default schedules when not initialized`() = runTest(testDispatcher) {
+    fun `init seeds the US schedules when not initialized`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        assertEquals(ScheduleCode.entries.toSet(), vm.selectedSchedules.value)
-        verify { preferenceHelper.setControlDrugTypes(ScheduleCode.entries.map { it.name }.toSet()) }
+        val usSchedules = ScheduleCode.forRegion(Region.US)
+        assertEquals(usSchedules.toSet(), vm.selectedSchedules.value)
+        verify { preferenceHelper.setControlDrugTypes(Region.US, usSchedules.map { it.name }.toSet()) }
+    }
+
+    @Test
+    fun `canada user gets C, N and TS seeded under the canada keys`() = runTest(testDispatcher) {
+        every { regionProvider.current } returns Region.CA
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.CA) } returns false
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(setOf(ScheduleCode.C, ScheduleCode.N, ScheduleCode.TS), vm.selectedSchedules.value)
+        verify { preferenceHelper.setControlDrugTypes(Region.CA, setOf("C", "N", "TS")) }
+    }
+
+    @Test
+    fun `canada saved selection drops US names`() = runTest(testDispatcher) {
+        every { regionProvider.current } returns Region.CA
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.CA) } returns true
+        every { preferenceHelper.getControlDrugTypes(Region.CA) } returns setOf("TS", "CII")
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(setOf(ScheduleCode.TS), vm.selectedSchedules.value)
+    }
+
+    @Test
+    fun `canada updateSchedules saves under the canada keys`() = runTest(testDispatcher) {
+        every { regionProvider.current } returns Region.CA
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.CA) } returns true
+        every { preferenceHelper.getControlDrugTypes(Region.CA) } returns emptySet()
+        val vm = createViewModel()
+
+        vm.updateSchedules(setOf(ScheduleCode.N))
+
+        verify { preferenceHelper.setControlDrugTypes(Region.CA, setOf("N")) }
     }
 
     @Test
     fun `init parses saved schedules and skips invalid names`() = runTest(testDispatcher) {
-        every { preferenceHelper.isControlDrugTypesInitialized() } returns true
-        every { preferenceHelper.getControlDrugTypes() } returns setOf("CII", "CIV", "BOGUS")
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.US) } returns true
+        every { preferenceHelper.getControlDrugTypes(Region.US) } returns setOf("CII", "CIV", "BOGUS")
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -603,26 +695,40 @@ class MainActivityViewModelTest {
 
     @Test
     fun `deleteOldTransactions processes txn with images and missing files`() = runTest(testDispatcher) {
-        val txn = PillCountTxnEntity(
+        val txn = DispenseTxnEntity(
             txnId = 5L,
-            isDispense = true,
             status = CountStatus.COMPLETED,
-            bottleInfoListJson = BottleInfoJson.encode(
-                listOf(BottleInfo(txnId = 5L, barcodeImagePath = "C:/nonexistent/barcode.png")),
+            bottlesJson = DispenseBottleJson.encode(
+                listOf(DispenseBottle(txnId = 5L, barcodeImagePath = "C:/nonexistent/barcode.png")),
             ),
         )
-        coEvery { txnDao.getTransactionsBefore(any()) } returns listOf(txn)
-        coEvery { txnDao.getTransactionDetailsImages(5L) } returns listOf("C:/nonexistent/detail.png")
+        coEvery { dispenseTxnDao.getTransactionsBefore(any()) } returns listOf(txn)
+        coEvery { dispenseTxnDao.getTransactionDetailsImages(5L) } returns listOf("C:/nonexistent/detail.png")
 
         val vm = createViewModel()
         advanceUntilIdle()
 
-        coVerify { txnDao.deleteTransaction(5L) }
+        coVerify { dispenseTxnDao.deleteTransaction(5L) }
+    }
+
+    @Test
+    fun `retention purge lists only the txns it deleted`() = runTest(testDispatcher) {
+        coEvery { dispenseTxnDao.getTransactionsBefore(any()) } returns listOf(
+            DispenseTxnEntity(txnId = 5L, status = CountStatus.COMPLETED),
+            DispenseTxnEntity(txnId = 6L, status = CountStatus.COMPLETED),
+        )
+        coEvery { dispenseTxnDao.deleteTransaction(5L) } returns 0
+        coEvery { dispenseTxnDao.deleteTransaction(6L) } returns 1
+
+        createViewModel()
+        advanceUntilIdle()
+
+        verify { auditLogger.log(match { it is DataPurged && it.txnIds == listOf(6L) && it.count == 1 }) }
     }
 
     @Test
     fun `deleteOldTransactions handles exception`() = runTest(testDispatcher) {
-        coEvery { txnDao.getTransactionsBefore(any()) } throws RuntimeException("db error")
+        coEvery { dispenseTxnDao.getTransactionsBefore(any()) } throws RuntimeException("db error")
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -641,7 +747,7 @@ class MainActivityViewModelTest {
 
         assertEquals(7, vm.selectedHistoryOption.value)
         verify { preferenceHelper.saveHistoryRetention(7) }
-        coVerify(atLeast = 1) { txnDao.getTransactionsBefore(any()) }
+        coVerify(atLeast = 1) { dispenseTxnDao.getTransactionsBefore(any()) }
     }
 
     // ─────────────────────────── toggles ───────────────────────────
@@ -731,14 +837,48 @@ class MainActivityViewModelTest {
         vm.deleteAllTransaction()
         advanceUntilIdle()
 
-        coVerify { txnDao.deleteAllTransactions() }
-        coVerify { batchDao.deleteAll() }
+        coVerify { dispenseTxnDao.deleteAllTransactions() }
+        coVerify { stockBatchDao.deleteAll() }
+    }
+
+    @Test
+    fun `clear all reads and deletes inside one transaction`() = runTest(testDispatcher) {
+        coEvery { dispenseTxnDao.getAllSyncStates() } coAnswers { track("dispense getAllSyncStates"); emptyList() }
+        coEvery { stockBatchDao.getAllSyncStates(any()) } coAnswers { track("batch getAllSyncStates"); emptyList() }
+        coEvery { dispenseTxnDao.deleteAllTransactions() } coAnswers { track("dispense_txn"); 0 }
+        coEvery { stockBottleInfoDao.deleteAll() } coAnswers { track("stock_bottle_info"); 0 }
+        coEvery { stockTxnDao.deleteAll() } coAnswers { track("stock_txn"); 0 }
+        coEvery { stockBatchDao.deleteAll() } coAnswers { track("stock_batch"); 0 }
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.deleteAllTransaction()
+        advanceUntilIdle()
+
+        coVerify { stockBatchDao.deleteAll() }
+        assertEquals(emptyList<String>(), callsOutsideTransaction)
+    }
+
+    @Test
+    fun `deleteAllTransaction logs the row counts the deletes returned`() = runTest(testDispatcher) {
+        coEvery { dispenseTxnDao.deleteAllTransactions() } returns 4
+        coEvery { stockBottleInfoDao.deleteAll() } returns 3
+        coEvery { stockTxnDao.deleteAll() } returns 2
+        coEvery { stockBatchDao.deleteAll() } returns 1
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.deleteAllTransaction()
+        advanceUntilIdle()
+
+        val expectedRowsDeleted = mapOf("dispense_txn" to 4, "stock_bottle_info" to 3, "stock_txn" to 2, "stock_batch" to 1)
+        verify { auditLogger.log(match { it is LocalDataCleared && it.rowsDeleted == expectedRowsDeleted }) }
     }
 
     @Test
     fun `updateSchedules writes the chosen set to state and prefs`() = runTest(testDispatcher) {
-        every { preferenceHelper.isControlDrugTypesInitialized() } returns true
-        every { preferenceHelper.getControlDrugTypes() } returns emptySet()
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.US) } returns true
+        every { preferenceHelper.getControlDrugTypes(Region.US) } returns emptySet()
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -746,13 +886,13 @@ class MainActivityViewModelTest {
         vm.updateSchedules(setOf(ScheduleCode.CII, ScheduleCode.CIV))
 
         assertEquals(setOf(ScheduleCode.CII, ScheduleCode.CIV), vm.selectedSchedules.value)
-        verify { preferenceHelper.setControlDrugTypes(setOf("CII", "CIV")) }
+        verify { preferenceHelper.setControlDrugTypes(Region.US, setOf("CII", "CIV")) }
     }
 
     @Test
     fun `updateSchedules allows an empty set`() = runTest(testDispatcher) {
-        every { preferenceHelper.isControlDrugTypesInitialized() } returns true
-        every { preferenceHelper.getControlDrugTypes() } returns setOf("CII")
+        every { preferenceHelper.isControlDrugTypesInitialized(Region.US) } returns true
+        every { preferenceHelper.getControlDrugTypes(Region.US) } returns setOf("CII")
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -760,7 +900,7 @@ class MainActivityViewModelTest {
         vm.updateSchedules(emptySet())
 
         assertTrue(vm.selectedSchedules.value.isEmpty())
-        verify { preferenceHelper.setControlDrugTypes(emptySet()) }
+        verify { preferenceHelper.setControlDrugTypes(Region.US, emptySet()) }
     }
 
     @Test
@@ -771,6 +911,28 @@ class MainActivityViewModelTest {
         vm.clearTrayColorLists()
 
         verify { preferenceHelper.clearAllTrayColorLists() }
+    }
+
+    @Test
+    fun `clearTrayColorLists logs set to cleared only when a color was stored`() = runTest(testDispatcher) {
+        every { preferenceHelper.getHazardousTrayColor() } returns "BLUE"
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.clearTrayColorLists()
+
+        verify { auditLogger.log(SettingChanged(SecuritySetting.TRAY_COLORS, "set", "cleared")) }
+    }
+
+    @Test
+    fun `clearTrayColorLists logs nothing when no color was stored`() = runTest(testDispatcher) {
+        every { preferenceHelper.getHazardousTrayColor() } returns null
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.clearTrayColorLists()
+
+        verify(exactly = 0) { auditLogger.log(match { it is SettingChanged }) }
     }
 
     @Test

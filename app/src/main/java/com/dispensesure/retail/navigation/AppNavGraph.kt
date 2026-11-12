@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.navigation
+package com.dispensesure.retail.navigation
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -6,12 +6,13 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.dispensesure.retail.BuildConfig
+import com.dispensesure.retail.feature.auditLog.presentation.AuditLogScreen
 import com.dispensesure.retail.feature.dashboard.presentation.DashboardScreen
-import com.dispensesure.retail.feature.dispenseFlow.presentation.DispenseFlowScreen
+import com.dispensesure.retail.feature.dispense.presentation.DispenseFlowScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceIntroScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceRegistrationScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceUsersListScreen
-import com.dispensesure.retail.feature.inventoryFlow.presentation.InventoryFlowScreen
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.history.presentation.BatchHistoryDetailScreen
 import com.dispensesure.retail.feature.history.presentation.HistoryDetailScreen
@@ -19,6 +20,8 @@ import com.dispensesure.retail.feature.history.presentation.HistoryScreen
 import com.dispensesure.retail.feature.menu.presentation.MenuScreen
 import com.dispensesure.retail.feature.profile.presentation.ProfileScreen
 import com.dispensesure.retail.feature.settings.presentation.SettingsScreen
+import com.dispensesure.retail.feature.stockCount.loose.LooseCountScreen
+import com.dispensesure.retail.feature.stockCount.sealed.presentation.StockCountScreen
 import com.dispensesure.retail.feature.unsyncedTransaction.presentation.compose.UnsyncedTransactionScreen
 
 // Define constants for nested graph routes for better organization
@@ -48,54 +51,12 @@ fun AppNavGraph(
             DashboardScreen(navController)
         }
 
-//        composable(
-//            route = Screen.ScanBarcode.route, arguments = Screen.ScanBarcode.navArguments,
-//            deepLinks = listOf(
-//                navDeepLink {
-//                    uriPattern = "pillcounter://scan/{type}/{batch_id}?txn_scan_type={txn_scan_type}"
-//                }
-//            )
-//        ) { backStackEntry ->
-//            val scanType = backStackEntry.arguments?.getString(Screen.ScanBarcode.ARG_TYPE) ?: ""
-//            val txnScanType = runCatching {
-//                ScanType.valueOf(
-//                    backStackEntry.arguments?.getString(Screen.ScanBarcode.TXN_SCAN_TYPE).orEmpty()
-//                )
-//            }.getOrElse {
-//                ScanType.BARCODE
-//            }
-//            val batchId =
-//                backStackEntry.arguments?.getLong(Screen.ScanBarcode.ARG_BATCH_ID) ?: 0
-//
-//            ScanBarCodeScreen(navController, scanType, txnScanType, batchId = batchId)
-//        }
-
-//        composable(
-//            route = Screen.PillCount.route, arguments = Screen.PillCount.navArguments
-//        ) { backStackEntry ->
-//            val countType = backStackEntry.arguments?.getString(Screen.PillCount.ARG_TYPE) ?: ""
-//            InventoryFlowScreen(navController, countType)
-//        }
-
         // Merged dispense flow (RX + NDC + pill counting on one screen).
         composable(
             route = Screen.DispenseFlow.route, arguments = Screen.DispenseFlow.navArguments
-        ) { backStackEntry ->
-            val countType = backStackEntry.arguments?.getString(Screen.DispenseFlow.ARG_TYPE) ?: ""
-            val fromHl7 = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_HL7) ?: false
-            val fromResume = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_RESUME) ?: false
-            val batchId = backStackEntry.arguments?.getLong(Screen.DispenseFlow.ARG_BATCH_ID) ?: 0L
-            val fromQueue = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_QUEUE) ?: false
-            val allowedNdcs = backStackEntry.arguments?.getString(Screen.DispenseFlow.ARG_ALLOWED_NDCS) ?: ""
-            DispenseFlowScreen(
-                navController = navController,
-                countType = countType,
-                fromHl7 = fromHl7,
-                fromResume = fromResume,
-                batchId = batchId,
-                fromQueue = fromQueue,
-                allowedNdcs = allowedNdcs,
-            )
+        ) {
+            // The view model reads the route's txn id and flags from its SavedStateHandle.
+            DispenseFlowScreen(navController = navController)
         }
 
 
@@ -108,10 +69,18 @@ fun AppNavGraph(
         }
 
         composable(
-            route = Screen.InventoryScan.route,
-            arguments = Screen.InventoryScan.navArguments,
+            route = Screen.StockCount.route,
+            arguments = Screen.StockCount.navArguments,
         ) {
-            InventoryFlowScreen(navController = navController)
+            StockCountScreen(navController = navController)
+        }
+
+        // Loose-pill count for a stock batch (SCAN PILLS on the sealed-bottle screen).
+        composable(
+            route = Screen.LooseCount.route,
+            arguments = Screen.LooseCount.navArguments,
+        ) {
+            LooseCountScreen(navController = navController)
         }
 
         composable(
@@ -134,7 +103,10 @@ fun AppNavGraph(
         }
 
 
-        composable(route = Screen.HistoryDetail.route) {
+        composable(
+            route = Screen.HistoryDetail.route,
+            arguments = Screen.HistoryDetail.navArguments
+        ) {
             HistoryDetailScreen(
                 navController = navController,
             )
@@ -155,7 +127,8 @@ fun AppNavGraph(
 
         composable(route = Screen.Profile.route) {
             ProfileScreen(
-                navController = navController
+                navController = navController,
+                onLogOut = onLogOut
             )
         }
 
@@ -176,6 +149,12 @@ fun AppNavGraph(
 
         composable(route = Screen.FaceRecognitionUsers.route) {
             FaceUsersListScreen(navController = navController)
+        }
+
+        if (BuildConfig.DEBUG) {
+            composable(route = Screen.AuditLog.route) {
+                AuditLogScreen(navController = navController)
+            }
         }
 
     }
