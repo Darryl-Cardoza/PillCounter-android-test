@@ -455,7 +455,11 @@ jobs:
             exit 1
           fi
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
-          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+          # No sudo: self-hosted runners may not allow it.
+          mkdir -p "$RUNNER_TEMP/bin"
+          install -m 0755 /tmp/gitleaks "$RUNNER_TEMP/bin/gitleaks"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/bin:$PATH"
           gitleaks version
 
       - name: Scan for committed secrets
@@ -558,7 +562,11 @@ jobs:
             exit 1
           fi
           tar -xzf /tmp/trivy.tar.gz -C /tmp trivy
-          sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
+          # No sudo: self-hosted runners may not allow it.
+          mkdir -p "$RUNNER_TEMP/bin"
+          install -m 0755 /tmp/trivy "$RUNNER_TEMP/bin/trivy"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/bin:$PATH"
           trivy --version
 
       - name: Scan dependencies for known CVEs

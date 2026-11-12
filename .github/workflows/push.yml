@@ -39,7 +39,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           REPO: ${{ github.repository }}
-          OWNER: ${{ github.repository_owner }}
+        # Repo endpoint: also lists org runners, but only those this repo is allowed to use.
         # Never fails the run: every problem falls back to ubuntu-latest with a warning.
         # Fork PRs stay on GitHub-hosted so untrusted code never runs on the self-hosted machine.
         run: |
@@ -48,7 +48,7 @@ jobs:
             echo "::notice::Fork PR, using ubuntu-latest"
           elif [ -z "$GH_TOKEN" ]; then
             echo "::warning::RUNNER_STATUS_TOKEN is not set, using ubuntu-latest"
-          elif ! online=$(gh api --paginate "orgs/$OWNER/actions/runners" \
+          elif ! online=$(gh api --paginate "repos/$REPO/actions/runners" \
               --jq '.runners[] | select(.status=="online" and .busy==false) | .labels[].name'); then
             echo "::warning::Runner API call failed (check RUNNER_STATUS_TOKEN), using ubuntu-latest"
           elif grep -qix rite-ubuntu <<<"$online"; then
