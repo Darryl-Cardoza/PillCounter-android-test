@@ -285,7 +285,7 @@ jobs:
         id: setup
         uses: ./.github/actions/setup-android
         with:
-          java_version: ${{ inputs.java_version }}
+          java_version: ${{ inputs.java_version }}
           cache_key_suffix: quality
 
       # -------------------------------------------------------------------
@@ -371,7 +371,7 @@ jobs:
       - name: Setup Android build environment
         uses: ./.github/actions/setup-android
         with:
-          java_version: ${{ inputs.java_version }}
+          java_version: ${{ inputs.java_version }}
           cache_key_suffix: lint
 
       - name: Run Android Lint
@@ -432,7 +432,7 @@ jobs:
       - name: Setup Android build environment
         uses: ./.github/actions/setup-android
         with:
-          java_version: ${{ inputs.java_version }}
+          java_version: ${{ inputs.java_version }}
           cache_key_suffix: security
 
       # -------------------------------------------------------------------
@@ -628,7 +628,7 @@ jobs:
       - name: Setup Android build environment
         uses: ./.github/actions/setup-android
         with:
-          java_version: ${{ inputs.java_version }}
+          java_version: ${{ inputs.java_version }}
           cache_key_suffix: deadcode
 
       # -------------------------------------------------------------------
@@ -711,7 +711,7 @@ jobs:
       - name: Setup Android build environment
         uses: ./.github/actions/setup-android
         with:
-          java_version: ${{ inputs.java_version }}
+          java_version: ${{ inputs.java_version }}
           cache_key_suffix: test
 
       # Strict typing is applied here: this is the job that compiles first.
@@ -880,7 +880,7 @@ jobs:
       - name: Setup Android build environment
         uses: ./.github/actions/setup-android
         with:
-          java_version: ${{ inputs.java_version }}
+          java_version: ${{ inputs.java_version }}
           cache_key_suffix: build
 
       - name: Build APK
@@ -921,6 +921,12 @@ jobs:
     if: ${{ always() }}
 
     steps:
+
+      # The summary script lives in the repo; this job had no checkout, so it wasn't found.
+      - name: Checkout summary scripts
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/tool/scripts
 
       - name: Download all reports
         continue-on-error: true
