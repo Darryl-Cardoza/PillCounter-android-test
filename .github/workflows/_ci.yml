@@ -505,7 +505,8 @@ jobs:
             --config p/secrets
             --config .github/tool/semgrep/android-rules.yml
             --exclude 'build'
-            --exclude '.github'
+            --exclude '.github/tool'
+            --exclude '.github/gradle'
             --exclude '**/generated/**'
             --metrics=off
             --no-error
@@ -930,7 +931,8 @@ jobs:
 
     steps:
 
-      # The summary script lives in the repo; this job had no checkout, so it wasn't found.
+      # The summary scripts now live in this repo (.github/tool/scripts); this job has no
+      # other checkout, so fetch just that folder.
       - name: Checkout summary scripts
         uses: actions/checkout@v4
         with:
