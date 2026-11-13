@@ -191,11 +191,11 @@ jobs:
       PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
       ESPER_API_KEY: ${{ secrets.ESPER_API_KEY }}
 
-  # Uploads the R8 mapping to the observability vendor. Runs here (not in _release.yml)
-  # so the key stays in this job, and only after ci + cd succeeded for the
-  # release tag. The version id derives from the commit SHA, so it matches the shipped build.
+  # Uploads the shipped AAB's R8 mapping to the observability vendor. Runs here (not in
+  # _release.yml) so the key stays in this job, and only when cd actually uploaded a
+  # build to Play Store or Esper. The version id derives from the commit SHA.
   upload-mapping:
-    if: needs.extract-version.outputs.is_release == 'true'
+    if: needs.extract-version.outputs.is_release == 'true' && needs.cd.outputs.deployed == 'true'
     needs: [ select_runner, extract-version, ci, cd ]
     runs-on: ${{ needs.select_runner.outputs.linux }}
     timeout-minutes: 30
@@ -209,9 +209,6 @@ jobs:
           distribution: temurin
           java-version: ${{ needs.extract-version.outputs.java_version }}
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build release
-        # The plugin generates the build id while packaging, and the upload fails without it.
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
       - name: Download shipped build
         uses: actions/download-artifact@v4
         with:
@@ -226,9 +223,11 @@ jobs:
           [ -n "$AAB" ] || { echo "::error::No AAB in android-build-outputs-Release"; exit 1; }
           unzip -p "$AAB" BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map > shipped-mapping.txt
           grep -q -m1 -E '^# pg_map_id:' shipped-mapping.txt || { echo "::error::No pg_map_id in shipped AAB mapping"; exit 1; }
+          mkdir -p app/build/outputs/mapping/release
           cp shipped-mapping.txt app/build/outputs/mapping/release/mapping.txt
           grep -m2 -E '^# pg_map_(id|hash):' shipped-mapping.txt
       - name: Upload R8 mapping
         env:
           DD_API_KEY: ${{ secrets.DD_API_KEY }}
-        run: ./gradlew :app:uploadMappingRelease --no-daemon --stacktrace
+        # -x keeps Gradle from re-running R8 (which would overwrite the shipped mapping copied above).
+        run: ./gradlew :app:uploadMappingRelease -x minifyReleaseWithR8 --no-daemon --stacktrace

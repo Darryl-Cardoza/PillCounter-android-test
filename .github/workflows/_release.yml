@@ -109,6 +109,10 @@ on:
       ESPER_API_KEY:
         required: false
 
+    outputs:
+      deployed:
+        description: "true when a signed build was actually uploaded to Play Store or Esper"
+        value: ${{ jobs.deploy_playstore.outputs.shipped == 'true' || jobs.deploy_esper.outputs.shipped == 'true' }}
 
 permissions:
   contents: read
@@ -321,6 +325,8 @@ jobs:
     if: ${{ inputs.deploy_to_playstore && needs.sign_android.outputs.signed == 'true' }}
     needs: sign_android
     runs-on: ${{ inputs.runner }}
+    outputs:
+      shipped: ${{ steps.chk.outputs.ok }}
 
     steps:
 
@@ -378,6 +384,8 @@ jobs:
     if: ${{ inputs.deploy_to_esper && needs.sign_android.outputs.signed == 'true' }}
     needs: [sign_android, create_release]
     runs-on: ${{ inputs.runner }}
+    outputs:
+      shipped: ${{ steps.chk.outputs.ok }}
 
     steps:
 
